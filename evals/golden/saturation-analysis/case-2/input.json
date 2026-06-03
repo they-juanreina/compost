@@ -1,0 +1,6 @@
+{
+  "sessions": [
+    { "id": "S001", "themes": ["trust"] },
+    { "id": "S002", "themes": ["latency", "pricing"] }
+  ]
+}

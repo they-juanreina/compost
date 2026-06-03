@@ -1,0 +1,15 @@
+{
+  "question": "Do participants trust automated alerts?",
+  "retrieved": [
+    {
+      "utterance_id": "U-0001",
+      "session_id": "S001",
+      "text": "Cuando entra una alerta, yo no sé si confiar."
+    },
+    {
+      "utterance_id": "U-0014",
+      "session_id": "S001",
+      "text": "Prefiero verificar manualmente antes de actuar."
+    }
+  ]
+}

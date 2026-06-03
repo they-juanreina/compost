@@ -4,3 +4,4 @@ packages:
   - plugin
   - provenance
   - retrieval
+  - evals

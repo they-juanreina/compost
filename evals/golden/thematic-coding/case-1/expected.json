@@ -1,0 +1,6 @@
+{
+  "codes": [
+    { "name": "distrust-of-automation", "evidence": ["H-1"] },
+    { "name": "manual-verification", "evidence": ["H-2"] }
+  ]
+}

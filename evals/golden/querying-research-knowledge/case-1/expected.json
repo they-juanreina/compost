@@ -1,0 +1,7 @@
+{
+  "answer": "Participants express distrust of automated alerts and prefer manual verification.",
+  "claims": [
+    { "utterance_id": "U-0001", "quote": "no sé si confiar" },
+    { "utterance_id": "U-0014", "quote": "verificar manualmente" }
+  ]
+}
