@@ -1,5 +1,7 @@
 export { ProvenanceError, type ProvenanceErrorCode } from './errors.js'
 export { EVENT_SCHEMA } from './eventSchema.js'
+export { applyEvent, reduce, type Snapshot } from './reducer.js'
+export { SnapshotStore } from './snapshots.js'
 export type { Action, ActorType, Event, EventBase, EventInput } from './types.js'
 export { generateUlid, isUlid, type UlidOptions } from './ulid.js'
 export { validateEvent } from './validate.js'
