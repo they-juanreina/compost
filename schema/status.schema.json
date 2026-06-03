@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compost.dev/schema/status/1.0.json",
+  "title": "Compost Status Snapshot",
+  "description": "Structured snapshot of every seed in the working tree. Stable contract for agents calling `compost status --json`.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "root", "seeds"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "root": {
+      "type": "string",
+      "description": "Absolute path of the Seeds/ root that was scanned."
+    },
+    "seeds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/seed" }
+    }
+  },
+  "$defs": {
+    "seed": {
+      "type": "object",
+      "required": ["name", "path", "counts"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "path": { "type": "string" },
+        "status": {
+          "type": ["string", "null"],
+          "description": "From seed.md frontmatter. Common values: planning | active | synthesis | done."
+        },
+        "owners": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "created_at": { "type": ["string", "null"] },
+        "counts": { "$ref": "#/$defs/counts" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "required": [
+        "sessions",
+        "highlights",
+        "codes",
+        "themes",
+        "frames",
+        "insights",
+        "legacy_assets"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sessions": { "$ref": "#/$defs/sessionCounts" },
+        "highlights": { "type": "integer", "minimum": 0 },
+        "codes": { "type": "integer", "minimum": 0 },
+        "themes": { "type": "integer", "minimum": 0 },
+        "frames": { "type": "integer", "minimum": 0 },
+        "insights": { "type": "integer", "minimum": 0 },
+        "legacy_assets": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sessionCounts": {
+      "type": "object",
+      "required": ["total", "transcribed", "queued", "inbox"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "transcribed": { "type": "integer", "minimum": 0 },
+        "queued": { "type": "integer", "minimum": 0 },
+        "inbox": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
