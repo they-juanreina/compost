@@ -1,0 +1,13 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+*.egg-info
+build
+dist
+
+# Don't bake the host's Seeds tree into the image; it's bind-mounted instead.
+../Seeds
