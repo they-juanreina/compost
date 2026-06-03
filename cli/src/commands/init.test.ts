@@ -82,3 +82,18 @@ describe('initSeed', () => {
     assert.doesNotThrow(() => initSeed('alpha_beta_2', { cwd: work }))
   })
 })
+
+describe('initSeed --from-sample', () => {
+  it('unpacks the bundled sample corpus', () => {
+    const work = mkdtempSync(join(tmpdir(), 'compost-sample-'))
+    try {
+      const { path } = initSeed('demo', { cwd: work, fromSample: true })
+      assert.ok(existsSync(join(path, 'sessions/S001/transcript.json')))
+      assert.ok(existsSync(join(path, 'highlights/H-001.md')))
+      assert.ok(existsSync(join(path, 'codebook/distrust-of-automation.md')))
+      assert.ok(existsSync(join(path, 'synthesis/themes/control-earns-trust.md')))
+    } finally {
+      rmSync(work, { recursive: true, force: true })
+    }
+  })
+})

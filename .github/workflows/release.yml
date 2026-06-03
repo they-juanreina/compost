@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build + publish v0.1 artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history for release notes
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - name: Install + build + test
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm typecheck
+          pnpm test
+
+      - name: Auto-generate release notes from closed issues since last tag
+        id: notes
+        run: |
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          echo "Release ${GITHUB_REF_NAME}" > NOTES.md
+          echo "" >> NOTES.md
+          if [ -n "$PREV" ]; then
+            git log --pretty='- %s' "${PREV}..${GITHUB_REF_NAME}" >> NOTES.md
+          else
+            git log --pretty='- %s' >> NOTES.md
+          fi
+
+      - name: Publish @they-juanreina/compost-cli to npm
+        if: ${{ env.NODE_AUTH_TOKEN != '' }}
+        working-directory: cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public
+
+      - name: GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          body_path: NOTES.md
+          generate_release_notes: true
