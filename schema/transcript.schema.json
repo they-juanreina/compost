@@ -1,0 +1,264 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compost.dev/schema/transcript/1.0.json",
+  "title": "Compost Rich Transcript",
+  "description": "Per-session rich transcript with utterances, typed silences, audio cues, frames, prosody hints, and provenance pointer.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "source",
+    "language",
+    "duration_ms",
+    "modality",
+    "speakers",
+    "utterances",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0",
+      "description": "Locked at 1.0 for this contract. Breaking changes bump the major."
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "description": "Stable, filesystem-safe session identifier (e.g. \"S023\")."
+    },
+    "source": {
+      "type": "string",
+      "description": "Path to the source media file, relative to the seed root."
+    },
+    "language": {
+      "type": "string",
+      "description": "BCP-47 language tag (e.g. \"es-CO\", \"en-US\")."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "modality": {
+      "type": "array",
+      "items": { "enum": ["audio", "video"] },
+      "minItems": 1,
+      "uniqueItems": true
+    },
+    "speakers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/speaker" }
+    },
+    "utterances": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/utterance" }
+    },
+    "silences": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/silence" }
+    },
+    "cues": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/cue" }
+    },
+    "frames": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/frame" }
+    },
+    "glossary_refs": {
+      "type": "array",
+      "default": [],
+      "items": { "$ref": "#/$defs/sessionGlossaryRef" },
+      "description": "Optional session-level rollup of glossary term mentions; derivable from utterances[].glossary_refs."
+    },
+    "provenance": { "$ref": "#/$defs/provenance" }
+  },
+  "$defs": {
+    "speaker": {
+      "type": "object",
+      "required": ["id", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^S[0-9]+$",
+          "description": "Speaker handle, e.g. \"S1\", \"S2\"."
+        },
+        "name": { "type": "string" },
+        "type": { "enum": ["moderator", "participant", "other"] }
+      }
+    },
+    "utterance": {
+      "type": "object",
+      "required": ["id", "speaker_id", "turn", "start_ms", "end_ms", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^U-[0-9]{4,}$",
+          "description": "Zero-padded ordinal, e.g. \"U-0001\"."
+        },
+        "speaker_id": { "type": "string", "pattern": "^S[0-9]+$" },
+        "turn": { "type": "integer", "minimum": 1 },
+        "start_ms": { "type": "integer", "minimum": 0 },
+        "end_ms": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string" },
+        "words": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/word" }
+        },
+        "prosody": { "$ref": "#/$defs/prosody" },
+        "annotation": {
+          "type": "string",
+          "description": "Free-text editorial layer. May be human-authored, agent-authored, or AI-suggested. Provenance lives in .compost/events.sqlite — this field is a snapshot of current text only."
+        },
+        "glossary_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/utteranceGlossaryRef" }
+        }
+      }
+    },
+    "word": {
+      "type": "object",
+      "required": ["w", "s", "e"],
+      "additionalProperties": false,
+      "properties": {
+        "w": { "type": "string" },
+        "s": { "type": "integer", "minimum": 0 },
+        "e": { "type": "integer", "minimum": 0 },
+        "conf": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "prosody": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Deterministic prosody hints derived from word confidence + VAD energy + speech rate. Not ML predictions.",
+      "properties": {
+        "volume": { "enum": ["low", "normal", "high"] },
+        "pace": { "enum": ["slow", "normal", "fast"] },
+        "hesitations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "silence": {
+      "type": "object",
+      "required": ["id", "start_ms", "end_ms", "duration_ms", "context"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^SIL-[0-9]{3,}$" },
+        "start_ms": { "type": "integer", "minimum": 0 },
+        "end_ms": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "context": {
+          "enum": ["after_question", "mid_utterance", "thinking", "interruption"],
+          "description": "Semantic typing from the silence-typer heuristic. Versioned rules; researcher can override."
+        },
+        "annotation": { "type": "string" }
+      }
+    },
+    "cue": {
+      "type": "object",
+      "required": ["id", "kind", "start_ms", "end_ms", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^CUE-[0-9]{3,}$" },
+        "kind": {
+          "enum": [
+            "laughter",
+            "sigh",
+            "cough",
+            "throat-clear",
+            "unintelligible",
+            "code-switching",
+            "overlap",
+            "interruption"
+          ],
+          "description": "See cues.taxonomy.json for confidence floors per kind."
+        },
+        "start_ms": { "type": "integer", "minimum": 0 },
+        "end_ms": { "type": "integer", "minimum": 0 },
+        "source": {
+          "const": "audio",
+          "description": "Compost cues are audio-only by design. No pose/gesture classification."
+        },
+        "speaker_id": { "type": "string", "pattern": "^S[0-9]+$" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "annotation": { "type": "string" }
+      }
+    },
+    "frame": {
+      "type": "object",
+      "required": ["id", "at_ms", "path", "trigger"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^FR-[0-9]{3,}$" },
+        "at_ms": { "type": "integer", "minimum": 0 },
+        "path": {
+          "type": "string",
+          "description": "Path to the captured frame, relative to the seed root."
+        },
+        "trigger": {
+          "enum": [
+            "silence_after_question",
+            "audio_cue",
+            "shot_change",
+            "highlight",
+            "manual",
+            "sampling"
+          ],
+          "description": "See frames.taxonomy.json for trigger semantics."
+        },
+        "linked_utterance_id": { "type": "string", "pattern": "^U-[0-9]{4,}$" },
+        "annotation": {
+          "type": "string",
+          "description": "Optional one-sentence description from a vision-capable LLM. AI-authored events surface as [draft] until endorsed."
+        }
+      }
+    },
+    "utteranceGlossaryRef": {
+      "type": "object",
+      "required": ["term_id", "span"],
+      "additionalProperties": false,
+      "properties": {
+        "term_id": { "type": "string", "pattern": "^T-[A-Za-z0-9_-]+$" },
+        "span": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 2,
+          "maxItems": 2,
+          "description": "[start, end] character offsets into the parent utterance.text."
+        }
+      }
+    },
+    "sessionGlossaryRef": {
+      "type": "object",
+      "required": ["term_id", "utterance_id", "span"],
+      "additionalProperties": false,
+      "properties": {
+        "term_id": { "type": "string", "pattern": "^T-[A-Za-z0-9_-]+$" },
+        "utterance_id": { "type": "string", "pattern": "^U-[0-9]{4,}$" },
+        "span": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["transcriber"],
+      "additionalProperties": false,
+      "description": "Tool+version pointers describing how this transcript was produced. Per-artifact event provenance lives in .compost/events.sqlite.",
+      "properties": {
+        "transcriber": { "type": "string", "description": "Tool@version that produced this transcript (e.g. \"compost-transcriber@0.3.1\")." },
+        "asr_model": { "type": "string" },
+        "diarizer": { "type": "string" },
+        "audio_cues": { "type": "string" },
+        "frame_capture": { "type": "string" },
+        "frame_annotation": { "type": "string" }
+      }
+    }
+  }
+}
