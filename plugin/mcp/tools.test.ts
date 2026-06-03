@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, it } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
-import { MUTATION_TOOLS, READ_ONLY_TOOLS, runTool, TOOLS, type CliRunner } from './tools.js'
+import { type CliRunner, MUTATION_TOOLS, READ_ONLY_TOOLS, runTool, TOOLS } from './tools.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 

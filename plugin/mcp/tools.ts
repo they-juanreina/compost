@@ -29,7 +29,8 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'compost_blame',
-    description: 'Print the three-actor lineage chain for an artifact id (or latest:<kind>=<seed>).',
+    description:
+      'Print the three-actor lineage chain for an artifact id (or latest:<kind>=<seed>).',
     readOnly: true,
     inputSchema: {
       type: 'object',
@@ -40,7 +41,8 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'compost_ingest',
-    description: 'Route a file or folder into the seed job queue (audio/video/PDF/DOCX/PPTX/CSV/MD).',
+    description:
+      'Route a file or folder into the seed job queue (audio/video/PDF/DOCX/PPTX/CSV/MD).',
     readOnly: false,
     inputSchema: {
       type: 'object',
