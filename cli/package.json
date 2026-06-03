@@ -4,5 +4,27 @@
   "description": "Compost CLI engine. Subcommand router, JSON-out, harness loop runner.",
   "private": true,
   "type": "module",
-  "license": "MIT"
+  "license": "MIT",
+  "bin": {
+    "compost": "./bin/compost.js"
+  },
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
 }
