@@ -29,6 +29,7 @@
     "commander": "^12.1.0",
     "compost-evals": "workspace:*",
     "compost-provenance": "workspace:*",
+    "compost-retrieval": "workspace:*",
     "smol-toml": "^1.3.0"
   },
   "devDependencies": {

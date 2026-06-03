@@ -1,6 +1,18 @@
 export { BM25Index, tokenize } from './bm25.js'
 export type { ChunkerOptions, ChunkerTranscript } from './chunker.js'
 export { CHUNKER_VERSION, chunkTranscript, SILENCE_BOUNDARY_MS } from './chunker.js'
+export {
+  cosineSimilarity,
+  DEFAULT_BATCH_SIZE,
+  DEFAULT_EMBED_MODEL,
+  Embedder,
+  type EmbedderOptions,
+  type EmbeddingCache,
+  type EmbedFn,
+  type EmbedResult,
+  MemoryCache,
+  textSha,
+} from './embeddings.js'
 export type { DenseRetriever, HybridOptions, RetrievalFilters } from './hybrid.js'
 export { HybridRetriever } from './hybrid.js'
 export { RRF_K, reciprocalRankFusion } from './rrf.js'
