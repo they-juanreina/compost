@@ -6,13 +6,13 @@
     {
       "kind": "laughter",
       "description": "Voiced laughter from a speaker — short bursts (\"ha\") or sustained chuckles. Detected by Whisper-AT / Calm-Whisper event-tag tokens.",
-      "confidence_floor": 0.70,
+      "confidence_floor": 0.7,
       "source": "audio"
     },
     {
       "kind": "sigh",
       "description": "Audible voiced exhale, typically signaling resignation, relief, or thinking-out-loud. Detected by event-tag tokens.",
-      "confidence_floor": 0.60,
+      "confidence_floor": 0.6,
       "source": "audio"
     },
     {
@@ -30,19 +30,19 @@
     {
       "kind": "unintelligible",
       "description": "Speech the ASR could not transcribe with acceptable confidence. Boundary inherited from the failed Whisper segment.",
-      "confidence_floor": 0.50,
+      "confidence_floor": 0.5,
       "source": "audio"
     },
     {
       "kind": "code-switching",
       "description": "Speaker switched languages mid-utterance. Whisper-large-v3 emits language tokens that mark the transition.",
-      "confidence_floor": 0.70,
+      "confidence_floor": 0.7,
       "source": "audio"
     },
     {
       "kind": "overlap",
       "description": "Two or more speakers vocalizing simultaneously. Detected by pyannote-audio overlap detection.",
-      "confidence_floor": 0.70,
+      "confidence_floor": 0.7,
       "source": "audio"
     },
     {

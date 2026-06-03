@@ -30,7 +30,9 @@
       "name": "distrust-of-automation",
       "definition": "Participant expresses doubt about automated systems making decisions on their behalf.",
       "anchored_to": "de026cbbbd05db5500f42e332001db6bca33b9a20aa50897531cb5499f60f9d9",
-      "evidence": [{ "utterance_id": "U-0001", "quote": "Cuando entra una alerta, yo... no sé si confiar." }]
+      "evidence": [
+        { "utterance_id": "U-0001", "quote": "Cuando entra una alerta, yo... no sé si confiar." }
+      ]
     },
     "parent_event": null,
     "batch_id": "loop:similarity-scanner:01JM9NPC6Y5R7B3KMNXYPWVCDF"

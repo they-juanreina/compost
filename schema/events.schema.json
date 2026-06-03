@@ -68,11 +68,7 @@
     },
     "payload": {
       "description": "Action-specific JSON payload. The structure varies by (artifact_kind, action) pair and is validated separately by the CLI when serializing/deserializing.",
-      "oneOf": [
-        { "type": "object" },
-        { "type": "array" },
-        { "type": "null" }
-      ]
+      "oneOf": [{ "type": "object" }, { "type": "array" }, { "type": "null" }]
     },
     "parent_event": {
       "type": ["string", "null"],
@@ -95,7 +91,10 @@
       "then": { "required": ["model", "prompt_hash"] }
     },
     {
-      "if": { "properties": { "action": { "enum": ["endorse", "reject", "update", "unlink"] } }, "required": ["action"] },
+      "if": {
+        "properties": { "action": { "enum": ["endorse", "reject", "update", "unlink"] } },
+        "required": ["action"]
+      },
       "then": { "required": ["parent_event"] }
     }
   ]

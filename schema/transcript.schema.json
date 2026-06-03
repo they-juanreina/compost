@@ -255,7 +255,10 @@
       "additionalProperties": false,
       "description": "Tool+version pointers describing how this transcript was produced. Per-artifact event provenance lives in .compost/events.sqlite.",
       "properties": {
-        "transcriber": { "type": "string", "description": "Tool@version that produced this transcript (e.g. \"compost-transcriber@0.3.1\")." },
+        "transcriber": {
+          "type": "string",
+          "description": "Tool@version that produced this transcript (e.g. \"compost-transcriber@0.3.1\")."
+        },
         "asr_model": { "type": "string" },
         "diarizer": { "type": "string" },
         "audio_cues": { "type": "string" },
