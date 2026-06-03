@@ -37,7 +37,7 @@ export async function runTranscribeWorkerOnce(
 
   try {
     while (true) {
-      const job = claimTranscribe(queue)
+      const job = queue.claim('transcribe')
       if (job === null) break
       out.processed += 1
       const sessionId = String(job.payload.session_id ?? 'S?')
@@ -45,7 +45,11 @@ export async function runTranscribeWorkerOnce(
         const resp = await client.transcribe(job.source_path, sessionId)
         if (resp.status === 'failed_transcription') {
           queue.fail(job.id, 'service reported failed_transcription', MAX_ATTEMPTS)
-          out.results.push({ job_id: job.id, session_id: sessionId, status: 'failed_transcription' })
+          out.results.push({
+            job_id: job.id,
+            session_id: sessionId,
+            status: 'failed_transcription',
+          })
           continue
         }
         if (existsSync(resp.transcript_path)) {
@@ -81,24 +85,4 @@ export async function runTranscribeWorkerOnce(
     queue.close()
     events.close()
   }
-}
-
-/** Claim the oldest queued job, requeuing any non-transcribe job we peek. Since
- * the queue is FIFO across kinds, we filter by claiming then checking kind. */
-function claimTranscribe(queue: JobQueue): ReturnType<JobQueue['claim']> {
-  // Only transcribe jobs are processed here; legacy-ingest has its own worker.
-  const queued = queue.list('queued').filter((j) => j.kind === 'transcribe')
-  if (queued.length === 0) return null
-  // claim() takes the oldest queued of any kind; loop until we get a transcribe
-  // one (legacy jobs are left for their worker by re-failing them back to queued
-  // is wrong — instead we directly claim by scanning). Simplest: claim repeatedly
-  // is unsafe; here we rely on transcribe being the common case and just claim.
-  const job = queue.claim()
-  if (job === null) return null
-  if (job.kind !== 'transcribe') {
-    // put it back to queued without burning an attempt
-    queue.fail(job.id, 'requeued: not a transcribe job', Number.POSITIVE_INFINITY)
-    return null
-  }
-  return job
 }

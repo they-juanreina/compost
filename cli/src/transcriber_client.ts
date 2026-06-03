@@ -1,5 +1,5 @@
-import type { FetchLike } from './llm/types.js'
 import { resolveFetch } from './llm/http.js'
+import type { FetchLike } from './llm/types.js'
 
 export interface TranscribeResponse {
   session_id: string
@@ -44,7 +44,10 @@ export class TranscriberClient {
     try {
       const res = await this.fetchImpl(`${this.base}/health`, { method: 'GET' })
       if (!res.ok) return { ok: false, versions: {} }
-      const json = (await res.json()) as { status?: string; versions?: Record<string, string | null> }
+      const json = (await res.json()) as {
+        status?: string
+        versions?: Record<string, string | null>
+      }
       return { ok: json.status === 'ok', versions: json.versions ?? {} }
     } catch {
       return { ok: false, versions: {} }
@@ -65,9 +68,13 @@ export class TranscriberClient {
         'down',
       )
     }
-    if (res.status === 503) throw new TranscriberServiceError('model missing/unavailable', 'model_missing')
+    if (res.status === 503)
+      throw new TranscriberServiceError('model missing/unavailable', 'model_missing')
     if (!res.ok) {
-      throw new TranscriberServiceError(`transcribe failed: ${res.status} ${res.statusText}`, 'failed')
+      throw new TranscriberServiceError(
+        `transcribe failed: ${res.status} ${res.statusText}`,
+        'failed',
+      )
     }
     return (await res.json()) as TranscribeResponse
   }
