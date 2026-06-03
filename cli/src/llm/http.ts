@@ -1,0 +1,73 @@
+import type { FetchLike } from './types.js'
+
+export function resolveFetch(injected?: FetchLike): FetchLike {
+  if (injected) return injected
+  // Node 18+ has global fetch. Cast through the structural FetchLike.
+  return globalThis.fetch as unknown as FetchLike
+}
+
+export interface TimedJson {
+  json: unknown
+  latency_ms: number
+}
+
+/** A monotonic-ish clock that does not use Date.now directly in hot paths. */
+function nowMs(): number {
+  return performance.now()
+}
+
+export async function postJson(
+  fetchImpl: FetchLike,
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+  timeoutMs = 120000,
+): Promise<unknown> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const res = await fetchImpl(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      const detail = await safeText(res)
+      throw new Error(`POST ${url} → ${res.status} ${res.statusText}: ${detail}`)
+    }
+    return await res.json()
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function getJsonTimed(
+  fetchImpl: FetchLike,
+  url: string,
+  headers: Record<string, string> = {},
+  timeoutMs = 10000,
+): Promise<TimedJson> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  const start = nowMs()
+  try {
+    const res = await fetchImpl(url, { method: 'GET', headers, signal: controller.signal })
+    const latency_ms = Math.round(nowMs() - start)
+    if (!res.ok) {
+      const detail = await safeText(res)
+      throw new Error(`GET ${url} → ${res.status} ${res.statusText}: ${detail}`)
+    }
+    return { json: await res.json(), latency_ms }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function safeText(res: { text: () => Promise<string> }): Promise<string> {
+  try {
+    return (await res.text()).slice(0, 200)
+  } catch {
+    return '<no body>'
+  }
+}
