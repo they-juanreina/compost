@@ -1,0 +1,56 @@
+schema_version = "1.0"
+
+[seed]
+name = "{{seed_name}}"
+created_at = "{{created_at}}"
+
+# Transcription stack. Compost runs WhisperX inside the OrbStack transcriber
+# container; override per-task as needed.
+[transcription]
+language = "auto"          # BCP-47 or "auto"
+asr_model = "whisper-large-v3-event-tags"
+diarizer  = "pyannote-audio"
+
+# Silences >= threshold_ms are first-class in the transcript.
+[silences]
+threshold_ms = 1500
+
+# Frame capture density. Decision #73 chose "balanced" as the v1 default.
+[frames]
+profile                   = "balanced"
+silence_min_ms            = 2000
+sampling_interval_s       = 60
+shot_change_phash_distance = 12
+# Decision #72: AI frame annotation is OFF by default. Flip to "moondream2"
+# or "anthropic" per seed when you want it.
+annotation                = "off"
+
+# Decision #74: AI may suggest annotations on utterances/silences/cues;
+# they surface as [draft] until a researcher endorses.
+[annotations]
+ai_suggested = true
+
+# Decision #76: un-endorsed AI content appears in exports marked [draft].
+[exports]
+include_drafts = "marked"
+
+# Decision #75: eval verdicts live in .compost/evals.sqlite. No Langfuse by default.
+[evals]
+storage = "sqlite"
+
+# LLM providers. Add API keys via env vars; compost reads `api_key_env`.
+[providers.ollama]
+base_url = "http://localhost:11434"
+
+[providers.lmstudio]
+base_url = "http://localhost:1234/v1"
+
+[providers.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+
+# Per-task routing. compost models doctor shows current coverage.
+[defaults]
+embeddings   = "ollama:bge-m3:q4_k_m"
+quick_chat   = "ollama:llama3.1:8b"
+synthesis    = "anthropic:claude-opus-4-7"
+verification = "ollama:qwen3:7b-instruct"
