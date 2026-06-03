@@ -1,0 +1,39 @@
+name: Decision needed
+description: A design decision compost is blocked on. Owner is Juan unless reassigned.
+labels: ["kind:decision"]
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: The question
+      description: One sentence. What's being decided?
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why is this decision needed now? What downstream work does it unblock?
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options
+      description: Concrete choices, each with a one-line tradeoff. Mark the recommendation.
+      value: |
+        - **Option A** (recommended):
+        - **Option B**:
+        - **Option C**:
+    validations:
+      required: true
+  - type: input
+    id: deadline
+    attributes:
+      label: Decision deadline
+      description: When does this need to be resolved? (e.g., "Before M2 kickoff" or an ISO date.)
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome (filled in when closed)
+      description: Record the decision and a one-sentence rationale.

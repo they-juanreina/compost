@@ -1,0 +1,32 @@
+name: Bug report
+description: Something compost did wrong.
+labels: ["kind:bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: One or two sentences. What did you do; what did compost do; what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: Minimal steps. Include CLI invocations, config snippets, and the smallest seed/session that reproduces it.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS + version, compost version (`compost --version`), Node and Python versions, OrbStack version, LLM provider configured.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: From `.compost/logs/` or stderr. Redact anything sensitive.
+      render: shell
