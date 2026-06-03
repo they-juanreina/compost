@@ -7,6 +7,7 @@ import { emit, emitError, getOutputOpts } from '../output.js'
 interface InitFlags {
   force?: boolean
   fromLegacy?: string
+  fromSample?: boolean
 }
 
 export function registerInit(program: Command): void {
@@ -19,10 +20,14 @@ export function registerInit(program: Command): void {
       '--from-legacy <path>',
       'Migrate a legacy folder into the new seed (delegates to compost migrate)',
     )
+    .option('--from-sample', 'Unpack the bundled sample seed (a redacted single-session corpus)')
     .action((seedName: string, flags: InitFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
-        const result = initSeed(seedName, { force: flags.force === true })
+        const result = initSeed(seedName, {
+          force: flags.force === true,
+          fromSample: flags.fromSample === true,
+        })
         if (flags.fromLegacy !== undefined) {
           emit(
             {

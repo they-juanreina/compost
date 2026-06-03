@@ -1,8 +1,13 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { CompostError } from '../errors.js'
 import { loadTemplate, render } from './templates.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
+// templates/ is a sibling of src/ and dist/ (lib/ → ../../templates).
+const SAMPLE_SEED_DIR = join(__dirname, '..', '..', 'templates', 'sample-seed')
 
 const SEED_DIRECTORIES = [
   'plan',
@@ -23,6 +28,8 @@ export interface InitOptions {
   cwd?: string
   force?: boolean
   now?: () => Date
+  /** Unpack the bundled sample seed (a redacted single-session corpus). */
+  fromSample?: boolean
 }
 
 export interface InitResult {
@@ -70,6 +77,13 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
 
   for (const file of files) {
     writeFileSync(join(seedPath, file.path), file.content, 'utf8')
+  }
+
+  // --from-sample: overlay the bundled sample corpus (sessions, highlights,
+  // codes, theme) on top of the fresh scaffold. seed.md is replaced by the
+  // sample's own.
+  if (opts.fromSample === true) {
+    cpSync(SAMPLE_SEED_DIR, seedPath, { recursive: true })
   }
 
   return {
