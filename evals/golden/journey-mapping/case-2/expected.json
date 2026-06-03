@@ -1,0 +1,34 @@
+{
+  "stages": [
+    {
+      "name": "Setup",
+      "touchpoints": ["initial connection flow"],
+      "emotion": "confused",
+      "pains": [
+        { "claim": "ordering of setup steps is unclear", "evidence": ["H-101"] },
+        { "claim": "multiple attempts needed to complete setup", "evidence": ["H-102"] }
+      ],
+      "opportunities": [
+        { "claim": "explicitly sequence the setup steps", "from_theme": "T-setup-friction" }
+      ]
+    },
+    {
+      "name": "First successful run",
+      "touchpoints": ["first result"],
+      "emotion": "relieved",
+      "pains": [],
+      "opportunities": [
+        { "claim": "make the first success visible and unmistakable", "from_theme": "T-first-success", "evidence": ["H-110", "H-111"] }
+      ]
+    },
+    {
+      "name": "Autonomous use",
+      "touchpoints": ["unattended run"],
+      "emotion": "trusting",
+      "pains": [],
+      "opportunities": [
+        { "claim": "support unattended operation once trust is established", "from_theme": "T-trusts-the-tool", "evidence": ["H-120"] }
+      ]
+    }
+  ]
+}
