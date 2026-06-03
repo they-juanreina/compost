@@ -1,0 +1,55 @@
+{
+  "version": "1.0",
+  "title": "Compost Audio Cue Taxonomy",
+  "description": "Canonical catalog of audio cue kinds. The transcript schema's cue.kind enum (schema/transcript.schema.json#/$defs/cue/properties/kind) is kept in sync with this list. Compost cues are audio-only by design — no pose or gesture classification.",
+  "kinds": [
+    {
+      "kind": "laughter",
+      "description": "Voiced laughter from a speaker — short bursts (\"ha\") or sustained chuckles. Detected by Whisper-AT / Calm-Whisper event-tag tokens.",
+      "confidence_floor": 0.70,
+      "source": "audio"
+    },
+    {
+      "kind": "sigh",
+      "description": "Audible voiced exhale, typically signaling resignation, relief, or thinking-out-loud. Detected by event-tag tokens.",
+      "confidence_floor": 0.60,
+      "source": "audio"
+    },
+    {
+      "kind": "cough",
+      "description": "Single or chained cough. High-energy short burst; distinctive spectral signature.",
+      "confidence_floor": 0.75,
+      "source": "audio"
+    },
+    {
+      "kind": "throat-clear",
+      "description": "Brief vocal-fry clear of the throat, often before a new utterance.",
+      "confidence_floor": 0.65,
+      "source": "audio"
+    },
+    {
+      "kind": "unintelligible",
+      "description": "Speech the ASR could not transcribe with acceptable confidence. Boundary inherited from the failed Whisper segment.",
+      "confidence_floor": 0.50,
+      "source": "audio"
+    },
+    {
+      "kind": "code-switching",
+      "description": "Speaker switched languages mid-utterance. Whisper-large-v3 emits language tokens that mark the transition.",
+      "confidence_floor": 0.70,
+      "source": "audio"
+    },
+    {
+      "kind": "overlap",
+      "description": "Two or more speakers vocalizing simultaneously. Detected by pyannote-audio overlap detection.",
+      "confidence_floor": 0.70,
+      "source": "audio"
+    },
+    {
+      "kind": "interruption",
+      "description": "Turn-stealing overlap where speaker B begins while speaker A is still speaking and A yields. Heuristic over overlap + turn-change.",
+      "confidence_floor": 0.65,
+      "source": "audio"
+    }
+  ]
+}
