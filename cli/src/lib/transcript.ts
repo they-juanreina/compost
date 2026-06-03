@@ -53,6 +53,15 @@ export interface TranscriptCue {
   annotation?: string
 }
 
+export interface TranscriptFrame {
+  id: string
+  at_ms: number
+  path: string
+  trigger: string
+  linked_utterance_id?: string
+  annotation?: string
+}
+
 export interface Transcript {
   schema_version: string
   session_id: string
@@ -64,7 +73,7 @@ export interface Transcript {
   utterances: TranscriptUtterance[]
   silences?: TranscriptSilence[]
   cues?: TranscriptCue[]
-  frames?: unknown[]
+  frames?: TranscriptFrame[]
 }
 
 export function wordCount(text: string): number {

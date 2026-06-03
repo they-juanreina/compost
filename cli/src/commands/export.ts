@@ -17,17 +17,17 @@ export function registerExport(program: Command): void {
     .command('export')
     .description('Export a transcript.json to CSV (legacy fact_utterances) or Markdown')
     .argument('<transcript-path>', 'Path to a transcript.json')
-    .requiredOption('--format <fmt>', 'csv | md')
+    .requiredOption('--format <fmt>', 'csv | md | eaf')
     .option('--out <path>', 'Write to a file instead of stdout')
     .option('--created-date <date>', 'Value for the legacy CSV created_date column')
     .action((transcriptPath: string, flags: ExportFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const format = flags.format as ExportFormat
-        if (format !== 'csv' && format !== 'md') {
+        if (format !== 'csv' && format !== 'md' && format !== 'eaf') {
           throw new CompostError(
             'INVALID_INPUT',
-            `--format must be csv or md (got "${flags.format}")`,
+            `--format must be csv, md, or eaf (got "${flags.format}")`,
           )
         }
         const transcript = loadTranscript(transcriptPath)
