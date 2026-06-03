@@ -162,7 +162,7 @@ describe('EventWriter.appendBatch', () => {
 })
 
 describe('EventWriter migrations', () => {
-  it('applies migration 0001 on first open and records it in schema_migrations', () => {
+  it('applies every shipped migration on first open and records it in schema_migrations', () => {
     const w = new EventWriter({ dbPath: ':memory:' })
     // @ts-expect-error: private db
     const rows = w.db
@@ -170,10 +170,13 @@ describe('EventWriter migrations', () => {
       .all() as Array<{
       version: number
     }>
-    assert.deepEqual(
-      rows.map((r) => r.version),
-      [1],
-    )
+    const versions = rows.map((r) => r.version)
+    assert.ok(versions.length > 0, 'at least one migration applied')
+    assert.equal(versions[0], 1, 'first migration is 0001_init')
+    // versions are strictly increasing starting from 1
+    for (let i = 1; i < versions.length; i++) {
+      assert.equal(versions[i], (versions[i - 1] ?? 0) + 1)
+    }
     w.close()
   })
 })

@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 
 import { ProvenanceError } from './errors.js'
 import { applyMigrations } from './migrations/index.js'
+import { SnapshotStore } from './snapshots.js'
 import type { Event, EventInput } from './types.js'
 import { generateUlid, type UlidOptions } from './ulid.js'
 import { validateEvent } from './validate.js'
@@ -63,6 +64,11 @@ export class EventWriter {
     })
     tx(events)
     return events
+  }
+
+  /** Construct a SnapshotStore that shares this writer's SQLite connection. */
+  snapshots(): SnapshotStore {
+    return new SnapshotStore(this.db)
   }
 
   close(): void {
