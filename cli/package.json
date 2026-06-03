@@ -14,12 +14,14 @@
   "files": [
     "bin",
     "dist",
+    "templates",
     "package.json"
   ],
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "dev": "tsx src/index.ts"
+    "dev": "tsx src/index.ts",
+    "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "commander": "^12.1.0"
