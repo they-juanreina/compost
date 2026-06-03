@@ -23,6 +23,7 @@ export {
 } from './embeddings.js'
 export type { DenseRetriever, HybridOptions, RetrievalFilters } from './hybrid.js'
 export { HybridRetriever } from './hybrid.js'
+export { type CrossEncoder, rerank } from './rerank.js'
 export { RRF_K, reciprocalRankFusion } from './rrf.js'
 export type { Chunk, ChunkMetadata, ScoredChunk } from './types.js'
 export {
