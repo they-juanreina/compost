@@ -1,10 +1,9 @@
 import type { Command } from 'commander'
 
-import { runGolden } from 'compost-evals'
+import { runGolden, runHarness } from 'compost-evals'
 
 import { isCompostError } from '../errors.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
-import { stubAction } from './_stub.js'
 
 interface RunFlags {
   skill: string
@@ -37,6 +36,28 @@ export function registerEvals(program: Command): void {
 
   evals
     .command('harness')
-    .description('Run the end-to-end harness eval suite')
-    .action(stubAction({ command: 'evals harness', issue: 67 }))
+    .description('Run the end-to-end harness eval suite (gates major releases)')
+    .action(async (_flags: unknown, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        // The real seed pipeline (ingest→transcribe→code→synthesize) is injected
+        // here once it can run headless in CI; until then the harness reports the
+        // diff against expected and exits non-zero, so it gates releases honestly.
+        const result = await runHarness(async () => ({}))
+        emit(
+          {
+            command: 'evals harness',
+            ...result,
+            note: result.passed
+              ? undefined
+              : 'seed pipeline not yet wired into the harness; fixtures + diff machinery are in place',
+          },
+          out,
+        )
+        if (!result.passed) process.exitCode = 1
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
 }
