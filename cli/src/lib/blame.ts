@@ -1,0 +1,200 @@
+import { existsSync, readdirSync, statSync } from 'node:fs'
+import { join, resolve } from 'node:path'
+
+import Database from 'better-sqlite3'
+
+import { CompostError } from '../errors.js'
+
+export interface BlameEvent {
+  id: string
+  ts: string
+  artifact_kind: string
+  artifact_id: string
+  action: string
+  actor_type: 'researcher' | 'agent' | 'ai'
+  actor_id: string
+  agent_name: string | null
+  agent_version: string | null
+  prompt_hash: string | null
+  model: string | null
+  payload: unknown
+  parent_event: string | null
+  batch_id: string | null
+}
+
+export interface BlameResult {
+  schema_version: '1.0'
+  query: string
+  resolved_artifact_id: string
+  seed: string
+  events: BlameEvent[]
+}
+
+export interface BlameOptions {
+  cwd?: string
+  seed?: string
+}
+
+const ARTIFACT_PREFIX_RE = /^[a-f0-9]{8,64}$/i
+const LATEST_REF_RE = /^latest:(\w+)=(.+)$/
+
+interface EventRow {
+  id: string
+  ts: string
+  artifact_kind: string
+  artifact_id: string
+  action: string
+  actor_type: string
+  actor_id: string
+  agent_name: string | null
+  agent_version: string | null
+  prompt_hash: string | null
+  model: string | null
+  payload: string
+  parent_event: string | null
+  batch_id: string | null
+}
+
+export function blame(query: string, opts: BlameOptions = {}): BlameResult {
+  const cwd = opts.cwd ?? process.cwd()
+  const seedName = opts.seed ?? findSingletonSeed(cwd)
+  const eventsDb = resolve(cwd, 'Seeds', seedName, '.compost', 'events.sqlite')
+
+  if (!existsSync(eventsDb)) {
+    throw new CompostError(
+      'FILE_NOT_FOUND',
+      `No events.sqlite at ${eventsDb}. Has any artifact been created in seed "${seedName}"?`,
+    )
+  }
+
+  const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  try {
+    const artifactId = resolveArtifactId(db, query, seedName)
+    const rows = db
+      .prepare('SELECT * FROM events WHERE artifact_id = ? ORDER BY ts, rowid')
+      .all(artifactId) as EventRow[]
+    return {
+      schema_version: '1.0',
+      query,
+      resolved_artifact_id: artifactId,
+      seed: seedName,
+      events: rows.map(rowToEvent),
+    }
+  } finally {
+    db.close()
+  }
+}
+
+function rowToEvent(row: EventRow): BlameEvent {
+  return {
+    id: row.id,
+    ts: row.ts,
+    artifact_kind: row.artifact_kind,
+    artifact_id: row.artifact_id,
+    action: row.action,
+    actor_type: row.actor_type as BlameEvent['actor_type'],
+    actor_id: row.actor_id,
+    agent_name: row.agent_name,
+    agent_version: row.agent_version,
+    prompt_hash: row.prompt_hash,
+    model: row.model,
+    payload: JSON.parse(row.payload) as unknown,
+    parent_event: row.parent_event,
+    batch_id: row.batch_id,
+  }
+}
+
+function resolveArtifactId(db: Database.Database, query: string, seed: string): string {
+  const latestMatch = LATEST_REF_RE.exec(query)
+  if (latestMatch !== null) {
+    const kind = latestMatch[1]!
+    const target = latestMatch[2]!
+    if (target !== seed) {
+      throw new CompostError(
+        'INVALID_INPUT',
+        `latest: ref points at seed "${target}" but we resolved seed "${seed}"`,
+      )
+    }
+    const row = db
+      .prepare(
+        'SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = ? ORDER BY ts DESC, rowid DESC LIMIT 1',
+      )
+      .get(kind, 'create') as { artifact_id: string } | undefined
+    if (row === undefined) {
+      throw new CompostError('FILE_NOT_FOUND', `No "${kind}" artifacts found in seed "${seed}"`)
+    }
+    return row.artifact_id
+  }
+
+  if (!ARTIFACT_PREFIX_RE.test(query)) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Invalid artifact ref "${query}". Expected a SHA256 prefix (8-64 hex chars) or "latest:<kind>=<seed>".`,
+    )
+  }
+
+  if (query.length === 64) return query.toLowerCase()
+
+  const matches = db
+    .prepare('SELECT DISTINCT artifact_id FROM events WHERE artifact_id LIKE ?')
+    .all(`${query.toLowerCase()}%`) as Array<{ artifact_id: string }>
+  if (matches.length === 0) {
+    throw new CompostError(
+      'FILE_NOT_FOUND',
+      `No artifact found matching prefix "${query}" in seed "${seed}"`,
+    )
+  }
+  if (matches.length > 1) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Prefix "${query}" is ambiguous (${matches.length} matches). Use more characters.`,
+    )
+  }
+  return matches[0]!.artifact_id
+}
+
+function findSingletonSeed(cwd: string): string {
+  const root = resolve(cwd, 'Seeds')
+  if (!existsSync(root)) {
+    throw new CompostError(
+      'NOT_IN_SEED',
+      `No Seeds/ at ${root}. Pass --seed <name> or run from a directory containing one.`,
+    )
+  }
+  const entries = readdirSync(root).filter(
+    (e) => !e.startsWith('.') && statSync(join(root, e)).isDirectory(),
+  )
+  if (entries.length === 0) {
+    throw new CompostError('NOT_IN_SEED', `No seeds found under ${root}`)
+  }
+  if (entries.length > 1) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Multiple seeds under ${root} (${entries.join(', ')}). Pass --seed <name>.`,
+    )
+  }
+  return entries[0]!
+}
+
+export function renderHuman(result: BlameResult): string {
+  const lines: string[] = []
+  lines.push(
+    `blame ${result.resolved_artifact_id.slice(0, 12)}… (${result.events.length} events in seed "${result.seed}")`,
+  )
+  for (const e of result.events) {
+    const tag =
+      e.actor_type === 'ai'
+        ? `[ai] ${e.model ?? '?'}`
+        : e.actor_type === 'agent'
+          ? `[agent] ${e.agent_name ?? '?'}@${e.agent_version ?? '?'}`
+          : `[researcher] ${e.actor_id}`
+    lines.push('')
+    lines.push(`event ${e.id}`)
+    lines.push(`  ${e.action.padEnd(8)} ${e.ts}`)
+    lines.push(`  ${tag}`)
+    if (e.parent_event !== null) lines.push(`  parent ${e.parent_event}`)
+    if (e.batch_id !== null) lines.push(`  batch  ${e.batch_id}`)
+    if (e.prompt_hash !== null) lines.push(`  prompt ${e.prompt_hash.slice(0, 12)}…`)
+  }
+  return lines.join('\n')
+}
