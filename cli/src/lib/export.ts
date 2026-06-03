@@ -2,10 +2,11 @@ import { existsSync, readFileSync } from 'node:fs'
 
 import { CompostError } from '../errors.js'
 import { transcriptToCsv } from '../exporters/csv.js'
+import { transcriptToEaf } from '../exporters/eaf.js'
 import { transcriptToMarkdown } from '../exporters/md.js'
 import type { Transcript } from './transcript.js'
 
-export type ExportFormat = 'csv' | 'md'
+export type ExportFormat = 'csv' | 'md' | 'eaf'
 
 export interface ExportOptions {
   format: ExportFormat
@@ -39,12 +40,16 @@ export function loadTranscript(path: string): Transcript {
 }
 
 export function exportTranscript(transcript: Transcript, opts: ExportOptions): ExportResult {
-  const content =
-    opts.format === 'csv'
-      ? transcriptToCsv(
-          transcript,
-          opts.createdDate !== undefined ? { createdDate: opts.createdDate } : {},
-        )
-      : transcriptToMarkdown(transcript)
+  let content: string
+  if (opts.format === 'csv') {
+    content = transcriptToCsv(
+      transcript,
+      opts.createdDate !== undefined ? { createdDate: opts.createdDate } : {},
+    )
+  } else if (opts.format === 'eaf') {
+    content = transcriptToEaf(transcript)
+  } else {
+    content = transcriptToMarkdown(transcript)
+  }
   return { format: opts.format, session_id: transcript.session_id, content }
 }
