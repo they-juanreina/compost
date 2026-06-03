@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://compost.dev/schema/event/1.0.json",
+  "title": "Compost Provenance Event",
+  "description": "Append-only event recording a change to a compost artifact. Mirrors the .compost/events.sqlite row shape. Three-actor model: researcher | agent | ai.",
+  "type": "object",
+  "required": [
+    "id",
+    "ts",
+    "artifact_kind",
+    "artifact_id",
+    "action",
+    "actor_type",
+    "actor_id",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID (Crockford base32, 26 chars). Sortable and globally unique."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp the event was recorded."
+    },
+    "artifact_kind": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kind of artifact this event affects: highlight, code, theme, term, insight, comment, frame, frame_annotation, utterance_annotation, code_theme_link, term_utterance_link, etc. Free-form string to allow extension without schema migration."
+    },
+    "artifact_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "SHA256 of the artifact's initial state. Stable across the artifact's lifetime."
+    },
+    "action": {
+      "enum": ["create", "update", "endorse", "reject", "link", "unlink"],
+      "description": "Lifecycle action. AI-authored artifacts surface as un-endorsed (human_approved=false) until an `endorse` event from a researcher promotes them."
+    },
+    "actor_type": {
+      "enum": ["researcher", "agent", "ai"],
+      "description": "researcher = human, accountable. agent = deterministic-ish software actor (skill, loop, slash command). ai = raw LLM output, untrusted by default."
+    },
+    "actor_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "For researchers: handle or email. For agents: name@semver. For ai: model identifier (e.g. anthropic:claude-opus-4-7)."
+    },
+    "agent_name": {
+      "type": "string",
+      "description": "Required when actor_type=agent. Identifies the software actor (e.g. cross-session-similarity-scanner)."
+    },
+    "agent_version": {
+      "type": "string",
+      "description": "Required when actor_type=agent. Semver."
+    },
+    "prompt_hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Required when actor_type=ai or actor_type=agent and the agent invoked an LLM. SHA256(prompt + model + temperature + context_window)."
+    },
+    "model": {
+      "type": "string",
+      "description": "Required when actor_type=ai. The model that produced the suggestion (e.g. anthropic:claude-opus-4-7, ollama:llama3.1:8b)."
+    },
+    "payload": {
+      "description": "Action-specific JSON payload. The structure varies by (artifact_kind, action) pair and is validated separately by the CLI when serializing/deserializing.",
+      "oneOf": [
+        { "type": "object" },
+        { "type": "array" },
+        { "type": "null" }
+      ]
+    },
+    "parent_event": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$",
+      "description": "ULID of the event this one continues from. null for root events. Endorse/reject/update/unlink events MUST reference the event being acted on; link events may have null parent_event for the first link of a relationship."
+    },
+    "batch_id": {
+      "type": ["string", "null"],
+      "minLength": 1,
+      "description": "Optional opaque grouping for events emitted by one loop run, for transactional rollback and audit."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "actor_type": { "const": "agent" } }, "required": ["actor_type"] },
+      "then": { "required": ["agent_name", "agent_version"] }
+    },
+    {
+      "if": { "properties": { "actor_type": { "const": "ai" } }, "required": ["actor_type"] },
+      "then": { "required": ["model", "prompt_hash"] }
+    },
+    {
+      "if": { "properties": { "action": { "enum": ["endorse", "reject", "update", "unlink"] } }, "required": ["action"] },
+      "then": { "required": ["parent_event"] }
+    }
+  ]
+}

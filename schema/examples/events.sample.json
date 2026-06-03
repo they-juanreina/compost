@@ -1,0 +1,102 @@
+[
+  {
+    "id": "01JM9NPC8QR3KVTW7XYZ2ABDFG",
+    "ts": "2026-06-02T14:23:11Z",
+    "artifact_kind": "highlight",
+    "artifact_id": "de026cbbbd05db5500f42e332001db6bca33b9a20aa50897531cb5499f60f9d9",
+    "action": "create",
+    "actor_type": "researcher",
+    "actor_id": "juan@they-juanreina",
+    "payload": {
+      "session_id": "S023",
+      "utterance_id": "U-0001",
+      "span": [0, 42],
+      "text": "Cuando entra una alerta, yo... no sé si"
+    },
+    "parent_event": null,
+    "batch_id": null
+  },
+  {
+    "id": "01JM9NPC9SR4MWTX8YZB3CDEFH",
+    "ts": "2026-06-02T14:23:17Z",
+    "artifact_kind": "code",
+    "artifact_id": "c4793fb94443793eb32e1128b2d4d2cb4c20bed467a6929ec09f78cb87af21a1",
+    "action": "create",
+    "actor_type": "ai",
+    "actor_id": "anthropic:claude-opus-4-7",
+    "model": "anthropic:claude-opus-4-7",
+    "prompt_hash": "65b52ff3986b5ad33bd0ebdb49a989113e42ea761a96a4558f6644f86c8b582f",
+    "payload": {
+      "name": "distrust-of-automation",
+      "definition": "Participant expresses doubt about automated systems making decisions on their behalf.",
+      "anchored_to": "de026cbbbd05db5500f42e332001db6bca33b9a20aa50897531cb5499f60f9d9",
+      "evidence": [{ "utterance_id": "U-0001", "quote": "Cuando entra una alerta, yo... no sé si confiar." }]
+    },
+    "parent_event": null,
+    "batch_id": "loop:similarity-scanner:01JM9NPC6Y5R7B3KMNXYPWVCDF"
+  },
+  {
+    "id": "01JM9NPCAT5NXYV9ZABC4DEFGJ",
+    "ts": "2026-06-02T14:31:09Z",
+    "artifact_kind": "code",
+    "artifact_id": "c4793fb94443793eb32e1128b2d4d2cb4c20bed467a6929ec09f78cb87af21a1",
+    "action": "endorse",
+    "actor_type": "researcher",
+    "actor_id": "juan@they-juanreina",
+    "payload": {
+      "note": "Aligns with the trust theme; will revisit definition after S024."
+    },
+    "parent_event": "01JM9NPC9SR4MWTX8YZB3CDEFH",
+    "batch_id": null
+  },
+  {
+    "id": "01JM9NPCBV6PYZWA1BAD5EFGHK",
+    "ts": "2026-06-02T14:33:42Z",
+    "artifact_kind": "code",
+    "artifact_id": "c4793fb94443793eb32e1128b2d4d2cb4c20bed467a6929ec09f78cb87af21a1",
+    "action": "update",
+    "actor_type": "researcher",
+    "actor_id": "juan@they-juanreina",
+    "payload": {
+      "field": "definition",
+      "before": "Participant expresses doubt about automated systems making decisions on their behalf.",
+      "after": "Participant expresses doubt about acting on automated alerts without independent verification."
+    },
+    "parent_event": "01JM9NPCAT5NXYV9ZABC4DEFGJ",
+    "batch_id": null
+  },
+  {
+    "id": "01JM9NPCCW7QABZB2CBE6FGHJN",
+    "ts": "2026-06-02T14:42:18Z",
+    "artifact_kind": "code_theme_link",
+    "artifact_id": "bdf22aa21729fcbda0ac8229fd4d505fa2b4a6aca8af1e426f4a3730b0e18a5f",
+    "action": "link",
+    "actor_type": "agent",
+    "actor_id": "cross-session-similarity-scanner@0.2.1",
+    "agent_name": "cross-session-similarity-scanner",
+    "agent_version": "0.2.1",
+    "prompt_hash": "65b52ff3986b5ad33bd0ebdb49a989113e42ea761a96a4558f6644f86c8b582f",
+    "payload": {
+      "code_id": "c4793fb94443793eb32e1128b2d4d2cb4c20bed467a6929ec09f78cb87af21a1",
+      "theme_id": "a1b2c3d4e5f60a1b2c3d4e5f60a1b2c3d4e5f60a1b2c3d4e5f60a1b2c3d4e5f6",
+      "similarity_score": 0.82,
+      "evidence_count": 7
+    },
+    "parent_event": null,
+    "batch_id": "loop:similarity-scanner:01JM9NPC6Y5R7B3KMNXYPWVCDF"
+  },
+  {
+    "id": "01JM9NPCDX8RBCAC3DCF7GHJKM",
+    "ts": "2026-06-02T15:01:55Z",
+    "artifact_kind": "code_theme_link",
+    "artifact_id": "bdf22aa21729fcbda0ac8229fd4d505fa2b4a6aca8af1e426f4a3730b0e18a5f",
+    "action": "unlink",
+    "actor_type": "researcher",
+    "actor_id": "juan@they-juanreina",
+    "payload": {
+      "reason": "The similarity-scanner over-grouped this code under the wrong theme."
+    },
+    "parent_event": "01JM9NPCCW7QABZB2CBE6FGHJN",
+    "batch_id": null
+  }
+]
