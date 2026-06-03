@@ -1,0 +1,48 @@
+# OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Node
+node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+dist/
+build/
+.next/
+.turbo/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+.env
+.env.local
+.python-version
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Compost runtime state (per-seed; never committed)
+.compost/
+Seeds/
+
+# Logs, locks, secrets
+*.log
+*.pid
+*.seed
+*.pid.lock
+secrets/
+.envrc
