@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "session_id": "S023",
+  "source": "sessions/S023/source.mp4",
+  "language": "es-CO",
+  "duration_ms": 3187420,
+  "modality": ["audio", "video"],
+  "speakers": [
+    { "id": "S1", "name": "Juan", "type": "moderator" },
+    { "id": "S2", "name": "P07", "type": "participant" }
+  ],
+  "utterances": [
+    {
+      "id": "U-0001",
+      "speaker_id": "S2",
+      "turn": 4,
+      "start_ms": 12480,
+      "end_ms": 18230,
+      "text": "Cuando entra una alerta, yo... no sé si confiar.",
+      "words": [
+        { "w": "Cuando", "s": 12480, "e": 12790, "conf": 0.98 },
+        { "w": "entra", "s": 12790, "e": 13020, "conf": 0.97 }
+      ],
+      "prosody": { "volume": "low", "pace": "slow", "hesitations": 2 },
+      "annotation": "Voice trails off on 'confiar'; the silence that follows is the real answer.",
+      "glossary_refs": [{ "term_id": "T-alerta", "span": [18, 24] }]
+    }
+  ],
+  "silences": [
+    {
+      "id": "SIL-014",
+      "start_ms": 18230,
+      "end_ms": 21940,
+      "duration_ms": 3710,
+      "context": "after_question"
+    }
+  ],
+  "cues": [
+    {
+      "id": "CUE-007",
+      "kind": "laughter",
+      "start_ms": 42100,
+      "end_ms": 43500,
+      "source": "audio",
+      "speaker_id": "S2",
+      "confidence": 0.91
+    }
+  ],
+  "frames": [
+    {
+      "id": "FR-001",
+      "at_ms": 18800,
+      "path": "sessions/S023/frames/000018800.jpg",
+      "trigger": "silence_after_question",
+      "linked_utterance_id": "U-0001",
+      "annotation": "P07 looks down and to the left, no movement for ~3s."
+    }
+  ],
+  "provenance": {
+    "transcriber": "compost-transcriber@0.3.1",
+    "asr_model": "whisper-large-v3-event-tags",
+    "diarizer": "pyannote-audio@3.3",
+    "audio_cues": "silero-vad@5.0 + whisper-events",
+    "frame_capture": "ffmpeg + shot-change@0.1",
+    "frame_annotation": "moondream2@2026-04 (optional)"
+  }
+}
