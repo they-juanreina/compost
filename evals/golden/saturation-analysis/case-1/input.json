@@ -1,0 +1,7 @@
+{
+  "sessions": [
+    { "id": "S001", "themes": ["trust", "verification"] },
+    { "id": "S002", "themes": ["trust", "override"] },
+    { "id": "S003", "themes": ["trust", "override"] }
+  ]
+}

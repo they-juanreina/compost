@@ -1,0 +1,10 @@
+{
+  "question": "What do users want when an alert is wrong?",
+  "retrieved": [
+    {
+      "utterance_id": "U-0021",
+      "session_id": "S002",
+      "text": "I want a manual override when the alert is wrong."
+    }
+  ]
+}
