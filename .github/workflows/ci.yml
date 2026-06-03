@@ -32,11 +32,13 @@ jobs:
       - name: Lint
         run: pnpm lint
 
-      - name: Typecheck
-        run: pnpm typecheck
-
+      # Build first so workspace packages emit their .d.ts (cli's typecheck
+      # imports compost-provenance, which only has declarations after build).
       - name: Build
         run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
 
       - name: Test
         run: pnpm test
