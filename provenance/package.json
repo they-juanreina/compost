@@ -1,0 +1,29 @@
+{
+  "name": "compost-provenance",
+  "version": "0.0.0",
+  "description": "Append-only event log: ULID generation, three-actor schema validation, SQLite writer + snapshot reducer.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p . && mkdir -p dist/migrations && cp src/migrations/*.sql dist/migrations/",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "node --import tsx --test 'tests/**/*.test.ts'"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "better-sqlite3": "^11.5.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "tsx": "^4.19.0"
+  }
+}
