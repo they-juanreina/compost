@@ -201,13 +201,16 @@
         "trigger": {
           "enum": [
             "silence_after_question",
+            "silence_mid_utterance",
+            "silence_thinking",
+            "silence_interruption",
             "audio_cue",
             "shot_change",
             "highlight",
             "manual",
             "sampling"
           ],
-          "description": "See frames.taxonomy.json for trigger semantics."
+          "description": "See frames.taxonomy.json for trigger semantics. Silence triggers are split by silence context so a frame can carry the same semantic type as its linked silence."
         },
         "linked_utterance_id": { "type": "string", "pattern": "^U-[0-9]{4,}$" },
         "annotation": {
