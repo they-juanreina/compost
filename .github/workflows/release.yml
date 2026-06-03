@@ -31,6 +31,24 @@ jobs:
           pnpm typecheck
           pnpm test
 
+      - name: Verify the Cowork manifest is in sync with the Claude Code manifest
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          cc = json.load(open("plugin/.claude-plugin/plugin.json"))
+          cw = json.load(open("plugin/.cowork/manifest.json"))
+          expected = {
+            "name": cc["name"], "version": cc["version"], "description": cc["description"],
+            "registry": "cowork", "commands": cc.get("commands"),
+            "skills": cc.get("skills", []), "mcp": list(cc.get("mcpServers", {}).keys()),
+            "derived_from": ".claude-plugin/plugin.json",
+          }
+          if cw != expected:
+            print("Cowork manifest is stale; regenerate it from plugin.json", file=sys.stderr)
+            sys.exit(1)
+          print("cowork manifest in sync")
+          PY
+
       - name: Auto-generate release notes from closed issues since last tag
         id: notes
         run: |
