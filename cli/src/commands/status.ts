@@ -1,6 +1,12 @@
 import type { Command } from 'commander'
 
-import { stubAction } from './_stub.js'
+import { isCompostError } from '../errors.js'
+import { gatherStatus } from '../lib/status.js'
+import { emit, emitError, getOutputOpts } from '../output.js'
+
+interface StatusFlags {
+  seed?: string
+}
 
 export function registerStatus(program: Command): void {
   program
@@ -8,5 +14,22 @@ export function registerStatus(program: Command): void {
     .description(
       'Print kind-grouped counts (sessions, transcripts, highlights, codes, themes, frames) for the current seed',
     )
-    .action(stubAction({ command: 'status', issue: 21 }))
+    .option(
+      '--seed <name>',
+      'Scope the snapshot to a single seed (default: all seeds under ./Seeds)',
+    )
+    .action((flags: StatusFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const opts: { seed?: string } = {}
+        if (flags.seed !== undefined) opts.seed = flags.seed
+        const snapshot = gatherStatus(opts)
+        emit(snapshot, out)
+      } catch (err) {
+        if (isCompostError(err)) {
+          emitError(err, out)
+        }
+        throw err
+      }
+    })
 }
