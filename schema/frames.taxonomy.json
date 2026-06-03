@@ -1,0 +1,52 @@
+{
+  "version": "1.0",
+  "title": "Compost Frame Trigger Catalog",
+  "description": "Canonical catalog of frame triggers — the reasons a screenshot may be captured from the video stream during transcription. The transcript schema's frame.trigger enum (schema/transcript.schema.json#/$defs/frame/properties/trigger) is kept in sync with this list. default_enabled reflects the 'balanced' default profile (decision #73).",
+  "triggers": [
+    {
+      "trigger": "silence_after_question",
+      "description": "Frame captured during a silence the silence-typer classified as after_question. Pauses after moderator questions are high-signal.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "silence_mid_utterance",
+      "description": "Frame captured during a mid-utterance silence — speaker paused inside their own turn, often searching for a word.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "silence_thinking",
+      "description": "Frame captured during a thinking silence — speaker hasn't committed to answering yet.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "silence_interruption",
+      "description": "Frame captured at a silence inside an interruption — turn-stealing dynamics often visible.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "audio_cue",
+      "description": "Frame captured when an audio cue fires (laughter, sigh, cough, throat-clear). Linked to the cue id.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "shot_change",
+      "description": "Frame captured when the perceptual-hash distance between consecutive sampled frames crosses the shot-change threshold. Catches camera/screen-share switches.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "highlight",
+      "description": "Frame captured at the moment a researcher creates a highlight. The contemporaneous frame is auto-linked to the highlight.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "manual",
+      "description": "Frame captured on explicit researcher request via `compost snap` or a one-click control in the web player.",
+      "default_enabled": true
+    },
+    {
+      "trigger": "sampling",
+      "description": "Fallback frame captured at fixed intervals (60s default) when none of the other triggers have fired recently. Ensures every minute of every session has at least one frame.",
+      "default_enabled": true
+    }
+  ]
+}
