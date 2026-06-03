@@ -22,7 +22,8 @@ export function parseTimestamp(input: string): number {
   const parts = raw.split(':')
   if (parts.length === 2 || parts.length === 3) {
     const nums = parts.map((p) => {
-      if (!/^\d+(\.\d+)?$/.test(p)) throw new CompostError('INVALID_INPUT', `Bad time component "${p}"`)
+      if (!/^\d+(\.\d+)?$/.test(p))
+        throw new CompostError('INVALID_INPUT', `Bad time component "${p}"`)
       return Number(p)
     })
     let seconds = 0
@@ -30,7 +31,10 @@ export function parseTimestamp(input: string): number {
     else seconds = nums[0]! * 60 + nums[1]!
     return Math.round(seconds * 1000)
   }
-  throw new CompostError('INVALID_INPUT', `Unrecognized timestamp "${input}" (use ms, mm:ss, or hh:mm:ss)`)
+  throw new CompostError(
+    'INVALID_INPUT',
+    `Unrecognized timestamp "${input}" (use ms, mm:ss, or hh:mm:ss)`,
+  )
 }
 
 function padMs(ms: number): string {
