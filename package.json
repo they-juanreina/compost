@@ -1,0 +1,30 @@
+{
+  "name": "compost",
+  "version": "0.0.0",
+  "description": "Local-first, AI-first research analysis harness for coding agents and humans.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/they-juanreina/compost.git"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "typecheck": "pnpm -r --parallel --if-present run typecheck",
+    "build": "pnpm -r --if-present run build",
+    "test": "pnpm -r --if-present run test"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

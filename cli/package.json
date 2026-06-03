@@ -1,0 +1,8 @@
+{
+  "name": "compost-cli",
+  "version": "0.0.0",
+  "description": "Compost CLI engine. Subcommand router, JSON-out, harness loop runner.",
+  "private": true,
+  "type": "module",
+  "license": "MIT"
+}
