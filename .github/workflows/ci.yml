@@ -53,12 +53,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install transcriber (base + frames extra + dev tools)
+      - name: Install transcriber (base + frames + legacy extras + dev tools)
         working-directory: transcriber
         run: |
           python -m pip install --upgrade pip
-          pip install -e '.[frames]'
-          pip install ruff pytest httpx
+          pip install -e '.[frames,legacy]'
+          pip install ruff pytest httpx jsonschema reportlab
 
       - name: Ruff
         working-directory: transcriber

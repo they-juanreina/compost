@@ -21,6 +21,11 @@
       "const": "1.0",
       "description": "Locked at 1.0 for this contract. Breaking changes bump the major."
     },
+    "kind": {
+      "enum": ["session", "document"],
+      "default": "session",
+      "description": "session = recorded interview; document = legacy PDF/DOCX/PPTX/CSV normalized into a transcript-shaped doc."
+    },
     "session_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+$",
@@ -40,7 +45,7 @@
     },
     "modality": {
       "type": "array",
-      "items": { "enum": ["audio", "video"] },
+      "items": { "enum": ["audio", "video", "document"] },
       "minItems": 1,
       "uniqueItems": true
     },
@@ -105,6 +110,11 @@
         "start_ms": { "type": "integer", "minimum": 0 },
         "end_ms": { "type": "integer", "minimum": 0 },
         "text": { "type": "string" },
+        "source_page": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "For document-kind transcripts: the 1-based source page/slide/row the utterance came from."
+        },
         "words": {
           "type": "array",
           "items": { "$ref": "#/$defs/word" }
