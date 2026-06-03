@@ -100,12 +100,19 @@ export class JobQueue {
     return { id: Number(info.lastInsertRowid), inserted: true }
   }
 
-  /** Atomically claim the oldest queued job (status → running, attempts++). */
-  claim(): Job | null {
+  /** Atomically claim the oldest queued job (status → running, attempts++).
+   * Pass a kind to claim only jobs of that kind (per-worker draining). */
+  claim(kind?: JobKind): Job | null {
     const tx = this.db.transaction(() => {
-      const row = this.db
-        .prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1")
-        .get() as JobRow | undefined
+      const row = (
+        kind === undefined
+          ? this.db.prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY id LIMIT 1").get()
+          : this.db
+              .prepare(
+                "SELECT * FROM jobs WHERE status = 'queued' AND kind = ? ORDER BY id LIMIT 1",
+              )
+              .get(kind)
+      ) as JobRow | undefined
       if (row === undefined) return null
       const ts = this.now().toISOString()
       this.db
