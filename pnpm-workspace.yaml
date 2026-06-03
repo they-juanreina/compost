@@ -2,3 +2,4 @@ packages:
   - cli
   - web
   - plugin
+  - provenance
