@@ -1,0 +1,26 @@
+{
+  "name": "compost-retrieval",
+  "version": "0.0.0",
+  "description": "Retrieval: chunker, BM25 + dense hybrid with RRF, schema-bound citation validator.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "node --import tsx --test 'src/**/*.test.ts'"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}
