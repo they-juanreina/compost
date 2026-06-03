@@ -28,15 +28,57 @@ class DiarizationBackend(Protocol):
     def diarize(self, audio_path: str) -> list[dict[str, Any]]: ...
 
 
+PYANNOTE_MODEL = "pyannote/speaker-diarization-3.1"
+
+
+class PyannoteBackend:  # pragma: no cover - needs gated weights + torch
+    """Concrete DiarizationBackend wrapping pyannote-audio.
+
+    The pipeline is loaded once per process. HuggingFace token comes from
+    HUGGINGFACE_TOKEN or HF_TOKEN env vars (one must be set; the user must
+    also have accepted the license at hf.co/pyannote/speaker-diarization-3.1).
+    """
+
+    def __init__(self) -> None:
+        import os
+
+        token = os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HF_TOKEN")
+        if not token:
+            raise RuntimeError(
+                "pyannote needs HUGGINGFACE_TOKEN to download the gated model. "
+                "Set it in .env.local and accept the license at hf.co/pyannote/speaker-diarization-3.1."
+            )
+        try:
+            from pyannote.audio import Pipeline  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                "pyannote.audio is not installed. Install the asr extra: pip install -e '.[asr]'"
+            ) from e
+
+        self._pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL, use_auth_token=token)
+
+    def diarize(self, audio_path: str) -> list[dict[str, Any]]:
+        diarization = self._pipeline(audio_path)
+        turns: list[dict[str, Any]] = []
+        for segment, _, speaker in diarization.itertracks(yield_label=True):
+            turns.append(
+                {
+                    "start_ms": int(segment.start * 1000),
+                    "end_ms": int(segment.end * 1000),
+                    "speaker": str(speaker),
+                }
+            )
+        return turns
+
+
 @lru_cache(maxsize=1)
 def _load_pyannote(token_present: bool) -> DiarizationBackend:  # pragma: no cover - needs weights
     if not token_present:
-        raise RuntimeError("pyannote needs HUGGINGFACE_TOKEN to download the gated model")
-    try:
-        import pyannote.audio  # type: ignore  # noqa: F401
-    except ImportError as e:
-        raise RuntimeError("pyannote not installed. Install the asr extra.") from e
-    raise NotImplementedError("Real pyannote wiring runs in the container; tests inject a backend.")
+        raise RuntimeError(
+            "pyannote needs HUGGINGFACE_TOKEN to download the gated model. "
+            "Set it in .env.local and accept the license at hf.co/pyannote/speaker-diarization-3.1."
+        )
+    return PyannoteBackend()
 
 
 def _overlap_ms(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -119,7 +161,12 @@ class Diarizer:
         self._backend = backend
 
     def _get_backend(self) -> DiarizationBackend:
-        return self._backend if self._backend is not None else _load_pyannote(False)
+        if self._backend is not None:
+            return self._backend
+        import os
+
+        token_present = bool(os.environ.get("HUGGINGFACE_TOKEN") or os.environ.get("HF_TOKEN"))
+        return _load_pyannote(token_present)
 
     def diarize(self, audio_path: str) -> list[Turn]:
         raw = self._get_backend().diarize(audio_path)

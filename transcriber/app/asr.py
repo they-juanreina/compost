@@ -41,20 +41,85 @@ class WhisperBackend(Protocol):
     def transcribe(self, audio_path: str) -> dict[str, Any]: ...
 
 
+class WhisperXBackend:  # pragma: no cover - needs multi-GB weights
+    """Concrete WhisperBackend wrapping `whisperx`.
+
+    Imports `whisperx` and `torch` lazily inside `__init__` so this module
+    remains importable in environments without the [asr] extra installed.
+    The constructor loads the model (multi-GB) the first time only — the
+    `_load_whisperx_backend` lru_cache ensures one instance per (model, device,
+    compute_type) tuple per process.
+    """
+
+    def __init__(self, config: ASRConfig):
+        try:
+            import torch  # type: ignore
+            import whisperx  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                "whisperx is not installed. Install the asr extra: pip install -e '.[asr]'"
+            ) from e
+
+        device = _resolve_device(config.device)
+        self._model = whisperx.load_model(
+            config.model_name,
+            device=device,
+            compute_type=config.compute_type,
+            language=config.language,
+            asr_options={"suppress_numerals": False},
+        )
+        self._align_model = None
+        self._align_metadata = None
+        self._device = device
+        self._whisperx = whisperx
+        self._torch = torch
+
+    def transcribe(self, audio_path: str) -> dict[str, Any]:
+        audio = self._whisperx.load_audio(audio_path)
+        result = self._model.transcribe(audio, batch_size=16)
+        language = result.get("language") or "en"
+
+        # Lazy-load the alignment model on first use (depends on detected language).
+        if self._align_model is None:
+            self._align_model, self._align_metadata = self._whisperx.load_align_model(
+                language_code=language, device=self._device
+            )
+
+        aligned = self._whisperx.align(
+            result["segments"],
+            self._align_model,
+            self._align_metadata,
+            audio,
+            self._device,
+            return_char_alignments=False,
+        )
+        return {"segments": aligned["segments"], "language": language}
+
+
+def _resolve_device(requested: str) -> str:  # pragma: no cover - env-dependent
+    """Map `auto` to the best available device. `cpu`/`cuda`/`mps` pass through."""
+    if requested != "auto":
+        return requested
+    try:
+        import torch  # type: ignore
+
+        if torch.cuda.is_available():
+            return "cuda"
+        if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            return "mps"
+    except ImportError:
+        pass
+    return "cpu"
+
+
 @lru_cache(maxsize=1)
 def _load_whisperx_backend(config_key: str) -> WhisperBackend:  # pragma: no cover - needs weights
     """Lazily construct the real WhisperX backend. Cached per process so the
-    multi-GB model loads once (cold-start cached, per #10 acceptance)."""
-    try:
-        import whisperx  # type: ignore  # noqa: F401
-    except ImportError as e:
-        raise RuntimeError(
-            "whisperx is not installed. Install the asr extra: pip install -e '.[asr]'"
-        ) from e
-
-    raise NotImplementedError(
-        "Real WhisperX backend wiring runs in the OrbStack container; "
-        "see transcriber/README.md. Unit tests inject a fake backend."
+    multi-GB model loads once (cold-start cached)."""
+    # config_key encodes (model_name, device, compute_type); reconstruct.
+    model_name, device, compute_type = config_key.split(":", 2)
+    return WhisperXBackend(
+        ASRConfig(model_name=model_name, device=device, compute_type=compute_type)
     )
 
 
