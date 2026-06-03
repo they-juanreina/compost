@@ -1,6 +1,13 @@
 import type { Command } from 'commander'
 
-import { stubAction } from './_stub.js'
+import { isCompostError } from '../errors.js'
+import { ingestPath } from '../lib/ingest.js'
+import { resolveSeedPath } from '../lib/seedResolve.js'
+import { emit, emitError, getOutputOpts } from '../output.js'
+
+interface IngestFlags {
+  seed?: string
+}
 
 export function registerIngest(program: Command): void {
   program
@@ -9,7 +16,18 @@ export function registerIngest(program: Command): void {
       'Route audio/video to the transcriber and legacy artifacts to the legacy-ingest worker',
     )
     .argument('<path>', 'File or folder to ingest')
-    .option('--seed <name>', 'Target seed (defaults to nearest seed root)')
-    .option('--map <pair...>', 'CSV column mapping, e.g. text=Quote speaker=Participant')
-    .action(stubAction({ command: 'ingest', issue: 17 }))
+    .option('--seed <name>', 'Target seed (defaults to the only seed under ./Seeds)')
+    .action((target: string, flags: IngestFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        const result = ingestPath(seedPath, target)
+        emit({ status: 'ok', command: 'ingest', ...result }, out)
+      } catch (err) {
+        if (isCompostError(err)) {
+          emitError(err, out)
+        }
+        throw err
+      }
+    })
 }

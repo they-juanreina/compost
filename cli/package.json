@@ -25,7 +25,9 @@
   },
   "dependencies": {
     "better-sqlite3": "^11.5.0",
+    "chokidar": "^4.0.0",
     "commander": "^12.1.0",
+    "compost-provenance": "workspace:*",
     "smol-toml": "^1.3.0"
   },
   "devDependencies": {
