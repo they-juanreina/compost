@@ -49,16 +49,25 @@ class PyannoteBackend:  # pragma: no cover - needs gated weights + torch
                 "Set it in .env.local and accept the license at hf.co/pyannote/speaker-diarization-3.1."
             )
         try:
+            import torchaudio  # type: ignore
             from pyannote.audio import Pipeline  # type: ignore
         except ImportError as e:
             raise RuntimeError(
-                "pyannote.audio is not installed. Install the asr extra: pip install -e '.[asr]'"
+                "pyannote.audio / torchaudio not installed. Install the asr extra: pip install -e '.[asr]'"
             ) from e
 
-        self._pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL, use_auth_token=token)
+        self._pipeline = Pipeline.from_pretrained(PYANNOTE_MODEL, token=token)
+        self._torchaudio = torchaudio
 
     def diarize(self, audio_path: str) -> list[dict[str, Any]]:
-        diarization = self._pipeline(audio_path)
+        # Preload audio in-memory with torchaudio so pyannote 4.x doesn't hit
+        # torchcodec (which requires CUDA runtime libraries we don't ship in
+        # the CPU-only container). This is the documented fallback path.
+        waveform, sample_rate = self._torchaudio.load(audio_path)
+        output = self._pipeline({"waveform": waveform, "sample_rate": sample_rate})
+        # pyannote 4.x returns DiarizeOutput; 3.x returned the Annotation directly.
+        # Support both by reading .speaker_diarization if present, else the object itself.
+        diarization = getattr(output, "speaker_diarization", output)
         turns: list[dict[str, Any]] = []
         for segment, _, speaker in diarization.itertracks(yield_label=True):
             turns.append(
