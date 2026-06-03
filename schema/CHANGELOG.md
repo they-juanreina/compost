@@ -4,6 +4,16 @@ All notable changes to the JSON Schemas under `schema/`. Each schema is independ
 
 ## transcript.schema.json
 
+### 1.0 — 2026-06-03 (additive: document ingest)
+
+Backward-compatible additions for legacy document ingest (#29). No existing
+field changed; all additions are optional, so 1.0 transcripts still validate.
+
+- top-level optional `kind`: `session` (default) | `document`.
+- `modality` items enum gains `document`.
+- `utterances[].source_page` (optional integer): the 1-based page/slide/row
+  a document-kind utterance came from.
+
 ### 1.0 — 2026-06-02 (initial)
 
 The rich transcript contract. Top-level keys: `schema_version`, `session_id`, `source`, `language`, `duration_ms`, `modality`, `speakers`, `utterances`, `silences`, `cues`, `frames`, `glossary_refs`, `provenance`.
