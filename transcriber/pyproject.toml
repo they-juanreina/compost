@@ -1,0 +1,40 @@
+[project]
+name = "compost-transcriber"
+version = "0.0.0"
+description = "Compost descriptive transcriber: WhisperX + pyannote + Silero VAD + Whisper-event-tags, plus frame extraction and legacy ingest."
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Juan Reina" }]
+
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.9.0",
+]
+
+[project.optional-dependencies]
+# Pinned in their own M1 issues (#9-#15) — kept out of the base install so
+# the skeleton boots quickly without pulling multi-GB ML wheels.
+asr = [
+    "whisperx",
+    "pyannote.audio>=3.3",
+    "silero-vad",
+]
+frames = [
+    "imagehash",
+    "Pillow",
+]
+legacy = [
+    "pdfminer.six",
+    "pdfplumber",
+    "python-docx",
+    "python-pptx",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B", "SIM"]
+ignore = ["E501"]

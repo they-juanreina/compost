@@ -1,0 +1,31 @@
+# OrbStack / Docker Compose definition for the compost transcriber.
+# Run from the repo root with: docker compose -f transcriber/compose.yaml up
+#
+# The service mounts the repo's Seeds/ tree read-write so workers inside the
+# container can write transcript.json, frames/, etc. The repo root is one
+# directory above this file.
+
+name: compost-transcriber
+
+services:
+  transcriber:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: compost/transcriber:dev
+    container_name: compost-transcriber
+    ports:
+      - "127.0.0.1:7862:7862"
+    volumes:
+      - ../Seeds:/seeds:rw
+    environment:
+      COMPOST_SEEDS_ROOT: /seeds
+      UVICORN_WORKERS: "1"
+      LOG_LEVEL: info
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:7862/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
