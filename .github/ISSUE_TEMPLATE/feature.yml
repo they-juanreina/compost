@@ -1,0 +1,45 @@
+name: Feature / task
+description: A unit of work toward an M1/M2/M3 milestone.
+labels: ["kind:feature"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: One sentence. What this issue ships.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: Which ROADMAP section motivates this work? Link the heading or quote the relevant paragraph.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Bulleted, testable. The PR closing this issue must satisfy each line.
+      value: |
+        - [ ]
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Files to touch
+      description: Best guess; not binding.
+      render: markdown
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      options:
+        - "M1 — Compost core"
+        - "M2 — Annotation + retrieval"
+        - "M3 — Synthesis + Cowork"
+        - Unscheduled
+    validations:
+      required: true
