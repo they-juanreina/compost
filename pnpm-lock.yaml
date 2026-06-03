@@ -20,10 +20,16 @@ importers:
 
   cli:
     dependencies:
+      better-sqlite3:
+        specifier: ^11.5.0
+        version: 11.10.0
       commander:
         specifier: ^12.1.0
         version: 12.1.0
     devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.11
+        version: 7.6.13
       tsx:
         specifier: ^4.19.0
         version: 4.22.4
