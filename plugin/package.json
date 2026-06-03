@@ -4,5 +4,25 @@
   "description": "Compost Claude Code plugin: slash commands, wrapped skills, MCP server.",
   "private": true,
   "type": "module",
-  "license": "MIT"
+  "license": "MIT",
+  "exports": {
+    ".": "./dist/mcp/server.js"
+  },
+  "files": [
+    ".claude-plugin",
+    "commands",
+    "dist",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsc -p .",
+    "typecheck": "tsc -p . --noEmit",
+    "test": "node --import tsx --test 'mcp/**/*.test.ts'"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
 }
