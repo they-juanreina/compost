@@ -43,6 +43,18 @@ jobs:
       - name: Test
         run: pnpm test
 
+      # plugin/dist is the committed install payload (Claude Code copies the
+      # plugin folder without building). `pnpm build` above just regenerated it
+      # — if it differs from what's committed, the tree is dirty and someone
+      # forgot to commit the rebuild. Fail with the diff so it's obvious.
+      - name: plugin/dist is in sync with source
+        run: |
+          if ! git diff --quiet -- plugin/dist; then
+            echo "::error::plugin/dist is stale. Run 'pnpm --filter compost-plugin build' and commit." >&2
+            git --no-pager diff -- plugin/dist
+            exit 1
+          fi
+
   python:
     name: python (ruff + pytest)
     runs-on: ubuntu-latest

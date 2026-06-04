@@ -4,7 +4,10 @@
     "outDir": "dist",
     "rootDir": ".",
     "composite": false,
-    "types": ["node"]
+    "types": ["node"],
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
   },
   "include": ["mcp/**/*.ts"],
   "exclude": ["dist", "node_modules", "mcp/**/*.test.ts"]

@@ -10,6 +10,7 @@ import {
   type CliRunner,
   MUTATION_TOOLS,
   READ_ONLY_TOOLS,
+  resolveCompostInvocation,
   runTool,
   TOOLS,
 } from './tools.js'
@@ -163,6 +164,47 @@ describe('runTool', () => {
     const res = await runTool('compost_nope', {})
     assert.equal(res.ok, false)
     assert.match(res.content, /unknown tool/)
+  })
+
+  it('maps code_suggest (read) and code_apply (mutation) to `compost code`', () => {
+    const suggest = TOOLS.find((t) => t.name === 'compost_code_suggest')!
+    assert.deepEqual(suggest.toArgv({ seed: 's' }), ['code', '--seed', 's'])
+    assert.ok(READ_ONLY_TOOLS.includes('compost_code_suggest'))
+
+    const apply = TOOLS.find((t) => t.name === 'compost_code_apply')!
+    assert.deepEqual(apply.toArgv({ seed: 's', threshold: 0.8 }), [
+      'code',
+      '--apply',
+      '--seed',
+      's',
+      '--threshold',
+      '0.8',
+    ])
+    assert.ok(MUTATION_TOOLS.includes('compost_code_apply'))
+    // code_apply authorship is the scanner agent, not Claude Code → no --ai.
+    assert.ok(!buildArgv(apply, { seed: 's' }).includes('--ai'))
+  })
+})
+
+describe('resolveCompostInvocation', () => {
+  it('runs a COMPOST_CLI .js path via node', () => {
+    const r = resolveCompostInvocation({ COMPOST_CLI: '/opt/compost/dist/index.js' })
+    assert.equal(r.command, process.execPath)
+    assert.deepEqual(r.prefixArgs, ['/opt/compost/dist/index.js'])
+  })
+
+  it('runs a COMPOST_CLI non-.js path as an executable', () => {
+    const r = resolveCompostInvocation({ COMPOST_CLI: '/usr/local/bin/compost' })
+    assert.equal(r.command, '/usr/local/bin/compost')
+    assert.deepEqual(r.prefixArgs, [])
+  })
+
+  it('falls back to `compost` on PATH when COMPOST_CLI is unset/blank', () => {
+    assert.deepEqual(resolveCompostInvocation({}), { command: 'compost', prefixArgs: [] })
+    assert.deepEqual(resolveCompostInvocation({ COMPOST_CLI: '  ' }), {
+      command: 'compost',
+      prefixArgs: [],
+    })
   })
 })
 
