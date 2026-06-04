@@ -47,10 +47,11 @@ describe('processInbox', () => {
 
   it('leaves unsupported files in the inbox', () => {
     const { path } = initSeed('demo', { cwd: work })
-    writeFileSync(join(path, 'sessions/_inbox/readme.txt'), 'x')
+    // .zip stays unsupported in v0.1-03 (.txt joined the classifier).
+    writeFileSync(join(path, 'sessions/_inbox/archive.zip'), 'x')
     const result = processInbox(path)
     assert.equal(result.moved.length, 0)
     assert.equal(result.unsupported.length, 1)
-    assert.ok(existsSync(join(path, 'sessions/_inbox/readme.txt')))
+    assert.ok(existsSync(join(path, 'sessions/_inbox/archive.zip')))
   })
 })

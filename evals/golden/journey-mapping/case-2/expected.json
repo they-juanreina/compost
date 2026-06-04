@@ -18,7 +18,11 @@
       "emotion": "relieved",
       "pains": [],
       "opportunities": [
-        { "claim": "make the first success visible and unmistakable", "from_theme": "T-first-success", "evidence": ["H-110", "H-111"] }
+        {
+          "claim": "make the first success visible and unmistakable",
+          "from_theme": "T-first-success",
+          "evidence": ["H-110", "H-111"]
+        }
       ]
     },
     {
@@ -27,7 +31,11 @@
       "emotion": "trusting",
       "pains": [],
       "opportunities": [
-        { "claim": "support unattended operation once trust is established", "from_theme": "T-trusts-the-tool", "evidence": ["H-120"] }
+        {
+          "claim": "support unattended operation once trust is established",
+          "from_theme": "T-trusts-the-tool",
+          "evidence": ["H-120"]
+        }
       ]
     }
   ]
