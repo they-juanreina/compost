@@ -41,6 +41,7 @@ class LegacyIngestResponse(BaseModel):
     utterance_count: int
     status: str  # ok | empty | failed
     text_col_resolved: str | None = None  # which column was actually used (CSV/XLSX)
+    warnings: list[str] = []  # surfaced UX hints (e.g. xlsx un-evaluated formulas)
 
 
 @router.post(
@@ -95,12 +96,21 @@ def post_legacy_ingest(req: LegacyIngestRequest) -> LegacyIngestResponse:
     out_path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     utt_count = len(doc.get("utterances", []))
+    prov = doc.get("provenance", {})
+    warnings: list[str] = []
+    skipped = prov.get("xlsx_rows_skipped_empty_text", 0)
+    if skipped > 0:
+        warnings.append(
+            f"{skipped} XLSX row(s) had data in other columns but an empty text cell — "
+            "likely an un-evaluated formula. Open the file in Excel once, or export to CSV."
+        )
     return LegacyIngestResponse(
         source_path=req.source_path,
         normalized_path=str(out_path),
         utterance_count=utt_count,
         status="ok" if utt_count > 0 else "empty",
-        text_col_resolved=doc.get("provenance", {}).get("text_col_resolved"),
+        text_col_resolved=prov.get("text_col_resolved"),
+        warnings=warnings,
     )
 
 

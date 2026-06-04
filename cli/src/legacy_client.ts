@@ -17,6 +17,9 @@ export interface LegacyIngestResponse {
   /** Which CSV/XLSX column was actually used (may differ from the request when
    * the server auto-detected it). null for non-tabular inputs. */
   text_col_resolved?: string | null
+  /** Soft UX hints from the server (e.g. XLSX un-evaluated formulas).
+   * Empty when the ingest was clean. */
+  warnings?: string[]
 }
 
 export class LegacyServiceError extends Error {

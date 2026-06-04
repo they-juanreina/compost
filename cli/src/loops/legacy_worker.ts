@@ -55,6 +55,7 @@ export interface LegacyWorkerResult {
     status: string
     normalized_path?: string
     utterance_count?: number
+    warnings?: string[]
   }>
 }
 
@@ -116,6 +117,7 @@ export async function runLegacyWorkerOnce(
           status: resp.status,
           normalized_path: resp.normalized_path,
           utterance_count: resp.utterance_count,
+          ...(resp.warnings && resp.warnings.length > 0 ? { warnings: resp.warnings } : {}),
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

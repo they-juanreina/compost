@@ -250,8 +250,10 @@ def ingest_text(path: str | Path) -> dict[str, Any]:
     current_heading: str | None = None
     idx = 1
     for para in _paragraphs(body):
-        # Markdown heading line → record as section anchor, skip the utterance.
-        if para.startswith(("# ", "## ", "### ", "#### ")):
+        # Markdown ATX heading line (`# ` through `###### `) → record as section
+        # anchor, skip the utterance. Setext (==== / ---- underline) not yet
+        # supported — rare in mod-era markdown.
+        if para.startswith(("# ", "## ", "### ", "#### ", "##### ", "###### ")):
             current_heading = para.lstrip("# ").strip()
             continue
         ann = f"[section: {current_heading}]" if current_heading else None
@@ -300,18 +302,28 @@ def ingest_xlsx(
     speaker_idx = header.index(speaker_col) if speaker_col in header else -1
 
     utt_idx = 1
+    # Track rows where the text column is empty but the row has other data —
+    # a strong proxy for "Excel never evaluated this formula so openpyxl
+    # returned None". Researchers seeing this should open the file in Excel
+    # once or pre-export to CSV.
+    rows_with_data_but_empty_text = 0
     for row in rows:
         if row is None:
             continue
         cell = row[text_idx] if text_idx < len(row) else None
         text = str(cell).strip() if cell is not None else ""
         if not text:
+            # Row has data elsewhere → likely an un-evaluated formula in the text column.
+            if any(c is not None and str(c).strip() for c in row):
+                rows_with_data_but_empty_text += 1
             continue
         ann = None
         if speaker_idx >= 0 and speaker_idx < len(row) and row[speaker_idx] is not None:
             ann = f"[speaker: {row[speaker_idx]}]"
         doc["utterances"].append(_utt(utt_idx, text, source_page=utt_idx, annotation=ann))
         utt_idx += 1
+    if rows_with_data_but_empty_text > 0:
+        doc["provenance"]["xlsx_rows_skipped_empty_text"] = rows_with_data_but_empty_text
     return doc
 
 
