@@ -1,10 +1,51 @@
-import { LegacyIngestClient, LegacyServiceError } from '../legacy_client.js'
+import { existsSync, readFileSync } from 'node:fs'
+
+import {
+  LegacyIngestClient,
+  type LegacyIngestRequest,
+  LegacyServiceError,
+} from '../legacy_client.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { JobQueue, stateDbPath } from '../lib/queue.js'
 
 const AGENT_NAME = 'legacy-ingest-worker'
 const AGENT_VERSION = '0.1.0'
 const MAX_ATTEMPTS = 3
+
+/**
+ * Optional per-file sidecar: `<source_path>.compost.json` next to the CSV/XLSX
+ * lets the researcher pin column mapping that survives re-ingest. Wins over
+ * server-side auto-detect.
+ *
+ * Shape: `{ text_col?: string, speaker_col?: string, sheet?: string }`
+ *
+ * Example: drop `survey.csv.compost.json` with `{"text_col":"Response"}`
+ * next to a CSV whose text column isn't auto-detectable.
+ */
+interface CompostSidecar {
+  text_col?: string
+  speaker_col?: string
+  sheet?: string
+}
+
+function readSidecar(sourcePath: string): CompostSidecar | null {
+  const sidecarPath = `${sourcePath}.compost.json`
+  if (!existsSync(sidecarPath)) return null
+  try {
+    const parsed = JSON.parse(readFileSync(sidecarPath, 'utf8')) as unknown
+    if (typeof parsed !== 'object' || parsed === null) return null
+    const out: CompostSidecar = {}
+    const r = parsed as Record<string, unknown>
+    if (typeof r.text_col === 'string') out.text_col = r.text_col
+    if (typeof r.speaker_col === 'string') out.speaker_col = r.speaker_col
+    if (typeof r.sheet === 'string') out.sheet = r.sheet
+    return out
+  } catch {
+    // Malformed sidecar — silently fall through to server-side auto-detect.
+    // The researcher's intent is unclear; we don't want to block the ingest.
+    return null
+  }
+}
 
 export interface LegacyWorkerResult {
   processed: number
@@ -46,10 +87,15 @@ export async function runLegacyWorkerOnce(
       out.processed += 1
       const sourcePath = job.source_path
       try {
-        const resp = await client.ingest({
+        const sidecar = readSidecar(sourcePath)
+        const ingestReq: LegacyIngestRequest = {
           seed_path: seedPath,
           source_path: sourcePath,
-        })
+          ...(sidecar?.text_col !== undefined ? { text_col: sidecar.text_col } : {}),
+          ...(sidecar?.speaker_col !== undefined ? { speaker_col: sidecar.speaker_col } : {}),
+          ...(sidecar?.sheet !== undefined ? { sheet: sidecar.sheet } : {}),
+        }
+        const resp = await client.ingest(ingestReq)
         queue.complete(job.id)
         emitAgentCreate(events, {
           artifactKind: 'legacy_chunk',
@@ -58,6 +104,8 @@ export async function runLegacyWorkerOnce(
             normalized_path: resp.normalized_path,
             utterance_count: resp.utterance_count,
             status: resp.status,
+            text_col_resolved: resp.text_col_resolved ?? null,
+            sidecar_applied: sidecar !== null,
           },
           agentName: AGENT_NAME,
           agentVersion: AGENT_VERSION,

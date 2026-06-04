@@ -58,26 +58,57 @@ def _session_id(path: str | Path) -> str:
     return f"DOC-{safe}"[:64]
 
 
-# ---------------------------------------------------------------- CSV
+# ---------------------------------------------------------------- CSV / XLSX
+
+# Auto-detect priority for the "text" column. First case-insensitive match
+# in the source's header wins. Falls back to the first column.
+TEXT_COL_CANDIDATES = (
+    "text",
+    "transcript",
+    "content",
+    "utterance",
+    "quote",
+    "message",
+    "body",
+)
+
+
+def _auto_text_col(fieldnames: list[str]) -> str:
+    """Pick the most-likely text column from a header. Case-insensitive match
+    against TEXT_COL_CANDIDATES, then a first-column fallback."""
+    lower = {f.lower(): f for f in fieldnames}
+    for candidate in TEXT_COL_CANDIDATES:
+        if candidate in lower:
+            return lower[candidate]
+    return fieldnames[0]
 
 
 def ingest_csv(
     path: str | Path,
-    text_col: str,
+    text_col: str | None = None,
     speaker_col: str | None = None,
 ) -> dict[str, Any]:
-    """One utterance per row. `text_col` maps the transcript text; optional
-    `speaker_col` is recorded in the utterance annotation (documents have a
-    single synthetic speaker)."""
+    """One utterance per row.
+
+    `text_col=None` triggers auto-detect: text → transcript → content →
+    utterance → quote → message → body (case-insensitive). Falls back to
+    the first column. The resolved column is recorded on the output's
+    `provenance.text_col_resolved` for caller visibility.
+    """
     path = str(path)
     doc = _base(_session_id(path), path)
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        if reader.fieldnames is None or text_col not in reader.fieldnames:
-            raise ValueError(f"CSV has no column '{text_col}' (columns: {reader.fieldnames})")
+        if reader.fieldnames is None:
+            raise ValueError(f"CSV has no header row: {path}")
+        fields = list(reader.fieldnames)
+        resolved = text_col if text_col is not None else _auto_text_col(fields)
+        if resolved not in fields:
+            raise ValueError(f"CSV has no column '{resolved}' (columns: {fields})")
+        doc["provenance"]["text_col_resolved"] = resolved
         idx = 1
         for row in reader:
-            text = (row.get(text_col) or "").strip()
+            text = (row.get(resolved) or "").strip()
             if not text:
                 continue
             ann = None
@@ -234,12 +265,15 @@ def ingest_text(path: str | Path) -> dict[str, Any]:
 
 def ingest_xlsx(
     path: str | Path,
-    text_col: str = "text",
+    text_col: str | None = None,
     speaker_col: str | None = None,
     sheet: str | None = None,
 ) -> dict[str, Any]:
-    """One utterance per row of a spreadsheet. First row is treated as the
-    header (mirrors `ingest_csv`). Use `sheet` to pick a non-default tab.
+    """One utterance per row of a spreadsheet.
+
+    `text_col=None` triggers the same auto-detect as `ingest_csv`. The
+    resolved column lands on `provenance.text_col_resolved`. Use `sheet`
+    to pick a non-default tab.
     """
     try:
         from openpyxl import load_workbook  # type: ignore
@@ -258,9 +292,11 @@ def ingest_xlsx(
     if header_row is None:
         return doc  # empty sheet
     header = [str(c) if c is not None else "" for c in header_row]
-    if text_col not in header:
-        raise ValueError(f"XLSX has no column '{text_col}' (columns: {header})")
-    text_idx = header.index(text_col)
+    resolved = text_col if text_col is not None else _auto_text_col(header)
+    if resolved not in header:
+        raise ValueError(f"XLSX has no column '{resolved}' (columns: {header})")
+    doc["provenance"]["text_col_resolved"] = resolved
+    text_idx = header.index(resolved)
     speaker_idx = header.index(speaker_col) if speaker_col in header else -1
 
     utt_idx = 1
@@ -280,10 +316,15 @@ def ingest_xlsx(
 
 
 def ingest(path: str | Path, **kwargs: Any) -> dict[str, Any]:
-    """Dispatch by extension."""
+    """Dispatch by extension. `text_col=None` (the default) triggers
+    auto-detect on CSV/XLSX inputs."""
     ext = Path(path).suffix.lower()
     if ext == ".csv":
-        return ingest_csv(path, text_col=kwargs.get("text_col", "text"), speaker_col=kwargs.get("speaker_col"))
+        return ingest_csv(
+            path,
+            text_col=kwargs.get("text_col"),
+            speaker_col=kwargs.get("speaker_col"),
+        )
     if ext == ".docx":
         return ingest_docx(path)
     if ext == ".pptx":
@@ -295,7 +336,7 @@ def ingest(path: str | Path, **kwargs: Any) -> dict[str, Any]:
     if ext == ".xlsx":
         return ingest_xlsx(
             path,
-            text_col=kwargs.get("text_col", "text"),
+            text_col=kwargs.get("text_col"),
             speaker_col=kwargs.get("speaker_col"),
             sheet=kwargs.get("sheet"),
         )

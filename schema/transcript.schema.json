@@ -273,7 +273,11 @@
         "diarizer": { "type": "string" },
         "audio_cues": { "type": "string" },
         "frame_capture": { "type": "string" },
-        "frame_annotation": { "type": "string" }
+        "frame_annotation": { "type": "string" },
+        "text_col_resolved": {
+          "type": "string",
+          "description": "For CSV/XLSX legacy ingest: which column was actually used as the text source (auto-detected or explicit). Optional; absent on audio/video transcripts."
+        }
       }
     }
   }

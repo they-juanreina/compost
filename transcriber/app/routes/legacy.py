@@ -23,8 +23,14 @@ router = APIRouter()
 class LegacyIngestRequest(BaseModel):
     seed_path: str = Field(..., description="Absolute path to the seed root.")
     source_path: str = Field(..., description="Absolute path to the asset to ingest.")
-    # CSV/XLSX column mapping — defaults work for our own fact_utterances shape.
-    text_col: str = Field("text", description="Column holding the utterance text (CSV/XLSX).")
+    # CSV/XLSX column mapping — if text_col is None, the ingestor auto-detects
+    # from the header (text → transcript → content → utterance → quote →
+    # message → body, then first-column fallback). Node-side workers may also
+    # consult a `<source_path>.compost.json` sidecar that takes precedence.
+    text_col: str | None = Field(
+        None,
+        description="Column holding the utterance text (CSV/XLSX). Auto-detected if None.",
+    )
     speaker_col: str | None = Field(None, description="Optional column for speaker label.")
     sheet: str | None = Field(None, description="Optional XLSX sheet name (defaults to active).")
 
@@ -34,6 +40,7 @@ class LegacyIngestResponse(BaseModel):
     normalized_path: str
     utterance_count: int
     status: str  # ok | empty | failed
+    text_col_resolved: str | None = None  # which column was actually used (CSV/XLSX)
 
 
 @router.post(
@@ -56,7 +63,9 @@ def post_legacy_ingest(req: LegacyIngestRequest) -> LegacyIngestResponse:
             detail=f"seed not found: {req.seed_path}",
         )
 
-    kwargs: dict[str, Any] = {"text_col": req.text_col}
+    kwargs: dict[str, Any] = {}
+    if req.text_col is not None:
+        kwargs["text_col"] = req.text_col
     if req.speaker_col is not None:
         kwargs["speaker_col"] = req.speaker_col
     if req.sheet is not None:
@@ -91,6 +100,7 @@ def post_legacy_ingest(req: LegacyIngestRequest) -> LegacyIngestResponse:
         normalized_path=str(out_path),
         utterance_count=utt_count,
         status="ok" if utt_count > 0 else "empty",
+        text_col_resolved=doc.get("provenance", {}).get("text_col_resolved"),
     )
 
 

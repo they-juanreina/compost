@@ -141,4 +141,77 @@ describe('runLegacyWorkerOnce', () => {
     assert.equal(q2.list('failed').length, 1)
     q2.close()
   })
+
+  // v0.1-02 review feedback: a `<file>.compost.json` sidecar lets a researcher
+  // pin column mapping per-file. Worker reads it and passes the values to the
+  // route, where they win over server-side auto-detect.
+  it('reads <file>.compost.json sidecar and passes its values to the client', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const src = join(path, 'legacy/survey.csv')
+    writeFileSync(src, 'Response,Participant\nhi,p1\n')
+    writeFileSync(
+      `${src}.compost.json`,
+      JSON.stringify({ text_col: 'Response', speaker_col: 'Participant' }),
+    )
+    const q = new JobQueue(stateDbPath(path))
+    q.enqueue('legacy-ingest', src, { category: 'tabular', ext: '.csv' })
+    q.close()
+
+    const client = new FakeClient((req) => ({
+      source_path: req.source_path,
+      normalized_path: `${req.seed_path}/legacy/survey.json`,
+      utterance_count: 1,
+      status: 'ok',
+      text_col_resolved: req.text_col ?? null,
+    }))
+    // biome-ignore lint/suspicious/noExplicitAny: fake client
+    await runLegacyWorkerOnce(path, { client: client as any })
+    assert.equal(client.calls.length, 1)
+    assert.equal(client.calls[0]?.text_col, 'Response')
+    assert.equal(client.calls[0]?.speaker_col, 'Participant')
+  })
+
+  it('omits sidecar fields when sidecar is missing (server auto-detects)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const src = join(path, 'legacy/no-sidecar.csv')
+    writeFileSync(src, 'transcript\nhi\n')
+    const q = new JobQueue(stateDbPath(path))
+    q.enqueue('legacy-ingest', src, { category: 'tabular', ext: '.csv' })
+    q.close()
+
+    const client = new FakeClient((req) => ({
+      source_path: req.source_path,
+      normalized_path: `${req.seed_path}/legacy/no-sidecar.json`,
+      utterance_count: 1,
+      status: 'ok',
+      text_col_resolved: 'transcript',
+    }))
+    // biome-ignore lint/suspicious/noExplicitAny: fake client
+    await runLegacyWorkerOnce(path, { client: client as any })
+    assert.equal(client.calls.length, 1)
+    // No text_col passed → server falls back to auto-detect.
+    assert.equal(client.calls[0]?.text_col, undefined)
+  })
+
+  it('falls through cleanly when the sidecar is malformed JSON', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const src = join(path, 'legacy/bad-sidecar.csv')
+    writeFileSync(src, 'text\nhi\n')
+    writeFileSync(`${src}.compost.json`, '{ not valid')
+    const q = new JobQueue(stateDbPath(path))
+    q.enqueue('legacy-ingest', src, { category: 'tabular', ext: '.csv' })
+    q.close()
+
+    const client = new FakeClient((req) => ({
+      source_path: req.source_path,
+      normalized_path: `${req.seed_path}/legacy/bad-sidecar.json`,
+      utterance_count: 1,
+      status: 'ok',
+    }))
+    // biome-ignore lint/suspicious/noExplicitAny: fake client
+    const result = await runLegacyWorkerOnce(path, { client: client as any })
+    // Worker doesn't crash; the malformed sidecar is silently ignored.
+    assert.equal(result.processed, 1)
+    assert.equal(client.calls[0]?.text_col, undefined)
+  })
 })

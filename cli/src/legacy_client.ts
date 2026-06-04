@@ -14,6 +14,9 @@ export interface LegacyIngestResponse {
   normalized_path: string
   utterance_count: number
   status: 'ok' | 'empty' | 'failed'
+  /** Which CSV/XLSX column was actually used (may differ from the request when
+   * the server auto-detected it). null for non-tabular inputs. */
+  text_col_resolved?: string | null
 }
 
 export class LegacyServiceError extends Error {
