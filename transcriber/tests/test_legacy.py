@@ -109,3 +109,43 @@ def test_dispatch_by_extension(tmp_path: Path):
 def test_unsupported_extension_raises(tmp_path: Path):
     with pytest.raises(ValueError):
         ingest(tmp_path / "x.rtf")
+
+
+# v0.1-02 review feedback: auto-detect column name when text_col is None.
+
+
+def test_csv_autodetects_text_column_when_text_col_is_none(tmp_path: Path):
+    """Header has `transcript` (not `text`). Auto-detect finds it second
+    in the priority list."""
+    csv_path = tmp_path / "otter.csv"
+    csv_path.write_text("speaker,transcript\nMod,hello there\nP01,thank you\n")
+    doc = ingest_csv(csv_path)  # text_col omitted → auto-detect
+    assert doc["provenance"]["text_col_resolved"] == "transcript"
+    assert [u["text"] for u in doc["utterances"]] == ["hello there", "thank you"]
+
+
+def test_csv_autodetect_is_case_insensitive(tmp_path: Path):
+    """The header says `Content` (capital C); auto-detect should still match."""
+    csv_path = tmp_path / "zoom.csv"
+    csv_path.write_text("Speaker,Content\nMod,intro\nP01,follow-up\n")
+    doc = ingest_csv(csv_path)
+    assert doc["provenance"]["text_col_resolved"] == "Content"
+    assert len(doc["utterances"]) == 2
+
+
+def test_csv_autodetect_falls_back_to_first_column(tmp_path: Path):
+    """Header has no candidate from the priority list → fall back to col 0."""
+    csv_path = tmp_path / "weird.csv"
+    csv_path.write_text("notes,extra\nfirst row,x\nsecond row,y\n")
+    doc = ingest_csv(csv_path)
+    assert doc["provenance"]["text_col_resolved"] == "notes"
+    assert [u["text"] for u in doc["utterances"]] == ["first row", "second row"]
+
+
+def test_csv_explicit_text_col_overrides_autodetect(tmp_path: Path):
+    """When text_col is passed explicitly, auto-detect is skipped."""
+    csv_path = tmp_path / "survey.csv"
+    csv_path.write_text("text,answer\nshould be ignored,real answer\n")
+    doc = ingest_csv(csv_path, text_col="answer")
+    assert doc["provenance"]["text_col_resolved"] == "answer"
+    assert doc["utterances"][0]["text"] == "real answer"

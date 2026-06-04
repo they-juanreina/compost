@@ -34,6 +34,7 @@ legacy = [
     "pdfplumber",
     "python-docx",
     "python-pptx",
+    "openpyxl",
 ]
 
 [tool.ruff]
