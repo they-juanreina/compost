@@ -11,5 +11,10 @@
       "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp/server.js"]
     }
   },
-  "skills": ["querying-research-knowledge", "thematic-coding", "saturation-analysis"]
+  "skills": [
+    "querying-research-knowledge",
+    "thematic-coding",
+    "saturation-analysis",
+    "compost-setup"
+  ]
 }
