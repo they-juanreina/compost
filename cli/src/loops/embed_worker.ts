@@ -89,8 +89,18 @@ export async function runEmbedWorkerOnce(
     deps.writer ??
     (await openLanceDBForWrite(join(seedPath, '.compost', 'vectors.lancedb'), vectorDim))
 
-  // Embed in one batch (the LLM adapter handles internal batching).
-  const vectors = await embed(allChunks.map((c) => c.text))
+  // Embed with a worker-level batch cap. The LLMAdapter already batches
+  // internally (provider-appropriate, ~50/req for Ollama), but a worker-level
+  // cap is defense-in-depth: a very large corpus (10k+ chunks) shouldn't be
+  // a single multi-megabyte JSON request even if the adapter would split it.
+  // 500 chunks/pass is a safe ceiling for HTTP body size on default Ollama
+  // configs while keeping the round-trip count low (~36 batches for a
+  // typical 18k-chunk corpus).
+  const vectors = await embedInBatches(
+    embed,
+    allChunks.map((c) => c.text),
+    EMBED_BATCH_CAP,
+  )
   if (vectors.length !== allChunks.length) {
     throw new CompostError(
       'PROVIDER_ERROR',
@@ -129,6 +139,40 @@ export async function runEmbedWorkerOnce(
     inserted,
     transcripts_scanned: transcripts.length,
   }
+}
+
+/**
+ * Worker-level batch cap. Defense in depth against very large corpora that
+ * would otherwise produce a single multi-megabyte JSON request. The
+ * LLMAdapter splits within this cap to provider-appropriate sizes.
+ *
+ * Tuning notes: 500 chunks × ~1KB text each = ~500KB request body, well
+ * under Ollama's default HTTP body limits. A typical interview corpus
+ * (~600 utterances per session × 3 chunks/utt × 30 sessions = 54k chunks)
+ * batches to ~108 round-trips.
+ */
+export const EMBED_BATCH_CAP = 500
+
+async function embedInBatches(
+  embed: (texts: string[]) => Promise<number[][]>,
+  texts: string[],
+  cap: number,
+): Promise<number[][]> {
+  if (texts.length <= cap) return embed(texts)
+  const out: number[][] = []
+  for (let i = 0; i < texts.length; i += cap) {
+    const slice = texts.slice(i, i + cap)
+    const partial = await embed(slice)
+    if (partial.length !== slice.length) {
+      throw new CompostError(
+        'PROVIDER_ERROR',
+        `embeddings provider returned ${partial.length} vectors for ${slice.length} chunks ` +
+          `(batch ${i / cap + 1}/${Math.ceil(texts.length / cap)})`,
+      )
+    }
+    out.push(...partial)
+  }
+  return out
 }
 
 const DEFAULT_DIM_FOR_MODEL: Record<string, number> = {

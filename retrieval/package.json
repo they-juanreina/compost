@@ -21,11 +21,6 @@
     "@lancedb/lancedb": "^0.16.0",
     "ajv": "^8.20.0"
   },
-  "peerDependenciesMeta": {
-    "@lancedb/lancedb": {
-      "optional": true
-    }
-  },
   "devDependencies": {
     "tsx": "^4.19.0"
   }

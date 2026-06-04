@@ -166,4 +166,44 @@ describe('runEmbedWorkerOnce', () => {
       /returned 1 vectors for/,
     )
   })
+
+  // v0.1-04 review feedback: a very large corpus splits into multiple
+  // embed() calls of size <= EMBED_BATCH_CAP (defense in depth against
+  // multi-megabyte single requests).
+  it('splits very large corpora into EMBED_BATCH_CAP-sized passes', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    // 200 sessions × ~3 chunks each > 500 chunks (crosses the cap).
+    for (let i = 0; i < 200; i++) {
+      const sid = `S${String(i + 1).padStart(3, '0')}`
+      mkdirSync(join(path, 'sessions', sid), { recursive: true })
+      writeFileSync(
+        join(path, 'sessions', sid, 'transcript.json'),
+        JSON.stringify({ ...MINI_TRANSCRIPT, session_id: sid }),
+      )
+    }
+
+    let embedCalls = 0
+    const batchSizes: number[] = []
+    const embed = async (texts: string[]) => {
+      embedCalls += 1
+      batchSizes.push(texts.length)
+      return texts.map(() => [0, 0, 0, 0])
+    }
+    const writer = new FakeWriter()
+    const result = await runEmbedWorkerOnce(path, {
+      writer: writer as unknown as LanceDBWriter,
+      embed,
+      vectorDim: 4,
+    })
+    assert.ok(result.embedded > 500, `expected >500 chunks, got ${result.embedded}`)
+    assert.ok(embedCalls >= 2, `expected >=2 batches, got ${embedCalls}`)
+    assert.ok(
+      batchSizes.every((s) => s <= 500),
+      `some batch exceeded 500: ${batchSizes.join(',')}`,
+    )
+    // Note: writer.inserted.length tracks dedup-filtered count, not raw chunk count.
+    // The MINI_TRANSCRIPT body is identical per session so most chunks dedupe to
+    // their first occurrence. We assert only that inserts happened, not the count.
+    assert.ok(result.inserted > 0)
+  })
 })
