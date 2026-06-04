@@ -27,6 +27,9 @@ export interface SeedStatus {
   owners: string[]
   created_at: string | null
   counts: SeedCounts
+  /** Non-canonical content found under the seed (e.g. legacy folders that
+   * survived migration). Empty when the seed is clean. */
+  warnings: string[]
 }
 
 export interface StatusSnapshot {
@@ -78,6 +81,7 @@ export function gatherStatus(opts: StatusOptions = {}): StatusSnapshot {
 
 function readSeed(name: string, path: string): SeedStatus {
   const frontmatter = readFrontmatter(join(path, 'seed.md'))
+  const warnings: string[] = []
   return {
     name,
     path,
@@ -85,7 +89,7 @@ function readSeed(name: string, path: string): SeedStatus {
     owners: frontmatter.owners ?? [],
     created_at: frontmatter.created_at ?? null,
     counts: {
-      sessions: countSessions(join(path, 'sessions')),
+      sessions: countSessions(join(path, 'sessions'), warnings),
       highlights: countMarkdown(join(path, 'highlights')),
       codes: countMarkdown(join(path, 'codebook')),
       themes: countMarkdown(join(path, 'synthesis', 'themes')),
@@ -93,10 +97,31 @@ function readSeed(name: string, path: string): SeedStatus {
       frames: countFrames(join(path, 'sessions')),
       legacy_assets: countFiles(join(path, 'legacy')),
     },
+    warnings,
   }
 }
 
-function countSessions(sessionsDir: string): SessionCounts {
+/**
+ * A subdir of `sessions/` is treated as a session when ANY holds:
+ *   - its name matches `S\d+` (the canonical id shape used by ingest-watcher), OR
+ *   - it contains a `transcript.json` (already transcribed), OR
+ *   - it contains a `source.<ext>` file (queued, waiting to be transcribed).
+ *
+ * Other subdirs (`Notes/`, `Transcripts/`, `Attachments/`, …) are non-canonical —
+ * usually carry-over from legacy seed layouts that didn't fully migrate. They
+ * show up as warnings instead of being silently counted.
+ */
+const CANONICAL_SESSION_ID_RE = /^S\d+$/
+
+function isCanonicalSession(absDir: string, name: string): boolean {
+  if (CANONICAL_SESSION_ID_RE.test(name)) return true
+  if (existsSync(join(absDir, 'transcript.json'))) return true
+  // source.<ext> files are written by processInbox; their presence means the
+  // dir is a queued session even before its id has been canonicalized.
+  return readdirSync(absDir).some((f) => f.startsWith('source.'))
+}
+
+function countSessions(sessionsDir: string, warnings: string[]): SessionCounts {
   const counts: SessionCounts = { total: 0, transcribed: 0, queued: 0, inbox: 0 }
   if (!existsSync(sessionsDir)) return counts
   for (const entry of readdirSync(sessionsDir)) {
@@ -104,6 +129,10 @@ function countSessions(sessionsDir: string): SessionCounts {
     if (!statSync(abs).isDirectory()) continue
     if (entry === '_inbox') {
       counts.inbox = readdirSync(abs).filter((f) => !f.startsWith('.')).length
+      continue
+    }
+    if (!isCanonicalSession(abs, entry)) {
+      warnings.push(`sessions/${entry}: not a canonical session shape (skipped)`)
       continue
     }
     counts.total += 1

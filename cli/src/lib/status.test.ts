@@ -146,4 +146,55 @@ describe('gatherStatus', () => {
     const elapsed = performance.now() - start
     assert.ok(elapsed < 200, `gatherStatus took ${elapsed.toFixed(1)}ms`)
   })
+
+  // v0.1-08 regression: a migrated legacy seed often has non-canonical
+  // subdirs under sessions/ (Notes/, Transcripts/, Attachments/, …).
+  // They should NOT be counted as sessions; they should surface as warnings.
+  it('does not count non-canonical sessions/ subdirs (Notes, Transcripts, …)', () => {
+    const { path } = initSeed('legacy', { cwd: work })
+    // Carry-over from a legacy 02_Sessions/ migration:
+    mkdirSync(join(path, 'sessions/Notes'), { recursive: true })
+    mkdirSync(join(path, 'sessions/Transcripts'), { recursive: true })
+    mkdirSync(join(path, 'sessions/Attachments'), { recursive: true })
+    // A real session (canonical S\d+) alongside the noise:
+    const s001 = join(path, 'sessions/S001')
+    mkdirSync(s001, { recursive: true })
+    writeFileSync(join(s001, 'transcript.json'), '{}')
+
+    const seed = gatherStatus({ cwd: work }).seeds[0]
+    assert.ok(seed)
+    assert.deepEqual(seed.counts.sessions, {
+      total: 1,
+      transcribed: 1,
+      queued: 0,
+      inbox: 0,
+    })
+    assert.deepEqual(seed.warnings.sort(), [
+      'sessions/Attachments: not a canonical session shape (skipped)',
+      'sessions/Notes: not a canonical session shape (skipped)',
+      'sessions/Transcripts: not a canonical session shape (skipped)',
+    ])
+  })
+
+  // v0.1-08 regression: a session dir without an S\d+ name but with a
+  // source.<ext> file (inbox watcher just dropped it) should still count.
+  it('counts a non-S\\d+ session if it has a source.<ext> file', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const interview = join(path, 'sessions/mindi-geyer')
+    mkdirSync(interview, { recursive: true })
+    writeFileSync(join(interview, 'source.docx'), '')
+
+    const seed = gatherStatus({ cwd: work }).seeds[0]
+    assert.ok(seed)
+    assert.equal(seed.counts.sessions.total, 1)
+    assert.equal(seed.counts.sessions.queued, 1)
+    assert.deepEqual(seed.warnings, [])
+  })
+
+  it('reports an empty warnings array on a clean seed', () => {
+    initSeed('clean', { cwd: work })
+    const seed = gatherStatus({ cwd: work }).seeds[0]
+    assert.ok(seed)
+    assert.deepEqual(seed.warnings, [])
+  })
 })
