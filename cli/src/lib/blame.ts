@@ -57,7 +57,7 @@ interface EventRow {
 
 export function blame(query: string, opts: BlameOptions = {}): BlameResult {
   const cwd = opts.cwd ?? process.cwd()
-  const seedName = opts.seed ?? findSingletonSeed(cwd)
+  const seedName = resolveSeedForBlame(query, opts.seed, cwd)
   const eventsDb = resolve(cwd, 'Seeds', seedName, '.compost', 'events.sqlite')
 
   if (!existsSync(eventsDb)) {
@@ -151,6 +151,51 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
     )
   }
   return matches[0]!.artifact_id
+}
+
+/**
+ * Resolve the seed name for a blame query.
+ *
+ * Precedence:
+ *  1. Explicit `--seed` flag — wins, but errors if a `latest:kind=seed` ref
+ *     embeds a different name.
+ *  2. Seed embedded in the ref (`latest:kind=<seed>`) — used when no flag is
+ *     given; skips the multi-seed singleton check (the ref already disambiguates).
+ *  3. Fall back to `findSingletonSeed`, which errors in multi-seed workspaces.
+ *
+ * The earlier bug: precedence (3) fired before (2) was considered, so
+ * `compost blame latest:ingest_job=Lineage` errored in a multi-seed workspace
+ * even though the ref already named the seed.
+ */
+function resolveSeedForBlame(query: string, seedFlag: string | undefined, cwd: string): string {
+  const latestMatch = LATEST_REF_RE.exec(query)
+  const seedFromRef = latestMatch !== null ? latestMatch[2] : undefined
+
+  if (seedFlag !== undefined && seedFromRef !== undefined && seedFlag !== seedFromRef) {
+    // When the only difference is case AND the flag's exact-cased name is not
+    // a directory entry, the user almost certainly mistyped — surface that
+    // instead of the misleading generic "disagrees" message.
+    //
+    // We readdirSync rather than existsSync because macOS HFS+/APFS is
+    // case-insensitive by default: existsSync('Seeds/lineage') returns true
+    // even when only 'Seeds/Lineage' is on disk. readdir gives us the actual
+    // directory entry names.
+    if (seedFlag.toLowerCase() === seedFromRef.toLowerCase()) {
+      const root = resolve(cwd, 'Seeds')
+      const entries = existsSync(root) ? readdirSync(root) : []
+      if (!entries.includes(seedFlag)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `Seed names are case-sensitive; "${seedFlag}" does not exist. Did you mean "${seedFromRef}"?`,
+        )
+      }
+    }
+    throw new CompostError(
+      'INVALID_INPUT',
+      `--seed "${seedFlag}" disagrees with ref-embedded seed "${seedFromRef}"`,
+    )
+  }
+  return seedFlag ?? seedFromRef ?? findSingletonSeed(cwd)
 }
 
 function findSingletonSeed(cwd: string): string {

@@ -33,6 +33,52 @@ class VADBackend(Protocol):
     def speech_timestamps(self, audio_path: str) -> list[dict[str, int]]: ...
 
 
+SILERO_SAMPLE_RATE = 16000
+
+
+class SileroBackend:  # pragma: no cover - needs torch + weights
+    """Concrete VADBackend wrapping silero-vad.
+
+    The Silero v5 model is loaded once per process. Audio is decoded to a
+    16 kHz mono waveform via the package's `read_audio` helper. Returns
+    speech segment boundaries in milliseconds.
+    """
+
+    def __init__(self) -> None:
+        try:
+            from silero_vad import (  # type: ignore
+                get_speech_timestamps,
+                load_silero_vad,
+                read_audio,
+            )
+        except ImportError as e:
+            raise RuntimeError(
+                "silero-vad is not installed. Install the asr extra: pip install -e '.[asr]'"
+            ) from e
+
+        self._model = load_silero_vad()
+        self._read_audio = read_audio
+        self._get_speech_timestamps = get_speech_timestamps
+
+    def speech_timestamps(self, audio_path: str) -> list[dict[str, int]]:
+        wav = self._read_audio(audio_path, sampling_rate=SILERO_SAMPLE_RATE)
+        raw = self._get_speech_timestamps(
+            wav,
+            self._model,
+            sampling_rate=SILERO_SAMPLE_RATE,
+            return_seconds=False,
+        )
+        # `raw` is a list of {start, end} in samples; convert to ms.
+        ms_per_sample = 1000 / SILERO_SAMPLE_RATE
+        return [
+            {
+                "start_ms": int(seg["start"] * ms_per_sample),
+                "end_ms": int(seg["end"] * ms_per_sample),
+            }
+            for seg in raw
+        ]
+
+
 @lru_cache(maxsize=1)
 def _load_silero() -> VADBackend:  # pragma: no cover - needs torch + weights
     try:
@@ -41,10 +87,7 @@ def _load_silero() -> VADBackend:  # pragma: no cover - needs torch + weights
         raise RuntimeError(
             "torch/silero not installed. Install the asr extra: pip install -e '.[asr]'"
         ) from e
-    raise NotImplementedError(
-        "Real Silero v5 backend wiring runs in the OrbStack container; "
-        "tests inject a fake VADBackend."
-    )
+    return SileroBackend()
 
 
 def speech_to_silences(
