@@ -144,13 +144,14 @@ def run_pipeline(
         "cues": [],
         "frames": [],
         "glossary_refs": [],
+        # provenance.frame_capture and frame_annotation are optional strings per
+        # transcript.schema.json; omit them entirely until the frame-capture
+        # worker (v0.2-12) and the vision annotator (v0.2 later) ship.
         "provenance": {
             "transcriber": config.transcriber_version,
             "asr_model": config.asr_model_tag,
             "diarizer": config.diarizer_tag,
             "audio_cues": f"{config.vad_tag} + whisper-events",
-            "frame_capture": None,
-            "frame_annotation": None,
         },
     }
 
