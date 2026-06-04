@@ -31,16 +31,38 @@ describe('config get/set', () => {
     })
   })
 
-  it('setConfigValue coerces booleans, integers, and JSON arrays', () => {
+  it('setConfigValue default behavior is always-string (no coercion)', () => {
     const raw: Record<string, unknown> = {}
     setConfigValue(raw, 'features.experimental', 'true')
     setConfigValue(raw, 'limits.max_workers', '4')
     setConfigValue(raw, 'kinds', '["a","b"]')
     setConfigValue(raw, 'note', 'plain string')
+    // Every value is the literal string the user typed — no silent type drift.
+    assert.equal(raw.features && (raw.features as Record<string, unknown>).experimental, 'true')
+    assert.equal(raw.limits && (raw.limits as Record<string, unknown>).max_workers, '4')
+    assert.equal(raw.kinds, '["a","b"]')
+    assert.equal(raw.note, 'plain string')
+  })
+
+  it('setConfigValue coerces correctly when an explicit type is passed', () => {
+    const raw: Record<string, unknown> = {}
+    setConfigValue(raw, 'features.experimental', 'true', 'bool')
+    setConfigValue(raw, 'limits.max_workers', '4', 'int')
+    setConfigValue(raw, 'limits.ratio', '0.75', 'float')
+    setConfigValue(raw, 'kinds', '["a","b"]', 'json')
+    setConfigValue(raw, 'note', '1', 'string') // force string even if numeric-looking
     assert.equal(raw.features && (raw.features as Record<string, unknown>).experimental, true)
     assert.equal(raw.limits && (raw.limits as Record<string, unknown>).max_workers, 4)
+    assert.equal(raw.limits && (raw.limits as Record<string, unknown>).ratio, 0.75)
     assert.deepEqual(raw.kinds, ['a', 'b'])
-    assert.equal(raw.note, 'plain string')
+    assert.equal(raw.note, '1')
+  })
+
+  it('setConfigValue throws on type-mismatch input', () => {
+    const raw: Record<string, unknown> = {}
+    assert.throws(() => setConfigValue(raw, 'k', 'yes', 'bool'), /requires "true" or "false"/)
+    assert.throws(() => setConfigValue(raw, 'k', '3.5', 'int'), /requires an integer/)
+    assert.throws(() => setConfigValue(raw, 'k', 'not json', 'json'), /invalid JSON/)
   })
 
   it('saveConfig + loadConfig round-trip a write', () => {

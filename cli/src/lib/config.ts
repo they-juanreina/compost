@@ -66,9 +66,33 @@ export function getConfigValue(raw: Record<string, unknown>, key: string): unkno
   return cursor
 }
 
-/** Set a dotted key in the raw TOML object. Coerces simple JSON-y types
- * ("true", "42", "[a,b]") at the leaf; strings pass through unchanged. */
-export function setConfigValue(raw: Record<string, unknown>, key: string, value: string): void {
+/** The set of types `compost config set --type=<X>` accepts. */
+export type ConfigValueType = 'string' | 'bool' | 'int' | 'float' | 'json'
+
+/**
+ * Set a dotted key in the raw TOML object.
+ *
+ * Default behavior: store the value as a **string**. This matches `git config`,
+ * `gh config`, `aws configure`: leaf values are strings unless explicitly
+ * typed otherwise. This eliminates silent type drift (a researcher typing
+ * `compost config set features.beta true` previously stored a boolean and
+ * later confused `cfg.features.beta === "true"` checks).
+ *
+ * To store a non-string type, pass `type`:
+ *   - `bool`  → 'true' | 'false'
+ *   - `int`   → integer (must match /^-?\d+$/)
+ *   - `float` → decimal (must match /^-?\d+(\.\d+)?$/)
+ *   - `json`  → JSON.parse the value (arrays, objects, nested structures)
+ *
+ * Agents writing config programmatically should always pass `type` to be
+ * explicit. Humans typing strings can leave it off.
+ */
+export function setConfigValue(
+  raw: Record<string, unknown>,
+  key: string,
+  value: string,
+  type: ConfigValueType = 'string',
+): void {
   const parts = key.split('.')
   if (parts.length === 0) {
     throw new CompostError('INVALID_INPUT', 'Empty config key')
@@ -82,39 +106,59 @@ export function setConfigValue(raw: Record<string, unknown>, key: string, value:
     }
     cursor = cursor[part] as Record<string, unknown>
   }
-  cursor[parts[parts.length - 1] as string] = coerceValue(value)
+  cursor[parts[parts.length - 1] as string] = coerceTyped(value, type)
 }
 
-function coerceValue(value: string): unknown {
-  // Empty string → empty string, not undefined
-  if (value.length === 0) return ''
-  // Booleans
-  if (value === 'true') return true
-  if (value === 'false') return false
-  // Integers and floats (no leading zeros except "0" itself)
-  if (/^-?(0|[1-9]\d*)(\.\d+)?$/.test(value)) {
-    const n = Number(value)
-    if (Number.isFinite(n)) return n
-  }
-  // Try to parse as JSON for arrays/objects: `[a,b]`, `["a","b"]`
-  if (
-    (value.startsWith('[') && value.endsWith(']')) ||
-    (value.startsWith('{') && value.endsWith('}'))
-  ) {
-    try {
-      return JSON.parse(value)
-    } catch {
-      // fall through — leave as string
+function coerceTyped(value: string, type: ConfigValueType): unknown {
+  switch (type) {
+    case 'string':
+      return value
+    case 'bool':
+      if (value === 'true') return true
+      if (value === 'false') return false
+      throw new CompostError(
+        'INVALID_INPUT',
+        `--type=bool requires "true" or "false"; got ${JSON.stringify(value)}`,
+      )
+    case 'int': {
+      if (!/^-?\d+$/.test(value)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `--type=int requires an integer; got ${JSON.stringify(value)}`,
+        )
+      }
+      const n = Number(value)
+      if (!Number.isFinite(n) || !Number.isInteger(n)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `--type=int value out of range: ${JSON.stringify(value)}`,
+        )
+      }
+      return n
     }
+    case 'float': {
+      if (!/^-?\d+(\.\d+)?$/.test(value)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `--type=float requires a decimal number; got ${JSON.stringify(value)}`,
+        )
+      }
+      const n = Number(value)
+      if (!Number.isFinite(n)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `--type=float value not finite: ${JSON.stringify(value)}`,
+        )
+      }
+      return n
+    }
+    case 'json':
+      try {
+        return JSON.parse(value)
+      } catch (cause) {
+        throw new CompostError('INVALID_INPUT', `--type=json: invalid JSON: ${value}`, { cause })
+      }
   }
-  // Quoted string — strip the quotes
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1)
-  }
-  return value
 }
 
 /** Write the raw TOML object back to .compost/config.toml. */
