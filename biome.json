@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/dist", "!**/.next", "!**/.compost", "!**/node_modules"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/.next",
+      "!**/.compost",
+      "!**/node_modules",
+      "!**/schemas.generated.ts"
+    ]
   },
   "formatter": {
     "enabled": true,

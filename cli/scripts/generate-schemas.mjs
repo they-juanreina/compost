@@ -15,15 +15,17 @@
  * Run via `pnpm --filter compost-cli run build` (wired in package.json's
  * `build` script as a prebuild step).
  */
-import { readFileSync, writeFileSync, readdirSync } from 'node:fs'
-import { join, dirname } from 'node:path'
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SCHEMA_DIR = join(__dirname, '..', '..', 'schema')
 const OUTPUT = join(__dirname, '..', 'src', 'lib', 'schemas.generated.ts')
 
-const files = readdirSync(SCHEMA_DIR).filter((f) => f.endsWith('.json')).sort()
+const files = readdirSync(SCHEMA_DIR)
+  .filter((f) => f.endsWith('.json'))
+  .sort()
 
 const banner = `/**
  * GENERATED — DO NOT EDIT. Run \`pnpm --filter compost-cli run build\` to regenerate.
@@ -43,9 +45,7 @@ for (const f of files) {
     .replace(/\.json$/, '')
     .replace(/\./g, '_')
     .toUpperCase()
-  exports.push(
-    `export const ${name}: Record<string, unknown> = ${JSON.stringify(json, null, 2)}`,
-  )
+  exports.push(`export const ${name}: Record<string, unknown> = ${JSON.stringify(json, null, 2)}`)
 }
 
 const body =
@@ -55,7 +55,15 @@ const body =
   exports.join('\n\n') +
   '\n\n' +
   `export const ALL_SCHEMAS: Record<string, Record<string, unknown>> = {\n` +
-  files.map((f) => `  ${JSON.stringify(f)}: ${f.replace(/\.json$/, '').replace(/\./g, '_').toUpperCase()},`).join('\n') +
+  files
+    .map(
+      (f) =>
+        `  ${JSON.stringify(f)}: ${f
+          .replace(/\.json$/, '')
+          .replace(/\./g, '_')
+          .toUpperCase()},`,
+    )
+    .join('\n') +
   '\n}\n'
 
 writeFileSync(OUTPUT, body, 'utf8')
