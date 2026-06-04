@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
-import { retrieveChunks } from '../lib/retrieve.js'
+import { buildDenseRetriever, retrieveChunks } from '../lib/retrieve.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -24,8 +24,11 @@ export function registerSearch(program: Command): void {
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const topK = Number.parseInt(flags.topK ?? '8', 10)
-        const { retrieved, corpus } = await retrieveChunks(seedPath, query, {
+        // Attach the dense (LanceDB) retriever when available; null → BM25-only.
+        const dense = await buildDenseRetriever(seedPath)
+        const { retrieved, corpus, mode } = await retrieveChunks(seedPath, query, {
           topK: Number.isFinite(topK) && topK > 0 ? topK : 8,
+          dense,
         })
 
         const results = retrieved.map((c) => ({
@@ -46,8 +49,9 @@ export function registerSearch(program: Command): void {
             query,
             indexed_chunks: corpus.chunks.length,
             returned: results.length,
-            // BM25-only today; dense/LanceDB ranking is a follow-up (#137-adjacent).
-            retrieval: 'bm25',
+            // 'hybrid' (BM25 + dense via RRF) when the LanceDB index + an
+            // embeddings provider are available; 'bm25' otherwise.
+            retrieval: mode,
             results,
           },
           out,

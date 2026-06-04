@@ -88,4 +88,53 @@ describe('retrieve', () => {
     assert.equal(corpus.chunks.length, 0)
     assert.equal(retrieved.length, 0)
   })
+
+  // #151: reports mode 'bm25' when no dense retriever, 'hybrid' when one is
+  // injected — and a dense-only semantic match surfaces a chunk pure BM25
+  // (which needs a lexical overlap) would rank lower or miss.
+  it('reports mode bm25 with no dense retriever', async () => {
+    const path = seedWithSession()
+    const { mode } = await retrieveChunks(path, 'verificar', {})
+    assert.equal(mode, 'bm25')
+  })
+
+  it('fuses an injected dense retriever (mode hybrid) and surfaces a semantic-only hit', async () => {
+    const path = seedWithSession()
+    // A fake dense retriever that "understands" a paraphrase with zero lexical
+    // overlap with the corpus — exactly what BM25 cannot match.
+    const dense = {
+      async search() {
+        return [
+          {
+            id: 'utterance:dense-hit',
+            text: 'No sé si confiar en la alerta automática.',
+            text_sha: 'sha-dense',
+            score: 0.95,
+            metadata: {
+              seed: 'demo',
+              session: 'S001',
+              speaker_id: 'S2',
+              start_ms: 0,
+              end_ms: 3000,
+              source_page: null,
+              highlight_ids: [],
+              code_ids: [],
+              actor_type: 'agent' as const,
+              chunk_type: 'utterance' as const,
+            },
+          },
+        ]
+      },
+    }
+    // Query has no lexical overlap with "confiar" — BM25 alone would miss it.
+    const { retrieved, mode } = await retrieveChunks(path, 'trustworthiness of warnings', {
+      dense,
+      topK: 5,
+    })
+    assert.equal(mode, 'hybrid')
+    assert.ok(
+      retrieved.some((c) => c.id === 'utterance:dense-hit'),
+      'the dense-only semantic hit should appear in the fused results',
+    )
+  })
 })

@@ -145,6 +145,40 @@ export async function openLanceDBForWrite(uri: string, vectorDim: number): Promi
   return new LanceDBWriter(table as unknown as LanceWritableTable)
 }
 
+/**
+ * Open the `chunks` table for reading and return a LanceDBRetriever, or null
+ * when the index doesn't exist yet (no embed-worker run) or the native binary
+ * isn't installed. Never throws — a missing/unavailable index means the caller
+ * falls back to BM25-only retrieval, not an error.
+ */
+export async function openLanceDBForRead(
+  uri: string,
+  embedQuery: (q: string) => Promise<number[]>,
+): Promise<LanceDBRetriever | null> {
+  let mod: typeof import('@lancedb/lancedb')
+  try {
+    mod = await import('@lancedb/lancedb')
+  } catch {
+    return null // native binary absent → BM25-only
+  }
+  try {
+    const db = await mod.connect(uri)
+    const names = await db.tableNames()
+    if (!names.includes(VECTOR_TABLE)) return null // index not built yet
+    const nativeTable = await db.openTable(VECTOR_TABLE)
+    // Adapt the native query builder to our minimal LanceTable.search shape.
+    const table: LanceTable = {
+      async search(vector: number[], k: number) {
+        const rows = await nativeTable.search(vector).limit(k).toArray()
+        return rows as Array<VectorRecord & { _distance: number }>
+      },
+    }
+    return new LanceDBRetriever(table, embedQuery)
+  } catch {
+    return null
+  }
+}
+
 /** A DenseRetriever backed by LanceDB. Needs a query embedder (text → vector)
  * and a table handle; both injected so fusion stays testable. */
 export class LanceDBRetriever implements DenseRetriever {

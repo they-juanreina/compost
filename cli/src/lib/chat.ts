@@ -3,7 +3,7 @@ import { join } from 'node:path'
 
 import { type Answer, type Chunk, validateAnswer } from 'compost-retrieval'
 
-import { retrieveChunks } from './retrieve.js'
+import { buildDenseRetriever, retrieveChunks } from './retrieve.js'
 
 export interface ChatCitation {
   utterance_id: string
@@ -47,7 +47,11 @@ async function answerQuestion(
   question: string,
   deps: ChatDeps,
 ): Promise<ChatResult> {
-  const { retrieved, corpus } = await retrieveChunks(seedPath, question, { topK: deps.topK ?? 8 })
+  const dense = await buildDenseRetriever(seedPath)
+  const { retrieved, corpus } = await retrieveChunks(seedPath, question, {
+    topK: deps.topK ?? 8,
+    dense,
+  })
   if (corpus.chunks.length === 0) return insufficient('No indexed sessions in this seed yet.', 0)
   if (retrieved.length === 0) return insufficient('Nothing in the corpus matched the question.', 0)
   const evidence = corpus.evidence
