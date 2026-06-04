@@ -4,6 +4,8 @@ import { registerBlame } from './commands/blame.js'
 import { registerChat } from './commands/chat.js'
 import { registerCode } from './commands/code.js'
 import { registerConfig } from './commands/config.js'
+import { registerCreate } from './commands/create.js'
+import { registerEndorse } from './commands/endorse.js'
 import { registerEvals } from './commands/evals.js'
 import { registerExport } from './commands/export.js'
 import { registerIngest } from './commands/ingest.js'
@@ -59,6 +61,8 @@ export function buildProgram(): Command {
   registerSynthesize(program)
   registerSearch(program)
   registerSession(program)
+  registerCreate(program)
+  registerEndorse(program)
   registerQuery(program)
   registerChat(program)
   registerServe(program)
