@@ -1,0 +1,29 @@
+{
+  "stages": [
+    {
+      "name": "Alert arrives",
+      "touchpoints": ["automated alert"],
+      "emotion": "wary",
+      "pains": [
+        { "claim": "cannot tell if alert is real", "evidence": ["H-001"] },
+        { "claim": "defaults to manual verification", "evidence": ["H-002"] }
+      ],
+      "opportunities": [
+        { "claim": "surface a confidence signal", "from_theme": "T-distrust-of-automation" }
+      ]
+    },
+    {
+      "name": "User decides to act",
+      "touchpoints": ["manual override"],
+      "emotion": "in control",
+      "pains": [],
+      "opportunities": [
+        {
+          "claim": "expose a clear override that preserves audit trail",
+          "from_theme": "T-control-earns-trust",
+          "evidence": ["H-003"]
+        }
+      ]
+    }
+  ]
+}

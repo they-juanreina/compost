@@ -1,0 +1,36 @@
+{
+  "seed": "alerts",
+  "stage_order": "funnel",
+  "themes": [
+    {
+      "id": "T-distrust-of-automation",
+      "name": "distrust-of-automation",
+      "highlights": [
+        {
+          "id": "H-001",
+          "session_id": "S001",
+          "utterance_id": "U-0002",
+          "quote": "no sé si confiar"
+        },
+        {
+          "id": "H-002",
+          "session_id": "S001",
+          "utterance_id": "U-0005",
+          "quote": "prefiero verificar manualmente"
+        }
+      ]
+    },
+    {
+      "id": "T-control-earns-trust",
+      "name": "control-earns-trust",
+      "highlights": [
+        {
+          "id": "H-003",
+          "session_id": "S001",
+          "utterance_id": "U-0011",
+          "quote": "si yo puedo anular, confío"
+        }
+      ]
+    }
+  ]
+}

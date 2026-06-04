@@ -1,0 +1,54 @@
+{
+  "seed": "onboarding",
+  "stage_order": "chronological",
+  "themes": [
+    {
+      "id": "T-setup-friction",
+      "name": "setup-friction",
+      "highlights": [
+        {
+          "id": "H-101",
+          "session_id": "S001",
+          "utterance_id": "U-0003",
+          "quote": "no entendí qué tenía que conectar primero"
+        },
+        {
+          "id": "H-102",
+          "session_id": "S002",
+          "utterance_id": "U-0001",
+          "quote": "intenté tres veces antes de lograrlo"
+        }
+      ]
+    },
+    {
+      "id": "T-first-success",
+      "name": "first-success",
+      "highlights": [
+        {
+          "id": "H-110",
+          "session_id": "S001",
+          "utterance_id": "U-0024",
+          "quote": "ahí sí, ya vi que funcionaba"
+        },
+        {
+          "id": "H-111",
+          "session_id": "S002",
+          "utterance_id": "U-0019",
+          "quote": "cuando vi el primer resultado me relajé"
+        }
+      ]
+    },
+    {
+      "id": "T-trusts-the-tool",
+      "name": "trusts-the-tool",
+      "highlights": [
+        {
+          "id": "H-120",
+          "session_id": "S002",
+          "utterance_id": "U-0040",
+          "quote": "ya lo dejo correr solo"
+        }
+      ]
+    }
+  ]
+}

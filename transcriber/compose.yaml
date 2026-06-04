@@ -12,16 +12,27 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        # Set INSTALL_ASR=0 to build a slim image (skeleton only, no ML deps)
+        # for quick iteration on routes / legacy code. Default is full ASR install.
+        INSTALL_ASR: "1"
     image: compost/transcriber:dev
     container_name: compost-transcriber
     ports:
       - "127.0.0.1:7862:7862"
     volumes:
       - ../Seeds:/seeds:rw
+      # Persistent model cache: Whisper + pyannote weights download once, then
+      # subsequent container rebuilds are instant.
+      - compost-models:/models:rw
     environment:
       COMPOST_SEEDS_ROOT: /seeds
       UVICORN_WORKERS: "1"
       LOG_LEVEL: info
+      # HuggingFace token for pyannote (gated). Read from the host env or .env
+      # so it never lands in the image. Researcher must accept the license at
+      # hf.co/pyannote/speaker-diarization-3.1 the first time.
+      HUGGINGFACE_TOKEN: ${HUGGINGFACE_TOKEN:-}
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:7862/health || exit 1"]
       interval: 15s
@@ -29,3 +40,7 @@ services:
       retries: 3
       start_period: 10s
     restart: unless-stopped
+
+volumes:
+  compost-models:
+    name: compost-models

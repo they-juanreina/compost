@@ -19,6 +19,11 @@ asr = [
     "whisperx",
     "pyannote.audio>=3.3",
     "silero-vad",
+    # WhisperX brings these transitively but pinning lets the lock file note
+    # the M1-Mac-friendly compute path.
+    "torch>=2.3",
+    "torchaudio>=2.3",
+    "ffmpeg-python",
 ]
 frames = [
     "imagehash",

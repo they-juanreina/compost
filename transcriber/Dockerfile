@@ -17,14 +17,27 @@ WORKDIR /app
 
 # Install Python deps first for layer caching.
 COPY --chown=compost:compost pyproject.toml /app/pyproject.toml
+ARG INSTALL_ASR=1
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e .
+    && if [ "$INSTALL_ASR" = "1" ]; then \
+         pip install --no-cache-dir -e '.[asr]'; \
+       else \
+         pip install --no-cache-dir -e .; \
+       fi
 
 COPY --chown=compost:compost app /app/app
 
+# Cache HuggingFace + Whisper model weights on a persistent volume so
+# subsequent runs are offline. Mount this from the host (compose.yaml) to
+# avoid re-downloading multi-GB models on every container rebuild.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    COMPOST_SEEDS_ROOT=/seeds
+    COMPOST_SEEDS_ROOT=/seeds \
+    HF_HOME=/models/huggingface \
+    XDG_CACHE_HOME=/models/cache \
+    TRANSFORMERS_CACHE=/models/huggingface
+
+RUN mkdir -p /models/huggingface /models/cache && chown -R compost:compost /models
 
 USER compost
 

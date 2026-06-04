@@ -13,6 +13,7 @@ import { registerModels } from './commands/models.js'
 import { registerQuery } from './commands/query.js'
 import { registerReindex } from './commands/reindex.js'
 import { registerRescan } from './commands/rescan.js'
+import { registerSaturate } from './commands/saturate.js'
 import { registerServe } from './commands/serve.js'
 import { registerSnap } from './commands/snap.js'
 import { registerStatus } from './commands/status.js'
@@ -49,6 +50,7 @@ export function buildProgram(): Command {
   registerExport(program)
   registerReindex(program)
   registerRescan(program)
+  registerSaturate(program)
   registerValidate(program)
   registerTag(program)
   registerCode(program)
