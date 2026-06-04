@@ -218,4 +218,65 @@ describe('blame', () => {
     assert.equal(evt.model, 'anthropic:claude')
     assert.equal(evt.prompt_hash, promptHash)
   })
+
+  // v0.1-08 regression: in a multi-seed workspace, `latest:kind=seed` should
+  // resolve without requiring an explicit --seed flag — the ref already names
+  // the seed. The earlier bug fired the multi-seed guard before parsing the ref.
+  it('resolves `latest:kind=seed` in a multi-seed workspace without --seed', () => {
+    const { path: alpha } = initSeed('alpha', { cwd: work })
+    initSeed('beta', { cwd: work })
+    seedEvents(join(alpha, '.compost', 'events.sqlite'), [
+      { artifact_kind: 'ingest_job', action: 'create', artifact_id: sha('a-1') },
+    ])
+    const result = blame('latest:ingest_job=alpha', { cwd: work })
+    assert.equal(result.seed, 'alpha')
+    assert.equal(result.resolved_artifact_id, sha('a-1'))
+  })
+
+  it('errors when --seed disagrees with the ref-embedded seed name', () => {
+    const { path: alpha } = initSeed('alpha', { cwd: work })
+    initSeed('beta', { cwd: work })
+    seedEvents(join(alpha, '.compost', 'events.sqlite'), [
+      { artifact_kind: 'ingest_job', action: 'create', artifact_id: sha('a-2') },
+    ])
+    assert.throws(
+      () => blame('latest:ingest_job=alpha', { cwd: work, seed: 'beta' }),
+      (err: unknown) =>
+        err instanceof CompostError &&
+        err.code === 'INVALID_INPUT' &&
+        /disagrees/.test(err.message),
+    )
+  })
+
+  it('accepts --seed matching the ref-embedded seed (no error)', () => {
+    const { path: alpha } = initSeed('alpha', { cwd: work })
+    initSeed('beta', { cwd: work })
+    seedEvents(join(alpha, '.compost', 'events.sqlite'), [
+      { artifact_kind: 'ingest_job', action: 'create', artifact_id: sha('a-3') },
+    ])
+    const result = blame('latest:ingest_job=alpha', { cwd: work, seed: 'alpha' })
+    assert.equal(result.seed, 'alpha')
+  })
+
+  // v0.1-08 UX polish: a case-only mismatch (the flag's exact-cased name is not
+  // a directory entry) produces a helpful "case-sensitive" error pointing at the
+  // ref-embedded name, not the misleading generic "disagrees" message.
+  //
+  // The check uses readdirSync rather than existsSync because macOS HFS+/APFS
+  // is case-insensitive by default — existsSync would lie.
+  it('explains case-sensitivity when --seed only differs by case and is not an actual directory entry', () => {
+    const { path: lineage } = initSeed('Lineage', { cwd: work })
+    initSeed('beta', { cwd: work })
+    seedEvents(join(lineage, '.compost', 'events.sqlite'), [
+      { artifact_kind: 'ingest_job', action: 'create', artifact_id: sha('cap-1') },
+    ])
+    assert.throws(
+      () => blame('latest:ingest_job=Lineage', { cwd: work, seed: 'lineage' }),
+      (err: unknown) =>
+        err instanceof CompostError &&
+        err.code === 'INVALID_INPUT' &&
+        /case-sensitive/i.test(err.message) &&
+        /Did you mean "Lineage"/.test(err.message),
+    )
+  })
 })

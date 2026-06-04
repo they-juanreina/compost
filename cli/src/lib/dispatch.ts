@@ -11,8 +11,10 @@ export interface Dispatch {
 const AUDIO = new Set(['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus'])
 const VIDEO = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v'])
 const DOCUMENT = new Set(['.pdf', '.docx', '.pptx'])
-const TABULAR = new Set(['.csv', '.tsv'])
-const MARKDOWN = new Set(['.md', '.markdown'])
+// `.xlsx` lands under tabular (column-mapped via openpyxl in legacy ingest).
+// `.txt` lands under markdown (Otter/Zoom exports often arrive as plain text).
+const TABULAR = new Set(['.csv', '.tsv', '.xlsx'])
+const MARKDOWN = new Set(['.md', '.markdown', '.txt'])
 
 /** Classify a file by extension into a worker dispatch, or null if unsupported. */
 export function classify(path: string): Dispatch | null {

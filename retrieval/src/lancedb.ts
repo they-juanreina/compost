@@ -68,6 +68,83 @@ export interface LanceTable {
   search(vector: number[], k: number): Promise<Array<VectorRecord & { _distance: number }>>
 }
 
+/** Subset of the native lancedb table surface our writer needs. Injected in tests. */
+export interface LanceWritableTable {
+  add(rows: VectorRecord[]): Promise<void>
+  countRows(): Promise<number>
+  /** Project text_sha to filter incoming records for idempotent upserts. */
+  query(): {
+    select(cols: string[]): { toArray(): Promise<Array<{ text_sha: string }>> }
+  }
+}
+
+/**
+ * Idempotent writer: filters incoming records against the SHAs already in the
+ * table, appends the new ones. Re-running over identical content is a no-op.
+ */
+export class LanceDBWriter {
+  constructor(private readonly table: LanceWritableTable) {}
+
+  async upsertByTextSha(records: VectorRecord[]): Promise<number> {
+    if (records.length === 0) return 0
+    const existing = await this.table.query().select(['text_sha']).toArray()
+    const have = new Set(existing.map((r) => r.text_sha))
+    const fresh = records.filter((r) => !have.has(r.text_sha))
+    if (fresh.length > 0) await this.table.add(fresh)
+    return fresh.length
+  }
+
+  async size(): Promise<number> {
+    return this.table.countRows()
+  }
+}
+
+/**
+ * Lazily open the native lancedb connection and return a writer. Bootstraps
+ * an empty table on first use; later calls just reopen.
+ *
+ * Kept lazy so the retrieval library remains importable (and unit-testable)
+ * without the ~50MB native binary installed — callers without lancedb in
+ * `node_modules` see a clear runtime error instead of an import failure at
+ * package-load time.
+ */
+export async function openLanceDBForWrite(uri: string, vectorDim: number): Promise<LanceDBWriter> {
+  let mod: typeof import('@lancedb/lancedb')
+  try {
+    mod = await import('@lancedb/lancedb')
+  } catch (_e) {
+    throw new Error(
+      '@lancedb/lancedb is not installed. The embed-worker requires it. ' +
+        'Run `pnpm install` from the repo root, then retry.',
+    )
+  }
+  const db = await mod.connect(uri)
+  const names = await db.tableNames()
+  let table: Awaited<ReturnType<typeof db.openTable>>
+  if (names.includes(VECTOR_TABLE)) {
+    table = await db.openTable(VECTOR_TABLE)
+  } else {
+    // LanceDB needs at least one row to infer the schema. Insert a sentinel
+    // we immediately delete so the table exists with the right shape.
+    const sentinel: VectorRecord = {
+      id: '__bootstrap__',
+      kind: 'utterance',
+      seed: '__bootstrap__',
+      session: '__bootstrap__',
+      speaker_id: null,
+      start_ms: null,
+      end_ms: null,
+      text: '',
+      vector: new Array(vectorDim).fill(0),
+      metadata: '{}',
+      text_sha: '__bootstrap__',
+    }
+    table = await db.createTable(VECTOR_TABLE, [sentinel as unknown as Record<string, unknown>])
+    await table.delete("id = '__bootstrap__'")
+  }
+  return new LanceDBWriter(table as unknown as LanceWritableTable)
+}
+
 /** A DenseRetriever backed by LanceDB. Needs a query embedder (text → vector)
  * and a table handle; both injected so fusion stays testable. */
 export class LanceDBRetriever implements DenseRetriever {

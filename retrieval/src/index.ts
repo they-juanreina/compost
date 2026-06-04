@@ -33,7 +33,10 @@ export {
   buildVectorRecords,
   type IndexableArtifact,
   LanceDBRetriever,
+  LanceDBWriter,
   type LanceTable,
+  type LanceWritableTable,
+  openLanceDBForWrite,
   VECTOR_TABLE,
   type VectorRecord,
 } from './lancedb.js'

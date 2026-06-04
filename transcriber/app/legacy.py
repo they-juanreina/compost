@@ -58,26 +58,57 @@ def _session_id(path: str | Path) -> str:
     return f"DOC-{safe}"[:64]
 
 
-# ---------------------------------------------------------------- CSV
+# ---------------------------------------------------------------- CSV / XLSX
+
+# Auto-detect priority for the "text" column. First case-insensitive match
+# in the source's header wins. Falls back to the first column.
+TEXT_COL_CANDIDATES = (
+    "text",
+    "transcript",
+    "content",
+    "utterance",
+    "quote",
+    "message",
+    "body",
+)
+
+
+def _auto_text_col(fieldnames: list[str]) -> str:
+    """Pick the most-likely text column from a header. Case-insensitive match
+    against TEXT_COL_CANDIDATES, then a first-column fallback."""
+    lower = {f.lower(): f for f in fieldnames}
+    for candidate in TEXT_COL_CANDIDATES:
+        if candidate in lower:
+            return lower[candidate]
+    return fieldnames[0]
 
 
 def ingest_csv(
     path: str | Path,
-    text_col: str,
+    text_col: str | None = None,
     speaker_col: str | None = None,
 ) -> dict[str, Any]:
-    """One utterance per row. `text_col` maps the transcript text; optional
-    `speaker_col` is recorded in the utterance annotation (documents have a
-    single synthetic speaker)."""
+    """One utterance per row.
+
+    `text_col=None` triggers auto-detect: text → transcript → content →
+    utterance → quote → message → body (case-insensitive). Falls back to
+    the first column. The resolved column is recorded on the output's
+    `provenance.text_col_resolved` for caller visibility.
+    """
     path = str(path)
     doc = _base(_session_id(path), path)
     with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        if reader.fieldnames is None or text_col not in reader.fieldnames:
-            raise ValueError(f"CSV has no column '{text_col}' (columns: {reader.fieldnames})")
+        if reader.fieldnames is None:
+            raise ValueError(f"CSV has no header row: {path}")
+        fields = list(reader.fieldnames)
+        resolved = text_col if text_col is not None else _auto_text_col(fields)
+        if resolved not in fields:
+            raise ValueError(f"CSV has no column '{resolved}' (columns: {fields})")
+        doc["provenance"]["text_col_resolved"] = resolved
         idx = 1
         for row in reader:
-            text = (row.get(text_col) or "").strip()
+            text = (row.get(resolved) or "").strip()
             if not text:
                 continue
             ann = None
@@ -201,15 +232,124 @@ def _ocr_page(page: Any) -> str:  # pragma: no cover - needs tesseract + a raste
         return ""
 
 
+# ---------------------------------------------------------------- Markdown / Text
+
+
+def ingest_text(path: str | Path) -> dict[str, Any]:
+    """Read a plain-text or Markdown file and split into paragraph utterances.
+
+    Both `.txt` (Otter / Zoom exports) and `.md` land here. Top-level
+    headings are recorded as section annotations on subsequent utterances,
+    mirroring the docx behavior.
+    """
+    path = str(path)
+    doc = _base(_session_id(path), path)
+    with open(path, encoding="utf-8") as f:
+        body = f.read()
+
+    current_heading: str | None = None
+    idx = 1
+    for para in _paragraphs(body):
+        # Markdown ATX heading line (`# ` through `###### `) → record as section
+        # anchor, skip the utterance. Setext (==== / ---- underline) not yet
+        # supported — rare in mod-era markdown.
+        if para.startswith(("# ", "## ", "### ", "#### ", "##### ", "###### ")):
+            current_heading = para.lstrip("# ").strip()
+            continue
+        ann = f"[section: {current_heading}]" if current_heading else None
+        doc["utterances"].append(_utt(idx, para, annotation=ann))
+        idx += 1
+    return doc
+
+
+# ---------------------------------------------------------------- XLSX
+
+
+def ingest_xlsx(
+    path: str | Path,
+    text_col: str | None = None,
+    speaker_col: str | None = None,
+    sheet: str | None = None,
+) -> dict[str, Any]:
+    """One utterance per row of a spreadsheet.
+
+    `text_col=None` triggers the same auto-detect as `ingest_csv`. The
+    resolved column lands on `provenance.text_col_resolved`. Use `sheet`
+    to pick a non-default tab.
+    """
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except ImportError as e:
+        raise RuntimeError("openpyxl not installed (pip install -e '.[legacy]')") from e
+
+    path = str(path)
+    doc = _base(_session_id(path), path)
+    wb = load_workbook(path, read_only=True, data_only=True)
+    ws = wb[sheet] if sheet is not None else wb.active
+    if ws is None:
+        raise ValueError(f"XLSX has no worksheets: {path}")
+
+    rows = ws.iter_rows(values_only=True)
+    header_row = next(rows, None)
+    if header_row is None:
+        return doc  # empty sheet
+    header = [str(c) if c is not None else "" for c in header_row]
+    resolved = text_col if text_col is not None else _auto_text_col(header)
+    if resolved not in header:
+        raise ValueError(f"XLSX has no column '{resolved}' (columns: {header})")
+    doc["provenance"]["text_col_resolved"] = resolved
+    text_idx = header.index(resolved)
+    speaker_idx = header.index(speaker_col) if speaker_col in header else -1
+
+    utt_idx = 1
+    # Track rows where the text column is empty but the row has other data —
+    # a strong proxy for "Excel never evaluated this formula so openpyxl
+    # returned None". Researchers seeing this should open the file in Excel
+    # once or pre-export to CSV.
+    rows_with_data_but_empty_text = 0
+    for row in rows:
+        if row is None:
+            continue
+        cell = row[text_idx] if text_idx < len(row) else None
+        text = str(cell).strip() if cell is not None else ""
+        if not text:
+            # Row has data elsewhere → likely an un-evaluated formula in the text column.
+            if any(c is not None and str(c).strip() for c in row):
+                rows_with_data_but_empty_text += 1
+            continue
+        ann = None
+        if speaker_idx >= 0 and speaker_idx < len(row) and row[speaker_idx] is not None:
+            ann = f"[speaker: {row[speaker_idx]}]"
+        doc["utterances"].append(_utt(utt_idx, text, source_page=utt_idx, annotation=ann))
+        utt_idx += 1
+    if rows_with_data_but_empty_text > 0:
+        doc["provenance"]["xlsx_rows_skipped_empty_text"] = rows_with_data_but_empty_text
+    return doc
+
+
 def ingest(path: str | Path, **kwargs: Any) -> dict[str, Any]:
-    """Dispatch by extension."""
+    """Dispatch by extension. `text_col=None` (the default) triggers
+    auto-detect on CSV/XLSX inputs."""
     ext = Path(path).suffix.lower()
     if ext == ".csv":
-        return ingest_csv(path, text_col=kwargs.get("text_col", "text"), speaker_col=kwargs.get("speaker_col"))
+        return ingest_csv(
+            path,
+            text_col=kwargs.get("text_col"),
+            speaker_col=kwargs.get("speaker_col"),
+        )
     if ext == ".docx":
         return ingest_docx(path)
     if ext == ".pptx":
         return ingest_pptx(path, thumbnails_dir=kwargs.get("thumbnails_dir"))
     if ext == ".pdf":
         return ingest_pdf(path)
+    if ext in (".txt", ".md", ".markdown"):
+        return ingest_text(path)
+    if ext == ".xlsx":
+        return ingest_xlsx(
+            path,
+            text_col=kwargs.get("text_col"),
+            speaker_col=kwargs.get("speaker_col"),
+            sheet=kwargs.get("sheet"),
+        )
     raise ValueError(f"Unsupported legacy asset: {ext}")
