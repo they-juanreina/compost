@@ -54,13 +54,38 @@ export class TranscriberClient {
     }
   }
 
-  async transcribe(audioPath: string, sessionId: string): Promise<TranscribeResponse> {
+  /**
+   * Invoke POST /transcribe with the body shape the Python route expects.
+   *
+   * Bug fix (#148): the previous signature sent `{audio_path, session_id}` but
+   * the route requires `{seed_path, session_id, source_path}` per its pydantic
+   * `TranscribeRequest` model. The route returned 422 on every real call from
+   * the worker, breaking `compost transcribe` end-to-end.
+   *
+   * The fix takes `seedPath` (required) and an optional `language` hint, and
+   * sends the body shape the route actually expects. The shape is verified
+   * against the contract schema at `cli/contracts/transcribe-request.schema.json`
+   * (generated from the pydantic model — see contract test).
+   */
+  async transcribe(
+    audioPath: string,
+    sessionId: string,
+    seedPath: string,
+    language?: string,
+  ): Promise<TranscribeResponse> {
+    const body: Record<string, unknown> = {
+      seed_path: seedPath,
+      session_id: sessionId,
+      source_path: audioPath,
+    }
+    if (language !== undefined) body.language = language
+
     let res: Awaited<ReturnType<FetchLike>>
     try {
       res = await this.fetchImpl(`${this.base}/transcribe`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ audio_path: audioPath, session_id: sessionId }),
+        body: JSON.stringify(body),
       })
     } catch (err) {
       throw new TranscriberServiceError(

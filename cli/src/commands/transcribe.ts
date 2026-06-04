@@ -12,6 +12,7 @@ import { TranscriberClient, TranscriberServiceError } from '../transcriber_clien
 interface TranscribeFlags {
   seed?: string
   baseUrl?: string
+  language?: string
 }
 
 function resolveSource(seedPath: string, sessionId: string): string {
@@ -29,6 +30,10 @@ export function registerTranscribe(program: Command): void {
     .argument('<session-id>', 'Session id (e.g. S001)')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--base-url <url>', 'Transcriber base URL', 'http://localhost:7862')
+    .option(
+      '--language <tag>',
+      'BCP-47 language hint (e.g. en, es-CO). Whisper auto-detects when omitted.',
+    )
     .action(async (sessionId: string, flags: TranscribeFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
@@ -37,7 +42,7 @@ export function registerTranscribe(program: Command): void {
         const client = new TranscriberClient(
           flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {},
         )
-        const resp = await client.transcribe(source, sessionId)
+        const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
         if (existsSync(resp.transcript_path)) writeTranscriptMd(resp.transcript_path)
         emit(
           {

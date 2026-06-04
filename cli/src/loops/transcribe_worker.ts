@@ -42,7 +42,8 @@ export async function runTranscribeWorkerOnce(
       out.processed += 1
       const sessionId = String(job.payload.session_id ?? 'S?')
       try {
-        const resp = await client.transcribe(job.source_path, sessionId)
+        const language = typeof job.payload.language === 'string' ? job.payload.language : undefined
+        const resp = await client.transcribe(job.source_path, sessionId, seedPath, language)
         if (resp.status === 'failed_transcription') {
           queue.fail(job.id, 'service reported failed_transcription', MAX_ATTEMPTS)
           out.results.push({
