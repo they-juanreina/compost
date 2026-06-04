@@ -18,6 +18,7 @@
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.16.0",
     "ajv": "^8.20.0"
   },
   "devDependencies": {

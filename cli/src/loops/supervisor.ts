@@ -1,4 +1,5 @@
 import { getLogPath, Logger } from '../logging.js'
+import { type EmbedWorkerDeps, runEmbedWorkerOnce } from './embed_worker.js'
 import { processInbox } from './ingest_watcher.js'
 import { type LegacyWorkerDeps, runLegacyWorkerOnce } from './legacy_worker.js'
 import { runTranscribeWorkerOnce, type WorkerDeps } from './transcribe_worker.js'
@@ -7,12 +8,16 @@ export interface SupervisorResult {
   inbox: { moved: number; unsupported: number }
   transcribe: { processed: number }
   legacy: { processed: number }
+  embed: { embedded: number; inserted: number; transcripts_scanned: number }
 }
 
 export interface SupervisorDeps extends WorkerDeps {
   legacy?: LegacyWorkerDeps
+  embed?: EmbedWorkerDeps
   /** Skip the legacy pass (handy for tests that don't want to touch the legacy service). */
   skipLegacy?: boolean
+  /** Disable the embed pass (handy for tests that don't want to touch LanceDB). */
+  skipEmbed?: boolean
 }
 
 /**
@@ -20,10 +25,12 @@ export interface SupervisorDeps extends WorkerDeps {
  *  1. Drain the inbox into sessions/SXXX/ shells
  *  2. Drain transcribe jobs (audio/video → transcript.json)
  *  3. Drain legacy-ingest jobs (PDF/DOCX/PPTX/CSV/MD/TXT/XLSX → legacy/<basename>.json)
+ *  4. Embed any newly-produced transcripts into LanceDB
  *
- * Order matters: transcribe and legacy are independent (different job kinds),
- * so they can in principle run in parallel, but we serialize to keep the
- * single Python service from saturating.
+ * Order matters: embed runs LAST so it sees transcripts the transcribe and
+ * legacy passes just wrote. Transcribe and legacy are independent (different
+ * job kinds); we serialize them to keep the single Python service from
+ * saturating.
  */
 export async function runSupervisorOnce(
   seedPath: string,
@@ -50,10 +57,23 @@ export async function runSupervisorOnce(
     }
   }
 
+  let embed = { embedded: 0, inserted: 0, transcripts_scanned: 0 }
+  if (deps.skipEmbed !== true) {
+    try {
+      embed = await runEmbedWorkerOnce(seedPath, deps.embed ?? {})
+      await logger.info('embed drained', embed)
+    } catch (err) {
+      // Embed failures must not block ingest/transcribe/legacy progress — log and continue.
+      // Common cause: Ollama not running. Surfaced clearly by `compost-setup` (v0.1-07).
+      await logger.error('embed failed', { error: String(err) })
+    }
+  }
+
   return {
     inbox: { moved: inbox.moved.length, unsupported: inbox.unsupported.length },
     transcribe: { processed: worker.processed },
     legacy,
+    embed,
   }
 }
 
