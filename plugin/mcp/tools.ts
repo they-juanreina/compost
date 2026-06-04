@@ -1,19 +1,39 @@
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
+
+/** Plugin version stamped into AI-authored artifacts' actor_id. */
+export const PLUGIN_VERSION = '0.1.0'
 
 export interface ToolDef {
   name: string
   description: string
   /** Read-only tools are safe to auto-approve; mutations need confirmation. */
   readOnly: boolean
+  /** When true, the tool authors an artifact as AI: runTool appends
+   * `--ai --actor-id claude-code:<ver>:<sha8(args)>` so it lands as a
+   * `[draft]` until a researcher endorses. Endorsement itself is NOT
+   * ai-authored — it's the researcher's act (the mutation-confirmation gate
+   * the host shows the human is that approval). */
+  aiAuthored?: boolean
   inputSchema: Record<string, unknown>
   /** Maps validated args → compost CLI argv (after the `compost` binary). */
   toArgv: (args: Record<string, unknown>) => string[]
 }
 
 const str = (desc: string) => ({ type: 'string', description: desc })
+
+/**
+ * Actor id for an AI-authored artifact. The hash is over the tool-call args —
+ * NOT the upstream LLM prompt, which the MCP layer can't observe. It still
+ * uniquely fingerprints what was created and tags it as Claude-Code-authored.
+ */
+export function aiActorId(args: Record<string, unknown>): string {
+  const sha = createHash('sha256').update(JSON.stringify(args)).digest('hex').slice(0, 8)
+  return `claude-code:${PLUGIN_VERSION}:${sha}`
+}
 
 /**
  * MCP tools mirror the CLI subcommand contracts and execute the same `compost`
@@ -113,6 +133,114 @@ export const TOOLS: ToolDef[] = [
     },
     toArgv: (a) => ['session', String(a.session), ...(a.seed ? ['--seed', String(a.seed)] : [])],
   },
+  {
+    name: 'compost_create_highlight',
+    description:
+      'Create a highlight anchored to an utterance span. Lands as an AI [draft] until a researcher endorses it.',
+    readOnly: false,
+    aiAuthored: true,
+    inputSchema: {
+      type: 'object',
+      required: ['session', 'utterance', 'span', 'text'],
+      properties: {
+        session: str('Session id, e.g. S001'),
+        utterance: str('Utterance id, e.g. U-0002'),
+        span: str('Char span "start,end" into the utterance text, e.g. 0,16'),
+        text: str('The highlighted verbatim text'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'create',
+      'highlight',
+      '--session',
+      String(a.session),
+      '--utterance',
+      String(a.utterance),
+      '--span',
+      String(a.span),
+      '--text',
+      String(a.text),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
+    name: 'compost_create_code',
+    description:
+      'Create a code with a definition and optional evidence highlights. Lands as an AI [draft] until endorsed.',
+    readOnly: false,
+    aiAuthored: true,
+    inputSchema: {
+      type: 'object',
+      required: ['name', 'definition'],
+      properties: {
+        name: str('Code name (slugified for the id, e.g. distrust-of-automation)'),
+        definition: str('What this code captures'),
+        evidence: str('Comma-separated highlight ids, e.g. H-001,H-002'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'create',
+      'code',
+      '--name',
+      String(a.name),
+      '--definition',
+      String(a.definition),
+      ...(a.evidence ? ['--evidence', String(a.evidence)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
+    name: 'compost_create_theme',
+    description:
+      'Create a theme grouping codes under a summary. Lands as an AI [draft] until endorsed.',
+    readOnly: false,
+    aiAuthored: true,
+    inputSchema: {
+      type: 'object',
+      required: ['name', 'summary'],
+      properties: {
+        name: str('Theme name (slugified for the id)'),
+        summary: str('The theme statement'),
+        codes: str('Comma-separated code ids, e.g. C-distrust,C-override'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'create',
+      'theme',
+      '--name',
+      String(a.name),
+      '--summary',
+      String(a.summary),
+      ...(a.codes ? ['--codes', String(a.codes)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
+    name: 'compost_endorse',
+    description:
+      "Endorse an artifact — promotes an AI [draft] to researcher-approved. This is the RESEARCHER's act: the host shows a confirmation, and approving it IS the endorsement. Do not call autonomously to self-approve your own drafts.",
+    readOnly: false,
+    // Not aiAuthored: the endorse event's actor is the researcher (the human
+    // who approves the mutation), not Claude Code.
+    inputSchema: {
+      type: 'object',
+      required: ['artifact'],
+      properties: {
+        artifact: str('SHA256 prefix or latest:<kind>=<seed>'),
+        researcher: str('Researcher identity (default $COMPOST_USER)'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'endorse',
+      String(a.artifact),
+      ...(a.researcher ? ['--researcher', String(a.researcher)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
 ]
 
 export const READ_ONLY_TOOLS = TOOLS.filter((t) => t.readOnly).map((t) => t.name)
@@ -130,6 +258,16 @@ const defaultRunner: CliRunner = async (argv) => {
   }
 }
 
+/** Build the argv for a tool, appending AI-authorship flags for aiAuthored
+ * tools so the artifact lands as a Claude-Code [draft]. Exposed for tests. */
+export function buildArgv(tool: ToolDef, args: Record<string, unknown>): string[] {
+  const argv = tool.toArgv(args)
+  if (tool.aiAuthored === true) {
+    argv.push('--ai', '--actor-id', aiActorId(args))
+  }
+  return argv
+}
+
 /** Execute a tool by name with args, returning the CLI's JSON text result. */
 export async function runTool(
   name: string,
@@ -138,6 +276,6 @@ export async function runTool(
 ): Promise<{ ok: boolean; content: string }> {
   const tool = TOOLS.find((t) => t.name === name)
   if (tool === undefined) return { ok: false, content: `unknown tool: ${name}` }
-  const { stdout, code } = await runner(tool.toArgv(args))
+  const { stdout, code } = await runner(buildArgv(tool, args))
   return { ok: code === 0, content: stdout.trim() }
 }

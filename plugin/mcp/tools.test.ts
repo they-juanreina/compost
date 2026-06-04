@@ -4,7 +4,15 @@ import { dirname, join } from 'node:path'
 import { describe, it } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { type CliRunner, MUTATION_TOOLS, READ_ONLY_TOOLS, runTool, TOOLS } from './tools.js'
+import {
+  aiActorId,
+  buildArgv,
+  type CliRunner,
+  MUTATION_TOOLS,
+  READ_ONLY_TOOLS,
+  runTool,
+  TOOLS,
+} from './tools.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -64,6 +72,71 @@ describe('MCP tool definitions', () => {
   it('classifies the read tools as read-only', () => {
     assert.ok(READ_ONLY_TOOLS.includes('compost_search'))
     assert.ok(READ_ONLY_TOOLS.includes('compost_get_session'))
+  })
+
+  it('maps the write tools to `compost create <kind>` / `endorse` argv', () => {
+    const hl = TOOLS.find((t) => t.name === 'compost_create_highlight')!
+    assert.deepEqual(hl.toArgv({ session: 'S001', utterance: 'U-0002', span: '0,16', text: 'q' }), [
+      'create',
+      'highlight',
+      '--session',
+      'S001',
+      '--utterance',
+      'U-0002',
+      '--span',
+      '0,16',
+      '--text',
+      'q',
+    ])
+
+    const code = TOOLS.find((t) => t.name === 'compost_create_code')!
+    assert.deepEqual(code.toArgv({ name: 'distrust', definition: 'd', evidence: 'H-001' }), [
+      'create',
+      'code',
+      '--name',
+      'distrust',
+      '--definition',
+      'd',
+      '--evidence',
+      'H-001',
+    ])
+
+    const endorse = TOOLS.find((t) => t.name === 'compost_endorse')!
+    assert.deepEqual(endorse.toArgv({ artifact: 'abc123' }), ['endorse', 'abc123'])
+  })
+
+  it('classifies create_* + endorse as mutations', () => {
+    for (const t of [
+      'compost_create_highlight',
+      'compost_create_code',
+      'compost_create_theme',
+      'compost_endorse',
+    ]) {
+      assert.ok(MUTATION_TOOLS.includes(t), `${t} should be a mutation`)
+    }
+  })
+
+  it('buildArgv appends AI authorship flags ONLY for aiAuthored tools', () => {
+    const hl = TOOLS.find((t) => t.name === 'compost_create_highlight')!
+    const args = { session: 'S001', utterance: 'U-1', span: '0,5', text: 'hello' }
+    const argv = buildArgv(hl, args)
+    assert.ok(argv.includes('--ai'))
+    const idIdx = argv.indexOf('--actor-id')
+    assert.ok(idIdx > 0)
+    assert.equal(argv[idIdx + 1], aiActorId(args))
+    assert.match(argv[idIdx + 1] as string, /^claude-code:0\.1\.0:[a-f0-9]{8}$/)
+
+    // endorse is NOT ai-authored — no --ai injected (researcher's act).
+    const endorse = TOOLS.find((t) => t.name === 'compost_endorse')!
+    const eArgv = buildArgv(endorse, { artifact: 'abc123' })
+    assert.ok(!eArgv.includes('--ai'))
+  })
+
+  it('aiActorId is deterministic on args and stamped with plugin version', () => {
+    const a = aiActorId({ name: 'x', definition: 'y' })
+    const b = aiActorId({ name: 'x', definition: 'y' })
+    assert.equal(a, b)
+    assert.match(a, /^claude-code:0\.1\.0:[a-f0-9]{8}$/)
   })
 })
 
