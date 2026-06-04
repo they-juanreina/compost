@@ -20,6 +20,9 @@ importers:
 
   cli:
     dependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       better-sqlite3:
         specifier: ^11.5.0
         version: 11.10.0

@@ -29,14 +29,14 @@ describe('TranscriberClient', () => {
     const c = new TranscriberClient({
       fetchImpl: stub(200, { session_id: 'S001', transcript_path: '/p.json', status: 'ok' }),
     })
-    const r = await c.transcribe('/a.mp4', 'S001')
+    const r = await c.transcribe('/a.mp4', 'S001', '/seeds/demo')
     assert.equal(r.transcript_path, '/p.json')
   })
 
   it('throws model_missing on 503', async () => {
     const c = new TranscriberClient({ fetchImpl: stub(503, {}) })
     await assert.rejects(
-      () => c.transcribe('/a.mp4', 'S001'),
+      () => c.transcribe('/a.mp4', 'S001', '/seeds/demo'),
       (e: unknown) => {
         return e instanceof TranscriberServiceError && e.kind === 'model_missing'
       },
@@ -50,7 +50,7 @@ describe('TranscriberClient', () => {
       },
     })
     await assert.rejects(
-      () => c.transcribe('/a.mp4', 'S001'),
+      () => c.transcribe('/a.mp4', 'S001', '/seeds/demo'),
       (e: unknown) => {
         return e instanceof TranscriberServiceError && e.kind === 'down'
       },

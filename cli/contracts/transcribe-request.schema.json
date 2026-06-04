@@ -1,0 +1,54 @@
+{
+  "description": "JSON body for POST /transcribe.",
+  "properties": {
+    "seed_path": {
+      "description": "Absolute path to the seed root (Seeds/<name>/).",
+      "title": "Seed Path",
+      "type": "string"
+    },
+    "session_id": {
+      "pattern": "^[A-Za-z0-9_-]+$",
+      "title": "Session Id",
+      "type": "string"
+    },
+    "source_path": {
+      "description": "Absolute path to the audio/video file.",
+      "title": "Source Path",
+      "type": "string"
+    },
+    "language": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional language hint (e.g. 'es-CO').",
+      "title": "Language"
+    },
+    "model_name": {
+      "default": "large-v3-turbo",
+      "description": "Whisper model id.",
+      "title": "Model Name",
+      "type": "string"
+    },
+    "device": {
+      "default": "auto",
+      "description": "Device: auto | cpu | cuda | mps.",
+      "title": "Device",
+      "type": "string"
+    },
+    "compute_type": {
+      "default": "int8",
+      "description": "Compute precision (int8|float16|float32).",
+      "title": "Compute Type",
+      "type": "string"
+    }
+  },
+  "required": ["seed_path", "session_id", "source_path"],
+  "title": "TranscribeRequest",
+  "type": "object"
+}
