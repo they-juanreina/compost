@@ -257,4 +257,26 @@ describe('blame', () => {
     const result = blame('latest:ingest_job=alpha', { cwd: work, seed: 'alpha' })
     assert.equal(result.seed, 'alpha')
   })
+
+  // v0.1-08 UX polish: a case-only mismatch (the flag's exact-cased name is not
+  // a directory entry) produces a helpful "case-sensitive" error pointing at the
+  // ref-embedded name, not the misleading generic "disagrees" message.
+  //
+  // The check uses readdirSync rather than existsSync because macOS HFS+/APFS
+  // is case-insensitive by default — existsSync would lie.
+  it('explains case-sensitivity when --seed only differs by case and is not an actual directory entry', () => {
+    const { path: lineage } = initSeed('Lineage', { cwd: work })
+    initSeed('beta', { cwd: work })
+    seedEvents(join(lineage, '.compost', 'events.sqlite'), [
+      { artifact_kind: 'ingest_job', action: 'create', artifact_id: sha('cap-1') },
+    ])
+    assert.throws(
+      () => blame('latest:ingest_job=Lineage', { cwd: work, seed: 'lineage' }),
+      (err: unknown) =>
+        err instanceof CompostError &&
+        err.code === 'INVALID_INPUT' &&
+        /case-sensitive/i.test(err.message) &&
+        /Did you mean "Lineage"/.test(err.message),
+    )
+  })
 })

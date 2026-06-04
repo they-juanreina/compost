@@ -172,6 +172,24 @@ function resolveSeedForBlame(query: string, seedFlag: string | undefined, cwd: s
   const seedFromRef = latestMatch !== null ? latestMatch[2] : undefined
 
   if (seedFlag !== undefined && seedFromRef !== undefined && seedFlag !== seedFromRef) {
+    // When the only difference is case AND the flag's exact-cased name is not
+    // a directory entry, the user almost certainly mistyped — surface that
+    // instead of the misleading generic "disagrees" message.
+    //
+    // We readdirSync rather than existsSync because macOS HFS+/APFS is
+    // case-insensitive by default: existsSync('Seeds/lineage') returns true
+    // even when only 'Seeds/Lineage' is on disk. readdir gives us the actual
+    // directory entry names.
+    if (seedFlag.toLowerCase() === seedFromRef.toLowerCase()) {
+      const root = resolve(cwd, 'Seeds')
+      const entries = existsSync(root) ? readdirSync(root) : []
+      if (!entries.includes(seedFlag)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `Seed names are case-sensitive; "${seedFlag}" does not exist. Did you mean "${seedFromRef}"?`,
+        )
+      }
+    }
     throw new CompostError(
       'INVALID_INPUT',
       `--seed "${seedFlag}" disagrees with ref-embedded seed "${seedFromRef}"`,
