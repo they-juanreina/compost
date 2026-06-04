@@ -4,7 +4,12 @@
   "description": "Local-first, AI-first research analysis harness. Ingest, transcribe, highlight, code, theme, and chat with your research corpus.",
   "registry": "cowork",
   "commands": "./commands",
-  "skills": ["querying-research-knowledge", "thematic-coding", "saturation-analysis"],
+  "skills": [
+    "querying-research-knowledge",
+    "thematic-coding",
+    "saturation-analysis",
+    "compost-setup"
+  ],
   "mcp": ["compost"],
   "derived_from": ".claude-plugin/plugin.json"
 }

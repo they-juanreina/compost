@@ -19,6 +19,7 @@ import { registerSaturate } from './commands/saturate.js'
 import { registerSearch } from './commands/search.js'
 import { registerServe } from './commands/serve.js'
 import { registerSession } from './commands/session.js'
+import { registerSetup } from './commands/setup.js'
 import { registerSnap } from './commands/snap.js'
 import { registerStatus } from './commands/status.js'
 import { registerSynthesize } from './commands/synthesize.js'
@@ -63,6 +64,7 @@ export function buildProgram(): Command {
   registerSession(program)
   registerCreate(program)
   registerEndorse(program)
+  registerSetup(program)
   registerQuery(program)
   registerChat(program)
   registerServe(program)
