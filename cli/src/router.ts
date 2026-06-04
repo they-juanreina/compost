@@ -14,7 +14,9 @@ import { registerQuery } from './commands/query.js'
 import { registerReindex } from './commands/reindex.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
+import { registerSearch } from './commands/search.js'
 import { registerServe } from './commands/serve.js'
+import { registerSession } from './commands/session.js'
 import { registerSnap } from './commands/snap.js'
 import { registerStatus } from './commands/status.js'
 import { registerSynthesize } from './commands/synthesize.js'
@@ -55,6 +57,8 @@ export function buildProgram(): Command {
   registerTag(program)
   registerCode(program)
   registerSynthesize(program)
+  registerSearch(program)
+  registerSession(program)
   registerQuery(program)
   registerChat(program)
   registerServe(program)

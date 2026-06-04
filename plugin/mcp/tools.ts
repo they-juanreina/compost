@@ -80,6 +80,39 @@ export const TOOLS: ToolDef[] = [
     inputSchema: { type: 'object', properties: { seed: str('Seed') } },
     toArgv: (a) => ['models', 'doctor', ...(a.seed ? ['--seed', String(a.seed)] : [])],
   },
+  {
+    name: 'compost_search',
+    description:
+      'Retrieve ranked passages from the seed corpus (BM25; no LLM). Use this to ground answers in real utterances before reasoning — each result carries session, time range, and text.',
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: {
+        query: str('Free-text query'),
+        seed: str('Seed'),
+        top_k: { type: 'number', description: 'Number of passages to return (default 8)' },
+      },
+    },
+    toArgv: (a) => [
+      'search',
+      String(a.query),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+      ...(a.top_k ? ['--top-k', String(a.top_k)] : []),
+    ],
+  },
+  {
+    name: 'compost_get_session',
+    description:
+      "Read a session's full transcript (utterances, silences, cues, frames) as JSON. Use after compost_search to pull a whole session into context.",
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      required: ['session'],
+      properties: { session: str('Session id, e.g. S001'), seed: str('Seed') },
+    },
+    toArgv: (a) => ['session', String(a.session), ...(a.seed ? ['--seed', String(a.seed)] : [])],
+  },
 ]
 
 export const READ_ONLY_TOOLS = TOOLS.filter((t) => t.readOnly).map((t) => t.name)
