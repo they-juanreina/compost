@@ -1,10 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
 
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import addFormatsImport from 'ajv-formats'
 
 import { CompostError } from '../errors.js'
+import {
+  CUES_TAXONOMY,
+  EVENTS_SCHEMA,
+  FRAMES_TAXONOMY,
+  TRANSCRIPT_SCHEMA,
+} from './schemas.generated.js'
 
 // ajv-formats ships CJS with a default export; under NodeNext ESM the runtime
 // sees the namespace and the callable lives on `.default`.
@@ -23,31 +28,12 @@ interface CompiledValidator {
   errors(): unknown
 }
 
-const SCHEMA_ROOT = (() => {
-  // schemas live at <repo>/schema/; the CLI runs from anywhere, so resolve
-  // relative to the file's expected install location. dist is bin-published.
-  // In dev (tsx) __dirname points at src/lib; in built form it points at dist/lib.
-  // Either way schema/ is two levels up.
-  return resolve(import.meta.dirname, '..', '..', '..', 'schema')
-})()
-
-function loadSchema(name: string): Record<string, unknown> {
-  const path = join(SCHEMA_ROOT, name)
-  if (!existsSync(path)) {
-    throw new CompostError('FILE_NOT_FOUND', `Schema file not found: ${path}`)
-  }
-  return JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
-}
-
 let transcriptValidator: CompiledValidator | null = null
 let eventsValidator: CompiledValidator | null = null
-let cuesTaxonomy: { kinds: Array<{ kind: string }> } | null = null
-let framesTaxonomy: { triggers: Array<{ trigger: string }> } | null = null
 
 function getTranscriptValidator(): CompiledValidator {
   if (transcriptValidator === null) {
-    const schema = loadSchema('transcript.schema.json')
-    const fn = ajv.compile(schema)
+    const fn = ajv.compile(TRANSCRIPT_SCHEMA)
     transcriptValidator = { fn, errors: () => fn.errors }
   }
   return transcriptValidator
@@ -55,27 +41,18 @@ function getTranscriptValidator(): CompiledValidator {
 
 function getEventsValidator(): CompiledValidator {
   if (eventsValidator === null) {
-    const schema = loadSchema('events.schema.json')
-    const fn = ajv.compile(schema)
+    const fn = ajv.compile(EVENTS_SCHEMA)
     eventsValidator = { fn, errors: () => fn.errors }
   }
   return eventsValidator
 }
 
 function getCuesTaxonomy(): { kinds: Array<{ kind: string }> } {
-  if (cuesTaxonomy === null) {
-    cuesTaxonomy = loadSchema('cues.taxonomy.json') as { kinds: Array<{ kind: string }> }
-  }
-  return cuesTaxonomy
+  return CUES_TAXONOMY as { kinds: Array<{ kind: string }> }
 }
 
 function getFramesTaxonomy(): { triggers: Array<{ trigger: string }> } {
-  if (framesTaxonomy === null) {
-    framesTaxonomy = loadSchema('frames.taxonomy.json') as {
-      triggers: Array<{ trigger: string }>
-    }
-  }
-  return framesTaxonomy
+  return FRAMES_TAXONOMY as { triggers: Array<{ trigger: string }> }
 }
 
 export interface ValidateResult {

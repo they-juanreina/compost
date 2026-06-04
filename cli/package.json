@@ -18,8 +18,10 @@
     "package.json"
   ],
   "scripts": {
+    "prebuild": "node scripts/generate-schemas.mjs",
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
+    "pretest": "node scripts/generate-schemas.mjs",
     "dev": "tsx src/index.ts",
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
