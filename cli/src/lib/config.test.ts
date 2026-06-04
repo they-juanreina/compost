@@ -68,10 +68,10 @@ describe('config get/set', () => {
   it('saveConfig + loadConfig round-trip a write', () => {
     const { path } = initSeed('demo', { cwd: work })
     const config = loadConfig(path)
-    setConfigValue(config.raw, 'defaults.embeddings', 'ollama:bge-m3:q4_k_m')
+    setConfigValue(config.raw, 'defaults.embeddings', 'ollama:bge-m3')
     saveConfig(path, config.raw)
     const reloaded = loadConfig(path)
-    assert.equal(getConfigValue(reloaded.raw, 'defaults.embeddings'), 'ollama:bge-m3:q4_k_m')
+    assert.equal(getConfigValue(reloaded.raw, 'defaults.embeddings'), 'ollama:bge-m3')
     // The on-disk file is valid TOML the next reader can parse.
     const onDisk = readFileSync(join(path, '.compost', 'config.toml'), 'utf8')
     assert.match(onDisk, /defaults/)

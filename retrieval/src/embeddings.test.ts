@@ -13,7 +13,7 @@ describe('Embedder', () => {
   it('defaults to batch size 32 and the bge-m3 model', () => {
     const e = new Embedder(async (t) => t.map(() => [0]))
     assert.equal(DEFAULT_BATCH_SIZE, 32)
-    assert.equal(e.model, 'bge-m3:q4_k_m')
+    assert.equal(e.model, 'bge-m3')
   })
 
   it('returns one vector per input', async () => {
