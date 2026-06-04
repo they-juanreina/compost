@@ -18,7 +18,11 @@
       "emotion": "in control",
       "pains": [],
       "opportunities": [
-        { "claim": "expose a clear override that preserves audit trail", "from_theme": "T-control-earns-trust", "evidence": ["H-003"] }
+        {
+          "claim": "expose a clear override that preserves audit trail",
+          "from_theme": "T-control-earns-trust",
+          "evidence": ["H-003"]
+        }
       ]
     }
   ]

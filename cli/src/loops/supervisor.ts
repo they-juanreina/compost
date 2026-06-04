@@ -1,16 +1,32 @@
 import { getLogPath, Logger } from '../logging.js'
+import { type EmbedWorkerDeps, runEmbedWorkerOnce } from './embed_worker.js'
 import { processInbox } from './ingest_watcher.js'
 import { runTranscribeWorkerOnce, type WorkerDeps } from './transcribe_worker.js'
 
 export interface SupervisorResult {
   inbox: { moved: number; unsupported: number }
   transcribe: { processed: number }
+  embed: { embedded: number; inserted: number; transcripts_scanned: number }
 }
 
-/** One cooperative pass: drain the inbox, then drain transcribe jobs. */
+export interface SupervisorDeps extends WorkerDeps {
+  embed?: EmbedWorkerDeps
+  /** Disable the embed pass (handy for tests that don't want to touch LanceDB). */
+  skipEmbed?: boolean
+}
+
+/**
+ * One cooperative pass:
+ *  1. Drain the inbox into sessions/SXXX/ shells
+ *  2. Drain transcribe jobs (each finishes by writing transcript.json)
+ *  3. Embed any newly-produced transcripts into LanceDB
+ *
+ * The order is deliberate: embed runs LAST so it sees transcripts the
+ * transcribe-worker just wrote.
+ */
 export async function runSupervisorOnce(
   seedPath: string,
-  deps: WorkerDeps = {},
+  deps: SupervisorDeps = {},
 ): Promise<SupervisorResult> {
   const logger = loopLogger(seedPath, 'supervisor')
   const inbox = processInbox(seedPath)
@@ -20,9 +36,23 @@ export async function runSupervisorOnce(
   })
   const worker = await runTranscribeWorkerOnce(seedPath, deps)
   await logger.info('transcribe drained', { processed: worker.processed })
+
+  let embed = { embedded: 0, inserted: 0, transcripts_scanned: 0 }
+  if (deps.skipEmbed !== true) {
+    try {
+      embed = await runEmbedWorkerOnce(seedPath, deps.embed ?? {})
+      await logger.info('embed drained', embed)
+    } catch (err) {
+      // Embed failures must not block ingest/transcribe progress — log and continue.
+      // Common cause: Ollama not running. Surfaced clearly by `compost-setup` (v0.1-07).
+      await logger.error('embed failed', { error: String(err) })
+    }
+  }
+
   return {
     inbox: { moved: inbox.moved.length, unsupported: inbox.unsupported.length },
     transcribe: { processed: worker.processed },
+    embed,
   }
 }
 
