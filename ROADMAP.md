@@ -343,7 +343,7 @@ base_url = "http://localhost:1234/v1"
 api_key_env = "ANTHROPIC_API_KEY"
 
 [defaults]
-embeddings   = "ollama:bge-m3:q4_k_m"
+embeddings   = "ollama:bge-m3"
 quick_chat   = "ollama:llama3.1:8b"
 synthesis    = "anthropic:claude-opus-4-7"
 verification = "lmstudio:qwen3-72b-instruct"

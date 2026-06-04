@@ -15,7 +15,7 @@ base_url = "http://localhost:11434"
 api_key_env = "TEST_ANTHROPIC_KEY"
 
 [defaults]
-embeddings = "ollama:bge-m3:q4_k_m"
+embeddings = "ollama:bge-m3"
 quick_chat = "ollama:llama3.1:8b"
 synthesis  = "anthropic:claude-opus-4-7"
 `
@@ -63,7 +63,7 @@ describe('LLMAdapter routing', () => {
     })
     assert.deepEqual(adapter.resolveTask('embeddings'), {
       provider: 'ollama',
-      model: 'bge-m3:q4_k_m',
+      model: 'bge-m3',
     })
   })
 

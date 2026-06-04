@@ -8,7 +8,7 @@ own recordings.
 
 - compost installed (`pnpm add -g @they-juanreina/compost-cli`)
 - OrbStack running the transcriber: `docker compose -f transcriber/compose.yaml up -d`
-- Ollama with the default models (`ollama pull bge-m3:q4_k_m && ollama pull llama3.1:8b`)
+- Ollama with the default models (`ollama pull bge-m3 && ollama pull llama3.1:8b`)
 
 ## 1. Create a seed
 

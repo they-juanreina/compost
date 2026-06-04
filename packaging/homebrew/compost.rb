@@ -27,7 +27,7 @@ class Compost < Formula
         docker compose -f #{opt_prefix}/transcriber/compose.yaml up -d
         curl http://localhost:7862/health
       Ollama is required for embeddings + local chat:
-        brew install ollama && ollama pull bge-m3:q4_k_m
+        brew install ollama && ollama pull bge-m3
     EOS
   end
 

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 
 export const DEFAULT_BATCH_SIZE = 32
-export const DEFAULT_EMBED_MODEL = 'bge-m3:q4_k_m'
+export const DEFAULT_EMBED_MODEL = 'bge-m3'
 
 /** Provider-agnostic embed function (e.g. the LLM adapter's Ollama embed). */
 export type EmbedFn = (texts: string[]) => Promise<number[][]>

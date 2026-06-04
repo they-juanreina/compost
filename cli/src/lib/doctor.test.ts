@@ -11,7 +11,7 @@ const CONFIG = `
 base_url = "http://localhost:11434"
 [defaults]
 quick_chat = "ollama:llama3.1:8b"
-embeddings = "ollama:bge-m3:q4_k_m"
+embeddings = "ollama:bge-m3"
 `
 
 function fetchWithModels(models: string[]): FetchLike {
@@ -38,7 +38,7 @@ function fetchWithModels(models: string[]): FetchLike {
 describe('runDoctor', () => {
   it('marks tasks ok when the provider is up and the model is present', async () => {
     const adapter = new LLMAdapter(parseConfig(CONFIG), {
-      fetchImpl: fetchWithModels(['llama3.1:8b', 'bge-m3:q4_k_m']),
+      fetchImpl: fetchWithModels(['llama3.1:8b', 'bge-m3']),
     })
     const report = await runDoctor(adapter, parseConfig(CONFIG))
     assert.ok(report.ok)
@@ -53,7 +53,7 @@ describe('runDoctor', () => {
     assert.equal(report.ok, false)
     const embed = report.tasks.find((t) => t.task === 'embeddings')
     assert.equal(embed?.status, 'model_missing')
-    assert.equal(embed?.suggestion, 'ollama pull bge-m3:q4_k_m')
+    assert.equal(embed?.suggestion, 'ollama pull bge-m3')
   })
 
   it('flags provider_down when the provider health check fails', async () => {
