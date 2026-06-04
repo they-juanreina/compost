@@ -28,6 +28,24 @@ describe('classify', () => {
     assert.ok(SUPPORTED_EXTENSIONS.includes('.mp3'))
     assert.ok(SUPPORTED_EXTENSIONS.includes('.pdf'))
   })
+
+  // v0.1-03 additions:
+  it('classifies .txt as legacy-ingest/markdown (Otter/Zoom exports)', () => {
+    const d = classify('Otter-export.txt')
+    assert.ok(d)
+    assert.equal(d.kind, 'legacy-ingest')
+    assert.equal(d.category, 'markdown')
+  })
+  it('classifies .xlsx as legacy-ingest/tabular (survey data)', () => {
+    const d = classify('survey-results.xlsx')
+    assert.ok(d)
+    assert.equal(d.kind, 'legacy-ingest')
+    assert.equal(d.category, 'tabular')
+  })
+  it('SUPPORTED_EXTENSIONS includes .txt and .xlsx', () => {
+    assert.ok(SUPPORTED_EXTENSIONS.includes('.txt'))
+    assert.ok(SUPPORTED_EXTENSIONS.includes('.xlsx'))
+  })
 })
 
 describe('JobQueue', () => {
@@ -77,7 +95,8 @@ describe('ingestPath', () => {
     mkdirSync(folder, { recursive: true })
     writeFileSync(join(folder, 'a.mp3'), '')
     writeFileSync(join(folder, 'b.pdf'), '')
-    writeFileSync(join(folder, 'note.txt'), '') // unsupported
+    // .zip is intentionally unsupported (.txt joined the classifier in v0.1-03).
+    writeFileSync(join(folder, 'archive.zip'), '')
 
     const result = ingestPath(path, folder)
     assert.equal(result.queued, 2)
