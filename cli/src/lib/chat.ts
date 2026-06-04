@@ -1,16 +1,9 @@
-import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-import {
-  type Answer,
-  BM25Index,
-  type Chunk,
-  type ChunkerTranscript,
-  chunkTranscript,
-  type EvidenceSet,
-  HybridRetriever,
-  validateAnswer,
-} from 'compost-retrieval'
+import { type Answer, type Chunk, validateAnswer } from 'compost-retrieval'
+
+import { retrieveChunks } from './retrieve.js'
 
 export interface ChatCitation {
   utterance_id: string
@@ -37,34 +30,6 @@ export interface ChatDeps {
   chatId?: string
 }
 
-/** Build an evidence set (utterance_id → {session_id, text}) from a seed's
- * session transcripts, used both to retrieve and to validate citations. */
-function loadSeedUtterances(seedPath: string): {
-  chunks: Chunk[]
-  evidence: EvidenceSet
-  seedName: string
-} {
-  const seedName = seedPath.split('/').pop() ?? 'seed'
-  const sessionsDir = join(seedPath, 'sessions')
-  const evidence: EvidenceSet = new Map()
-  const allChunks: Chunk[] = []
-  if (!existsSync(sessionsDir)) return { chunks: [], evidence, seedName }
-
-  for (const entry of readdirSync(sessionsDir)) {
-    if (entry.startsWith('.') || entry === '_inbox') continue
-    const tPath = join(sessionsDir, entry, 'transcript.json')
-    if (!existsSync(tPath) || !statSync(tPath).isFile()) continue
-    const transcript = JSON.parse(readFileSync(tPath, 'utf8')) as ChunkerTranscript & {
-      utterances: Array<{ id: string; text: string }>
-    }
-    for (const u of transcript.utterances) {
-      evidence.set(u.id, { session_id: transcript.session_id, text: u.text })
-    }
-    allChunks.push(...chunkTranscript(transcript, { seed: seedName }))
-  }
-  return { chunks: allChunks, evidence, seedName }
-}
-
 export async function chat(
   seedPath: string,
   question: string,
@@ -82,14 +47,10 @@ async function answerQuestion(
   question: string,
   deps: ChatDeps,
 ): Promise<ChatResult> {
-  const { chunks, evidence } = loadSeedUtterances(seedPath)
-  if (chunks.length === 0) return insufficient('No indexed sessions in this seed yet.', 0)
-
-  const bm25 = new BM25Index()
-  bm25.addAll(chunks)
-  const retriever = new HybridRetriever(bm25)
-  const retrieved = await retriever.retrieve(question, { topK: deps.topK ?? 8 })
+  const { retrieved, corpus } = await retrieveChunks(seedPath, question, { topK: deps.topK ?? 8 })
+  if (corpus.chunks.length === 0) return insufficient('No indexed sessions in this seed yet.', 0)
   if (retrieved.length === 0) return insufficient('Nothing in the corpus matched the question.', 0)
+  const evidence = corpus.evidence
 
   const raw = await deps.answerFn(question, retrieved)
   const validation = validateAnswer(raw, evidence)

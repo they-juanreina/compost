@@ -39,6 +39,31 @@ describe('MCP tool definitions', () => {
 
     const dr = TOOLS.find((t) => t.name === 'compost_models_doctor')!
     assert.deepEqual(dr.toArgv({}), ['models', 'doctor'])
+
+    const search = TOOLS.find((t) => t.name === 'compost_search')!
+    assert.deepEqual(search.toArgv({ query: 'trust' }), ['search', 'trust'])
+    assert.deepEqual(search.toArgv({ query: 'trust', seed: 's', top_k: 5 }), [
+      'search',
+      'trust',
+      '--seed',
+      's',
+      '--top-k',
+      '5',
+    ])
+
+    const session = TOOLS.find((t) => t.name === 'compost_get_session')!
+    assert.deepEqual(session.toArgv({ session: 'S001' }), ['session', 'S001'])
+    assert.deepEqual(session.toArgv({ session: 'S001', seed: 's' }), [
+      'session',
+      'S001',
+      '--seed',
+      's',
+    ])
+  })
+
+  it('classifies the read tools as read-only', () => {
+    assert.ok(READ_ONLY_TOOLS.includes('compost_search'))
+    assert.ok(READ_ONLY_TOOLS.includes('compost_get_session'))
   })
 })
 
