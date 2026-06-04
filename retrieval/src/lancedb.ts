@@ -124,16 +124,21 @@ export async function openLanceDBForWrite(uri: string, vectorDim: number): Promi
   if (names.includes(VECTOR_TABLE)) {
     table = await db.openTable(VECTOR_TABLE)
   } else {
-    // LanceDB needs at least one row to infer the schema. Insert a sentinel
-    // we immediately delete so the table exists with the right shape.
+    // LanceDB infers the Arrow schema from the first row. The nullable columns
+    // (speaker_id / start_ms / end_ms) MUST be non-null in the bootstrap
+    // sentinel — LanceDB throws "Failed to infer data type" on a null at row 0.
+    // We seed them with concrete placeholders (type → string / int64); real
+    // rows can still carry nulls, since Arrow columns are nullable by default.
+    // The sentinel is deleted immediately, so the placeholder values never
+    // surface in a query.
     const sentinel: VectorRecord = {
       id: '__bootstrap__',
       kind: 'utterance',
       seed: '__bootstrap__',
       session: '__bootstrap__',
-      speaker_id: null,
-      start_ms: null,
-      end_ms: null,
+      speaker_id: '',
+      start_ms: 0,
+      end_ms: 0,
       text: '',
       vector: new Array(vectorDim).fill(0),
       metadata: '{}',
