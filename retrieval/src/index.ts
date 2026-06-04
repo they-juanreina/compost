@@ -36,6 +36,7 @@ export {
   LanceDBWriter,
   type LanceTable,
   type LanceWritableTable,
+  openLanceDBForRead,
   openLanceDBForWrite,
   VECTOR_TABLE,
   type VectorRecord,

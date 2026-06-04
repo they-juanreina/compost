@@ -124,16 +124,21 @@ export async function openLanceDBForWrite(uri: string, vectorDim: number): Promi
   if (names.includes(VECTOR_TABLE)) {
     table = await db.openTable(VECTOR_TABLE)
   } else {
-    // LanceDB needs at least one row to infer the schema. Insert a sentinel
-    // we immediately delete so the table exists with the right shape.
+    // LanceDB infers the Arrow schema from the first row. The nullable columns
+    // (speaker_id / start_ms / end_ms) MUST be non-null in the bootstrap
+    // sentinel — LanceDB throws "Failed to infer data type" on a null at row 0.
+    // We seed them with concrete placeholders (type → string / int64); real
+    // rows can still carry nulls, since Arrow columns are nullable by default.
+    // The sentinel is deleted immediately, so the placeholder values never
+    // surface in a query.
     const sentinel: VectorRecord = {
       id: '__bootstrap__',
       kind: 'utterance',
       seed: '__bootstrap__',
       session: '__bootstrap__',
-      speaker_id: null,
-      start_ms: null,
-      end_ms: null,
+      speaker_id: '',
+      start_ms: 0,
+      end_ms: 0,
       text: '',
       vector: new Array(vectorDim).fill(0),
       metadata: '{}',
@@ -143,6 +148,40 @@ export async function openLanceDBForWrite(uri: string, vectorDim: number): Promi
     await table.delete("id = '__bootstrap__'")
   }
   return new LanceDBWriter(table as unknown as LanceWritableTable)
+}
+
+/**
+ * Open the `chunks` table for reading and return a LanceDBRetriever, or null
+ * when the index doesn't exist yet (no embed-worker run) or the native binary
+ * isn't installed. Never throws — a missing/unavailable index means the caller
+ * falls back to BM25-only retrieval, not an error.
+ */
+export async function openLanceDBForRead(
+  uri: string,
+  embedQuery: (q: string) => Promise<number[]>,
+): Promise<LanceDBRetriever | null> {
+  let mod: typeof import('@lancedb/lancedb')
+  try {
+    mod = await import('@lancedb/lancedb')
+  } catch {
+    return null // native binary absent → BM25-only
+  }
+  try {
+    const db = await mod.connect(uri)
+    const names = await db.tableNames()
+    if (!names.includes(VECTOR_TABLE)) return null // index not built yet
+    const nativeTable = await db.openTable(VECTOR_TABLE)
+    // Adapt the native query builder to our minimal LanceTable.search shape.
+    const table: LanceTable = {
+      async search(vector: number[], k: number) {
+        const rows = await nativeTable.search(vector).limit(k).toArray()
+        return rows as Array<VectorRecord & { _distance: number }>
+      },
+    }
+    return new LanceDBRetriever(table, embedQuery)
+  } catch {
+    return null
+  }
 }
 
 /** A DenseRetriever backed by LanceDB. Needs a query embedder (text → vector)
