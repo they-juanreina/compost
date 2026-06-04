@@ -201,6 +201,84 @@ def _ocr_page(page: Any) -> str:  # pragma: no cover - needs tesseract + a raste
         return ""
 
 
+# ---------------------------------------------------------------- Markdown / Text
+
+
+def ingest_text(path: str | Path) -> dict[str, Any]:
+    """Read a plain-text or Markdown file and split into paragraph utterances.
+
+    Both `.txt` (Otter / Zoom exports) and `.md` land here. Top-level
+    headings are recorded as section annotations on subsequent utterances,
+    mirroring the docx behavior.
+    """
+    path = str(path)
+    doc = _base(_session_id(path), path)
+    with open(path, encoding="utf-8") as f:
+        body = f.read()
+
+    current_heading: str | None = None
+    idx = 1
+    for para in _paragraphs(body):
+        # Markdown heading line → record as section anchor, skip the utterance.
+        if para.startswith(("# ", "## ", "### ", "#### ")):
+            current_heading = para.lstrip("# ").strip()
+            continue
+        ann = f"[section: {current_heading}]" if current_heading else None
+        doc["utterances"].append(_utt(idx, para, annotation=ann))
+        idx += 1
+    return doc
+
+
+# ---------------------------------------------------------------- XLSX
+
+
+def ingest_xlsx(
+    path: str | Path,
+    text_col: str = "text",
+    speaker_col: str | None = None,
+    sheet: str | None = None,
+) -> dict[str, Any]:
+    """One utterance per row of a spreadsheet. First row is treated as the
+    header (mirrors `ingest_csv`). Use `sheet` to pick a non-default tab.
+    """
+    try:
+        from openpyxl import load_workbook  # type: ignore
+    except ImportError as e:
+        raise RuntimeError("openpyxl not installed (pip install -e '.[legacy]')") from e
+
+    path = str(path)
+    doc = _base(_session_id(path), path)
+    wb = load_workbook(path, read_only=True, data_only=True)
+    ws = wb[sheet] if sheet is not None else wb.active
+    if ws is None:
+        raise ValueError(f"XLSX has no worksheets: {path}")
+
+    rows = ws.iter_rows(values_only=True)
+    header_row = next(rows, None)
+    if header_row is None:
+        return doc  # empty sheet
+    header = [str(c) if c is not None else "" for c in header_row]
+    if text_col not in header:
+        raise ValueError(f"XLSX has no column '{text_col}' (columns: {header})")
+    text_idx = header.index(text_col)
+    speaker_idx = header.index(speaker_col) if speaker_col in header else -1
+
+    utt_idx = 1
+    for row in rows:
+        if row is None:
+            continue
+        cell = row[text_idx] if text_idx < len(row) else None
+        text = str(cell).strip() if cell is not None else ""
+        if not text:
+            continue
+        ann = None
+        if speaker_idx >= 0 and speaker_idx < len(row) and row[speaker_idx] is not None:
+            ann = f"[speaker: {row[speaker_idx]}]"
+        doc["utterances"].append(_utt(utt_idx, text, source_page=utt_idx, annotation=ann))
+        utt_idx += 1
+    return doc
+
+
 def ingest(path: str | Path, **kwargs: Any) -> dict[str, Any]:
     """Dispatch by extension."""
     ext = Path(path).suffix.lower()
@@ -212,4 +290,13 @@ def ingest(path: str | Path, **kwargs: Any) -> dict[str, Any]:
         return ingest_pptx(path, thumbnails_dir=kwargs.get("thumbnails_dir"))
     if ext == ".pdf":
         return ingest_pdf(path)
+    if ext in (".txt", ".md", ".markdown"):
+        return ingest_text(path)
+    if ext == ".xlsx":
+        return ingest_xlsx(
+            path,
+            text_col=kwargs.get("text_col", "text"),
+            speaker_col=kwargs.get("speaker_col"),
+            sheet=kwargs.get("sheet"),
+        )
     raise ValueError(f"Unsupported legacy asset: {ext}")
