@@ -241,6 +241,46 @@ export const TOOLS: ToolDef[] = [
       ...(a.seed ? ['--seed', String(a.seed)] : []),
     ],
   },
+  {
+    name: 'compost_code_suggest',
+    description:
+      'Cluster un-coded highlights in embedding space and preview candidate codes (no writes). Use to discover what codes the corpus suggests.',
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seed: str('Seed'),
+        threshold: { type: 'number', description: 'Cosine clustering threshold (default 0.75)' },
+      },
+    },
+    toArgv: (a) => [
+      'code',
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+      ...(a.threshold ? ['--threshold', String(a.threshold)] : []),
+    ],
+  },
+  {
+    name: 'compost_code_apply',
+    description:
+      'Persist the clustered code suggestions as AI [draft] code events. Mutation; the drafts await researcher endorsement.',
+    readOnly: false,
+    // The cluster-suggest path already stamps actor_type=agent on its events
+    // (similarity-scanner@ver), so we do NOT add --ai here — authorship is the
+    // scanner agent, distinct from a Claude-Code create_code.
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seed: str('Seed'),
+        threshold: { type: 'number', description: 'Cosine clustering threshold (default 0.75)' },
+      },
+    },
+    toArgv: (a) => [
+      'code',
+      '--apply',
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+      ...(a.threshold ? ['--threshold', String(a.threshold)] : []),
+    ],
+  },
 ]
 
 export const READ_ONLY_TOOLS = TOOLS.filter((t) => t.readOnly).map((t) => t.name)
@@ -248,13 +288,54 @@ export const MUTATION_TOOLS = TOOLS.filter((t) => !t.readOnly).map((t) => t.name
 
 export type CliRunner = (argv: string[]) => Promise<{ stdout: string; code: number }>
 
+/**
+ * Resolve how to invoke the compost CLI. The plugin does NOT bundle the CLI
+ * (its native deps — better-sqlite3, lancedb — must install per-platform on
+ * the user's machine), so the CLI is a prerequisite. Resolution order:
+ *
+ *   1. COMPOST_CLI env var — an explicit path. If it ends in .js we run it
+ *      with `node`; otherwise it's treated as an executable.
+ *   2. `compost` on PATH — from `npm i -g compost-cli` or a pnpm link.
+ *
+ * Returns the spawn command + any prefix args (e.g. the .js path for node).
+ */
+export function resolveCompostInvocation(env: NodeJS.ProcessEnv = process.env): {
+  command: string
+  prefixArgs: string[]
+} {
+  const override = env.COMPOST_CLI
+  if (override !== undefined && override.trim() !== '') {
+    return override.endsWith('.js')
+      ? { command: process.execPath, prefixArgs: [override] }
+      : { command: override, prefixArgs: [] }
+  }
+  return { command: 'compost', prefixArgs: [] }
+}
+
+const CLI_MISSING_HINT =
+  'compost CLI not found. Install it (`npm i -g compost-cli`, or clone the repo and `pnpm build`), ' +
+  'or set COMPOST_CLI to the path of dist/index.js. See docs/install.md.'
+
 const defaultRunner: CliRunner = async (argv) => {
+  const { command, prefixArgs } = resolveCompostInvocation()
   try {
-    const { stdout } = await execFileAsync('compost', argv, { maxBuffer: 64 * 1024 * 1024 })
+    const { stdout } = await execFileAsync(command, [...prefixArgs, ...argv], {
+      maxBuffer: 64 * 1024 * 1024,
+    })
     return { stdout, code: 0 }
   } catch (err) {
-    const e = err as { stdout?: string; stderr?: string; code?: number }
-    return { stdout: e.stdout || e.stderr || String(err), code: e.code ?? 1 }
+    const e = err as { stdout?: string; stderr?: string; code?: string | number }
+    // ENOENT = the CLI binary/path wasn't found → actionable install hint.
+    if (e.code === 'ENOENT') {
+      return {
+        stdout: JSON.stringify({ error: { code: 'CLI_NOT_FOUND', message: CLI_MISSING_HINT } }),
+        code: 1,
+      }
+    }
+    return {
+      stdout: e.stdout || e.stderr || String(err),
+      code: typeof e.code === 'number' ? e.code : 1,
+    }
   }
 }
 
