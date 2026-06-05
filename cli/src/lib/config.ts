@@ -50,7 +50,11 @@ export function providerBaseUrl(config: CompostConfig, providerName: string): st
 export function providerApiKey(config: CompostConfig, providerName: string): string | undefined {
   const envName = config.providers[providerName]?.api_key_env
   if (envName === undefined) return undefined
-  return process.env[envName]
+  // A set-but-blank env var (`export ANTHROPIC_API_KEY=`) is effectively no key —
+  // normalize to undefined so the adapter's missing-key guard fires (and we never
+  // send a blank `x-api-key`).
+  const value = process.env[envName]
+  return value && value.trim() !== '' ? value : undefined
 }
 
 /** Resolve a dotted key (e.g. `providers.ollama.base_url`) against the raw TOML

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { isCompostError } from '../errors.js'
 import { parseConfig } from '../lib/config.js'
 import { LLMAdapter } from './adapter.js'
 import type { FetchLike } from './types.js'
@@ -96,6 +97,7 @@ describe('LLMAdapter routing', () => {
   })
 
   it('routes synthesis to Anthropic with system/messages split', async () => {
+    process.env.TEST_ANTHROPIC_KEY = 'sk-test' // satisfy the missing-key guard
     const bodies: string[] = []
     const fetchImpl: FetchLike = async (url, init) => {
       bodies.push(init?.body ?? '')
@@ -117,6 +119,43 @@ describe('LLMAdapter routing', () => {
     assert.equal(body.system, 'be terse')
     assert.equal(body.messages.length, 1)
     assert.equal(body.messages[0].role, 'user')
+  })
+
+  it('fails with an actionable error when a cloud task lacks its API key', async () => {
+    delete process.env.TEST_ANTHROPIC_KEY
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML))
+    await assert.rejects(
+      () => adapter.chat('synthesis', [{ role: 'user', content: 'hi' }]),
+      (e: unknown) =>
+        isCompostError(e) && /needs an API key.*TEST_ANTHROPIC_KEY/s.test((e as Error).message),
+    )
+  })
+
+  it('treats a blank/whitespace API key as missing', async () => {
+    process.env.TEST_ANTHROPIC_KEY = '   '
+    try {
+      const adapter = new LLMAdapter(parseConfig(CONFIG_TOML))
+      await assert.rejects(
+        () => adapter.chat('synthesis', [{ role: 'user', content: 'hi' }]),
+        (e: unknown) => isCompostError(e) && /needs an API key/.test((e as Error).message),
+      )
+    } finally {
+      delete process.env.TEST_ANTHROPIC_KEY
+    }
+  })
+
+  it('does not require an API key for a local task', async () => {
+    delete process.env.TEST_ANTHROPIC_KEY
+    const fetchImpl: FetchLike = async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ message: { content: 'local answer' } }),
+      text: async () => '',
+    })
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+    const res = await adapter.chat('quick_chat', [{ role: 'user', content: 'hi' }])
+    assert.equal(res.text, 'local answer')
   })
 
   it('healthAll probes every provider referenced by defaults', async () => {
