@@ -25,6 +25,16 @@ asr = [
     "torchaudio>=2.3",
     "ffmpeg-python",
 ]
+# Native Apple-Silicon (Metal) path (#176/#183): Parakeet ASR + pyannote-on-MPS.
+# No whisperx/ctranslate2 — the default native engine is Parakeet (parakeet-mlx).
+# Provisioned by `compost setup --provision-native`.
+native = [
+    "parakeet-mlx",
+    "pyannote.audio>=3.3",
+    "silero-vad",
+    "torchaudio>=2.3",
+    "ffmpeg-python",
+]
 frames = [
     "imagehash",
     "Pillow",

@@ -32,19 +32,31 @@ faster than CPU with identical results. Speaker labels come back as
 You need a Python 3.11+ venv with the native deps, plus a HuggingFace token for
 pyannote (a gated model).
 
-> `compost setup` will provision this automatically (tracked: **#183**). Until
-> then, provision it once by hand at the path the CLI auto-discovers:
+Provision the managed venv once — this creates `~/.compost/transcriber-venv`
+and installs the native deps (parakeet-mlx + pyannote + silero-vad + torchaudio + ffmpeg-python):
+
+```sh
+compost setup --provision-native      # downloads ~GB of ML wheels — a few minutes
+```
+
+You also need a **HuggingFace token** for pyannote (a gated model). Accept the
+license on **both** gated repos first (the 3.1 pipeline pulls segmentation-3.0
+at runtime), then export the token:
+
+- <https://huggingface.co/pyannote/speaker-diarization-3.1>
+- <https://huggingface.co/pyannote/segmentation-3.0>
+
+```sh
+export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
+```
+
+<details><summary>Manual alternative (build the venv yourself)</summary>
 
 ```sh
 python3.11 -m venv ~/.compost/transcriber-venv
-~/.compost/transcriber-venv/bin/pip install parakeet-mlx pyannote.audio silero-vad torchaudio
-
-# HuggingFace token for pyannote — accept the license on BOTH gated repos first
-# (the 3.1 pipeline pulls segmentation-3.0 at runtime):
-#   https://huggingface.co/pyannote/speaker-diarization-3.1
-#   https://huggingface.co/pyannote/segmentation-3.0
-export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
+~/.compost/transcriber-venv/bin/pip install parakeet-mlx pyannote.audio silero-vad torchaudio ffmpeg-python
 ```
+</details>
 
 Then transcribe — native is selected automatically:
 

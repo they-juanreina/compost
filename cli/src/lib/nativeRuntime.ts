@@ -26,12 +26,17 @@ export function isAppleSilicon(): boolean {
   return process.platform === 'darwin' && process.arch === 'arm64'
 }
 
-/** Managed native venv python, provisioned by `compost setup` (#183).
- * `$COMPOST_HOME` overrides the default `~/.compost`. */
-export function managedVenvPython(env: NodeJS.ProcessEnv = process.env): string {
+/** Managed native venv directory, provisioned by `compost setup --provision-native`
+ * (#183). `$COMPOST_HOME` overrides the default `~/.compost`. */
+export function managedVenvDir(env: NodeJS.ProcessEnv = process.env): string {
   // `?.trim()` so an empty/whitespace COMPOST_HOME doesn't yield a relative path.
   const home = env.COMPOST_HOME?.trim() ? env.COMPOST_HOME : join(homedir(), '.compost')
-  return join(home, 'transcriber-venv', 'bin', 'python')
+  return join(home, 'transcriber-venv')
+}
+
+/** Managed native venv python (`<venv>/bin/python`). */
+export function managedVenvPython(env: NodeJS.ProcessEnv = process.env): string {
+  return join(managedVenvDir(env), 'bin', 'python')
 }
 
 /** Walk up from this module to find the repo's `transcriber/` package — works
