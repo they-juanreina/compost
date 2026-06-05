@@ -244,13 +244,22 @@ export function endorseArtifact(
   seedPath: string,
   artifactRef: string,
   researcherId: string,
-): { artifact_id: string; endorse_event_id: string; parent_event_id: string } {
+): {
+  artifact_id: string
+  endorse_event_id: string
+  parent_event_id: string
+  already_endorsed?: true
+} {
   const eventsDb = join(seedPath, '.compost', 'events.sqlite')
   if (!existsSync(eventsDb)) {
     throw new CompostError('FILE_NOT_FOUND', `No events.sqlite in seed; nothing to endorse.`)
   }
   const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
   let createRow: (CreateEventRow & { artifact_id: string }) | undefined
+  // Same (artifact_id, researcher) endorse already on the timeline → idempotent
+  // no-op (#169). Looked up alongside the create row so we hold the read-only
+  // connection once and avoid a stat/open dance.
+  let existingEndorse: { id: string; parent_event: string | null } | undefined
   try {
     createRow = tryResolveHumanRef(db, artifactRef)
     if (createRow === undefined) {
@@ -280,12 +289,31 @@ export function endorseArtifact(
         )
       }
     }
+
+    if (createRow !== undefined) {
+      existingEndorse = db
+        .prepare(
+          "SELECT id, parent_event FROM events WHERE artifact_id = ? AND action = 'endorse' AND actor_id = ? ORDER BY ts, rowid LIMIT 1",
+        )
+        .get(createRow.artifact_id, researcherId) as
+        | { id: string; parent_event: string | null }
+        | undefined
+    }
   } finally {
     db.close()
   }
 
   if (createRow === undefined) {
     throw new CompostError('FILE_NOT_FOUND', `No create event found for ref "${artifactRef}".`)
+  }
+
+  if (existingEndorse !== undefined) {
+    return {
+      artifact_id: createRow.artifact_id,
+      endorse_event_id: existingEndorse.id,
+      parent_event_id: existingEndorse.parent_event ?? createRow.id,
+      already_endorsed: true,
+    }
   }
 
   const events = openSeedEvents(seedPath)

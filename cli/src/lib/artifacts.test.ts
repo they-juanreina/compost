@@ -307,4 +307,62 @@ describe('endorseArtifact', () => {
       )
     })
   })
+
+  // A second endorse by the same researcher must NOT double-record (#169).
+  // The earlier bug: SHA-then-latest endorsed the same artifact twice with
+  // ok/ok, writing two endorse events that share parent_event.
+  describe('idempotent on re-endorse by the same researcher (#169)', () => {
+    it('returns the existing endorse instead of emitting a duplicate', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const code = createCode(path, { name: 'distrust', definition: 'x', author: AI })
+
+      const first = endorseArtifact(path, code.artifact_id, 'juan@example.com')
+      assert.equal(first.already_endorsed, undefined)
+
+      const second = endorseArtifact(path, code.artifact_id, 'juan@example.com')
+      assert.equal(second.already_endorsed, true)
+      assert.equal(second.endorse_event_id, first.endorse_event_id)
+      assert.equal(second.parent_event_id, first.parent_event_id)
+    })
+
+    it('keeps the timeline at exactly one endorse (no duplicate event row)', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const code = createCode(path, { name: 'distrust2', definition: 'x', author: AI })
+      endorseArtifact(path, code.artifact_id, 'juan@example.com')
+      endorseArtifact(path, code.artifact_id, 'juan@example.com')
+
+      const lineage = blame(code.artifact_id, { cwd: work, seed: 'demo' })
+      const endorses = lineage.events.filter((e) => e.action === 'endorse')
+      assert.equal(endorses.length, 1, `expected 1 endorse, got ${endorses.length}`)
+    })
+
+    it('treats SHA-then-latest as the same artifact (idempotent across ref forms)', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const code = createCode(path, { name: 'distrust3', definition: 'x', author: AI })
+
+      endorseArtifact(path, code.artifact_id, 'juan@example.com')
+      const second = endorseArtifact(path, 'latest:code=demo', 'juan@example.com')
+      assert.equal(second.already_endorsed, true)
+
+      const lineage = blame(code.artifact_id, { cwd: work, seed: 'demo' })
+      assert.equal(lineage.events.filter((e) => e.action === 'endorse').length, 1)
+    })
+
+    it('lets a different researcher add a second endorse (per-researcher, not per-artifact)', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const code = createCode(path, { name: 'distrust4', definition: 'x', author: AI })
+
+      endorseArtifact(path, code.artifact_id, 'juan@example.com')
+      const otherRes = endorseArtifact(path, code.artifact_id, 'sam@example.com')
+      assert.equal(otherRes.already_endorsed, undefined)
+
+      const lineage = blame(code.artifact_id, { cwd: work, seed: 'demo' })
+      const endorses = lineage.events.filter((e) => e.action === 'endorse')
+      assert.equal(endorses.length, 2)
+      assert.deepEqual(endorses.map((e) => e.actor_id).sort(), [
+        'juan@example.com',
+        'sam@example.com',
+      ])
+    })
+  })
 })
