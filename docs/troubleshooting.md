@@ -8,7 +8,7 @@ The seed has no `transcript.json` files yet, or they haven't been embedded.
 
 - Confirm sessions exist: `compost status --seed <name>` (look at `sessions.transcribed`).
 - Run the pipeline: `compost watch --once --seed <name>` (ingest → transcribe/normalize → embed).
-- If audio is stuck `queued`, the transcriber container isn't running — see below.
+- If audio is stuck `queued`, transcription hasn't run yet — see below.
 
 ## Embeddings fail / `compost watch` logs "embed failed"
 
@@ -19,9 +19,14 @@ Almost always Ollama. `compost setup` will show it.
 - The supervisor logs embed failures and continues — ingest/transcribe still
   progress; only the index is behind until Ollama is back.
 
-## `compost transcribe` 404s or "transcriber service unreachable"
+## `compost transcribe` is slow, 404s, or "transcriber service unreachable"
 
-The Python transcriber container isn't up.
+On **Apple Silicon**, use the native runtime (the default) — far faster than
+Docker and no container needed. If it prints a "native not provisioned" note and
+falls back to Docker, set up the native venv: see
+[transcription.md](transcription.md) (or run `compost setup`).
+
+The **Docker fallback** 404s when the container isn't up:
 
 ```sh
 docker compose -f transcriber/compose.yaml up --build -d

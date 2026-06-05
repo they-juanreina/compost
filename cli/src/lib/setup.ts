@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
+import { isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -39,6 +40,8 @@ export interface SetupDeps {
   transcriberUrl?: string
   /** Embedding models the embed-worker needs present in Ollama. */
   requiredOllamaModels?: string[]
+  /** Override Apple-Silicon detection (tests). Defaults to the host arch. */
+  appleSilicon?: boolean
 }
 
 const PYANNOTE_GATED_REPOS = ['pyannote/speaker-diarization-3.1', 'pyannote/segmentation-3.0']
@@ -136,7 +139,7 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
           id: 'docker',
           label: 'Docker/OrbStack',
           status: 'warn',
-          detail: 'daemon unreachable (only needed for transcribe + legacy ingest)',
+          detail: 'daemon unreachable (only the cross-platform transcription fallback needs it)',
           fix: 'Install OrbStack (orbstack.dev) or Docker Desktop, then start it.',
         },
   )
@@ -162,10 +165,43 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
           id: 'transcriber',
           label: 'Transcriber service',
           status: 'warn',
-          detail: 'not reachable (only needed to transcribe audio / ingest documents)',
+          detail: 'not reachable (cross-platform fallback; native is the default on Apple Silicon)',
           fix: 'docker compose -f transcriber/compose.yaml up --build -d',
         },
   )
+
+  // 4b. Native transcription (Apple Silicon, #176) — the default fast path.
+  if (deps.appleSilicon ?? isAppleSilicon()) {
+    const native = resolveNativeRuntime({ env })
+    if (native === null) {
+      checks.push({
+        id: 'native-transcribe',
+        label: 'Native transcription',
+        status: 'warn',
+        detail: 'no native venv resolved (Apple Silicon runs ~20× faster than the Docker fallback)',
+        fix: 'compost setup will provision it (#183), or set COMPOST_TRANSCRIBER_PYTHON + COMPOST_TRANSCRIBER_DIR',
+      })
+    } else {
+      const probe = await exec(native.python, ['-c', 'import parakeet_mlx, pyannote.audio'])
+      checks.push(
+        probe.ok
+          ? {
+              id: 'native-transcribe',
+              label: 'Native transcription',
+              status: 'ok',
+              detail: `parakeet-mlx + pyannote ready (${native.python})`,
+              fix: null,
+            }
+          : {
+              id: 'native-transcribe',
+              label: 'Native transcription',
+              status: 'warn',
+              detail: `venv at ${native.python} is missing deps (parakeet-mlx / pyannote)`,
+              fix: `${native.python} -m pip install parakeet-mlx pyannote.audio silero-vad`,
+            },
+      )
+    }
+  }
 
   // 5. HuggingFace token present.
   const hfToken = env.HUGGINGFACE_TOKEN || env.HF_TOKEN

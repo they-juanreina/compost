@@ -44,10 +44,12 @@ open Seeds/my-study/sessions/_inbox
 compost watch --seed my-study
 ```
 
-The transcriber runs in OrbStack:
+On Apple Silicon, transcription runs **natively** (Metal, ~16× realtime) — see
+[transcription.md](transcription.md) to provision the venv. The cross-platform
+fallback is the Docker container:
 
 ```sh
-docker compose -f transcriber/compose.yaml up --build   # one time
+docker compose -f transcriber/compose.yaml up --build   # one time (fallback)
 curl http://localhost:7862/health
 ```
 

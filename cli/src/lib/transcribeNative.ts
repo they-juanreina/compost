@@ -86,7 +86,11 @@ export function transcribeNative(
   const lastLine = (res.stdout || '').trim().split('\n').filter(Boolean).pop() ?? ''
   let parsed: NativeTranscribeResult
   try {
-    parsed = JSON.parse(lastLine) as NativeTranscribeResult
+    // JSON.parse succeeds on primitives (null, 123, "s"); require an object so a
+    // stray non-object line surfaces as the CompostError below, not a raw TypeError.
+    const value: unknown = JSON.parse(lastLine)
+    if (typeof value !== 'object' || value === null) throw new Error('not a JSON object')
+    parsed = value as NativeTranscribeResult
   } catch {
     throw new CompostError(
       'PROVIDER_ERROR',
