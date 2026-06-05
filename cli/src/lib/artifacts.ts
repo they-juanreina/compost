@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import Database from 'better-sqlite3'
@@ -60,6 +60,35 @@ function formatYamlValue(v: unknown): string {
 
 // ---------------------------------------------------------------- create
 
+/**
+ * Write the markdown, then emit its create event — atomically. If the event
+ * fails (e.g. schema validation: AI events require model + prompt_hash), roll
+ * the file back so no code path ever leaves a `.md` without a matching create
+ * event (#165). The caller guarantees `path` did not pre-exist (existsSync
+ * check / fresh sequential id), so the rollback only removes our own write.
+ */
+function writeArtifactAtomic(
+  seedPath: string,
+  path: string,
+  body: string,
+  event: { artifactKind: string; initialState: Record<string, unknown>; author: Author },
+): string {
+  writeFileSync(path, body, 'utf8')
+  const events = openSeedEvents(seedPath)
+  try {
+    return emitCreate(events, event).id
+  } catch (err) {
+    try {
+      rmSync(path, { force: true }) // roll back the orphan-to-be
+    } catch {
+      // best-effort cleanup; surface the original (more useful) error regardless
+    }
+    throw err
+  } finally {
+    events.close()
+  }
+}
+
 export interface CreateHighlightInput {
   sessionId: string
   utteranceId: string
@@ -93,19 +122,12 @@ export function createHighlight(seedPath: string, input: CreateHighlightInput): 
   })}\n${input.text}\n`
 
   const path = join(dir, `${id}.md`)
-  writeFileSync(path, body, 'utf8')
-
-  const events = openSeedEvents(seedPath)
-  try {
-    const event = emitCreate(events, {
-      artifactKind: 'highlight',
-      initialState,
-      author: input.author,
-    })
-    return { id, artifact_id: sha, path, event_id: event.id }
-  } finally {
-    events.close()
-  }
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'highlight',
+    initialState,
+    author: input.author,
+  })
+  return { id, artifact_id: sha, path, event_id }
 }
 
 export interface CreateCodeInput {
@@ -136,15 +158,12 @@ export function createCode(seedPath: string, input: CreateCodeInput): CreatedArt
   if (existsSync(path)) {
     throw new CompostError('INVALID_INPUT', `Code "${id}" already exists at ${path}`)
   }
-  writeFileSync(path, body, 'utf8')
-
-  const events = openSeedEvents(seedPath)
-  try {
-    const event = emitCreate(events, { artifactKind: 'code', initialState, author: input.author })
-    return { id, artifact_id: sha, path, event_id: event.id }
-  } finally {
-    events.close()
-  }
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'code',
+    initialState,
+    author: input.author,
+  })
+  return { id, artifact_id: sha, path, event_id }
 }
 
 export interface CreateThemeInput {
@@ -176,15 +195,12 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
   if (existsSync(path)) {
     throw new CompostError('INVALID_INPUT', `Theme "${id}" already exists at ${path}`)
   }
-  writeFileSync(path, body, 'utf8')
-
-  const events = openSeedEvents(seedPath)
-  try {
-    const event = emitCreate(events, { artifactKind: 'theme', initialState, author: input.author })
-    return { id, artifact_id: sha, path, event_id: event.id }
-  } finally {
-    events.close()
-  }
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'theme',
+    initialState,
+    author: input.author,
+  })
+  return { id, artifact_id: sha, path, event_id }
 }
 
 // ---------------------------------------------------------------- endorse

@@ -133,6 +133,26 @@ describe('MCP tool definitions', () => {
     assert.ok(!eArgv.includes('--ai'))
   })
 
+  it('buildArgv supplies the schema-required model + prompt_hash for AI creates (#165)', () => {
+    // actor_type=ai events require model + a 64-hex prompt_hash; without them the
+    // CLI fails schema validation and orphans the markdown.
+    const code = TOOLS.find((t) => t.name === 'compost_create_code')!
+    const argv = buildArgv(code, { name: 'distrust', definition: 'x' })
+    const phIdx = argv.indexOf('--prompt-hash')
+    assert.ok(phIdx > 0, '--prompt-hash should be injected')
+    assert.match(argv[phIdx + 1] as string, /^[a-f0-9]{64}$/)
+    const mIdx = argv.indexOf('--model')
+    assert.ok(mIdx > 0, '--model should be injected')
+    assert.equal(argv[mIdx + 1], 'claude-code') // sentinel when the agent omits its model id
+  })
+
+  it('buildArgv records the agent-supplied model id when present (#165)', () => {
+    const theme = TOOLS.find((t) => t.name === 'compost_create_theme')!
+    const argv = buildArgv(theme, { name: 't', summary: 's', model: 'claude-opus-4-8' })
+    const mIdx = argv.indexOf('--model')
+    assert.equal(argv[mIdx + 1], 'claude-opus-4-8')
+  })
+
   it('aiActorId is deterministic on args and stamped with plugin version', () => {
     const a = aiActorId({ name: 'x', definition: 'y' })
     const b = aiActorId({ name: 'x', definition: 'y' })
