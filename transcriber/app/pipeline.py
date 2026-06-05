@@ -133,6 +133,7 @@ def run_pipeline(
     # 3. Initial transcript shell
     transcript: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
+        "kind": "session",
         "session_id": session_id,
         "source": _relative_source(seed_path, source_path),
         "language": _detect_language(asr_result.language, config.asr.language),

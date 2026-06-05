@@ -30,26 +30,42 @@ None of it is in the provenance/retrieval foundation — which is the encouragin
 
 ## Transcription benchmark (the headline)
 
-The transcriber runs WhisperX + pyannote inside a **Linux Docker container = CPU-only on macOS** (no Metal/GPU passthrough). That's the bottleneck: a 52-min interview took **~64 min** of compute (~1.2× realtime). Three hour-long interviews back-to-back is multi-hour — unusable in practice.
+The transcriber ran WhisperX + pyannote inside a **Linux Docker container = CPU-only on macOS** (no Metal/GPU passthrough). That was the bottleneck: a 52-min interview took **~64 min** of compute. **#176 (implemented + validated on the certification seed)** moves transcription to a native Apple-Silicon path and is **~20× faster end-to-end**. Numbers below are consistent **×realtime = audio ÷ compute** (higher = faster; <1 = slower than realtime), all measured on this M1 Max.
 
-Head-to-head on a 180s clip, **large-v3-turbo**, M1 Max:
+**ASR stage (180s clip, large-v3-turbo unless noted):**
 
-| Engine | Backend | ×realtime | Word ts | Diarization | License |
-|---|---|---|---|---|---|
-| Container WhisperX (VAD+ASR+diar) | Docker **CPU** | **~1.3×** | yes | pyannote | MIT / gated model |
-| **MLX whisper** (`mlx-whisper`) | **Metal** | **~9.5×** | yes | — (pair w/ pyannote) | MIT |
-| **whisper.cpp** | **Metal** | **~30×** (compute) | yes | tinydiarize only | MIT |
-| **Parakeet-TDT 0.6B v3** (`parakeet-mlx`) | **Metal** | **~58.8×** (measured) | yes (native, per-token) | — (pair w/ pyannote) | CC-BY-4.0 |
-| pyannote diarization | **CPU only** (MPS broken) | ~0.5–1× | — | — | MIT / gated |
+| Engine | Backend | ×realtime (ASR) | Word ts | License |
+|---|---|---|---|---|
+| WhisperX (faster-whisper) | Docker **CPU** | (part of ~0.8× full) | yes | MIT |
+| MLX whisper (`mlx-whisper`) | **Metal** | **9.5×** | yes | MIT |
+| whisper.cpp | **Metal** | **~30×** | yes | MIT |
+| **Parakeet-TDT 0.6B v3** (`parakeet-mlx`) | **Metal** | **58.8×** | yes (native, per-token) | CC-BY-4.0 |
 
-**Finding:** native Apple-Silicon ASR is **7–45× faster** than the CPU container — and **Parakeet-TDT 0.6B is both the fastest (58.8× measured here) and the most accurate** (Open ASR English WER 6.05–6.32% vs Whisper-turbo 7.83%), with native frame-level word timestamps. Diarization (pyannote) stays CPU-bound — its MPS backend is broken (missing ops, wrong results) — so it's the real **end-to-end bottleneck regardless of ASR engine**.
+**Diarization stage (pyannote 3.1, 120s clip) — the real bottleneck:**
 
-**Recommendation (→ #176):** make the transcription engine **pluggable** with a native macOS ASR backend; default native on Apple Silicon, Docker as the cross-platform fallback.
-- **Default: Parakeet-TDT 0.6B v3** via `parakeet-mlx` (Metal) — fastest measured (58.8×), best English WER, native word timestamps, and v3 covers **Spanish + 24 other European languages** (auto-detected). CC-BY-4.0 (attribute NVIDIA). Use v2 for English-absolute-best WER (6.05%).
-- **Fallback: Whisper large-v3-turbo** via `mlx-whisper` — for languages outside Parakeet v3's 25 (Whisper covers 99: Japanese, Arabic, …) and as a long-audio cross-check (Whisper *hallucinates*; Parakeet may *truncate* — opposite failure modes).
-- **Accuracy fallback (long-form): Whisper large-v3** (non-turbo) — best *open* long-form WER on the leaderboard (6.43% vs turbo's 11.0%) but slow (~RTFx 68); a quality re-run for when fidelity beats turnaround.
-- **Diarization:** pyannote on **CPU** for both (MPS broken). Future max-speed option: a CoreML stack (Argmax SpeakerKit / **FluidAudio**, which bundles Parakeet + pyannote-on-ANE at ~110× on M4 Pro) — at the cost of a Swift helper, so flag it for a native app, not the Python tool.
-- **Always chunk** the hour into ~2–5 min VAD-aligned overlapping segments, stitched via word timestamps — guards against long-context dropout and memory pressure (this Mac has **32 GB**, easing the research's 16 GB / 24-min single-pass caveat, but chunking stays the safe default).
+| Device | ×realtime | Result vs CPU |
+|---|---|---|
+| CPU | ~0.7–1.4× | baseline |
+| **MPS (Metal)** | **25.8×** | **byte-identical** (same speakers, turns, per-speaker seconds) |
+
+**Full pipeline, end-to-end, on real hour-long interviews (measured):**
+
+| Path | ×realtime | 60-min interview |
+|---|---|---|
+| Container WhisperX + pyannote-CPU | ~0.8× | ~64–77 min |
+| **Native Parakeet + Silero + pyannote-MPS** | **~16×** | **~3.5 min** |
+
+**Findings:**
+1. **Native ASR is 7–45× faster**, and **Parakeet-TDT 0.6B is the fastest (58.8×) and most accurate** (Open ASR English WER 6.05–6.32% vs Whisper-turbo 7.83%), with native frame-level word timestamps.
+2. **The decisive unlock is pyannote on MPS, not the ASR engine.** Diarization dominates the pipeline — on CPU it's ~1× realtime, so a native-ASR-but-CPU-diar pipeline is *no faster* than Docker. On **MPS (Metal)** pyannote runs **~18–25× faster with byte-identical results**. The earlier research's "MPS broken" claim is **outdated** (older torch); **verified correct on torch 2.12**. Running diarization on MPS is what makes native a true **~20× end-to-end win**.
+3. **Long files must be chunked.** parakeet-mlx loads the whole file into one Metal buffer; a 60-min file tried to allocate **~131 GB** (Metal cap ~20 GB) and failed. Chunking at ~2 min (parakeet stitches via 15s overlap + token timestamps) fixes it.
+4. **Head-to-head on the certification seed** (Parakeet-native vs the WhisperX-Docker transcripts): ~20× faster, **equivalent text**, *cleaner* segmentation (fewer/longer utterances, no `S?` orphan on S001). The 6-speaker over-diarization on one interview appears in **both** → a pyannote concern (#178), not engine-specific.
+
+**Recommendation (→ #176, implemented):** pluggable transcription engine + runtime; native on Apple Silicon, Docker as the cross-platform fallback.
+- **Default: Parakeet-TDT 0.6B v3** via `parakeet-mlx` (Metal) — fastest, native word timestamps, covers **Spanish + 24 other European languages**. CC-BY-4.0. v2 for English-absolute-best WER (6.05%).
+- **Fallback: Whisper large-v3-turbo** (`mlx-whisper`) for languages outside Parakeet v3's 25 (Whisper covers 99) and as a long-audio cross-check; **Whisper large-v3** (non-turbo) for best long-form WER when fidelity beats turnaround.
+- **Diarization: pyannote on MPS** (Metal) on Apple Silicon — verified correct + ~18× faster than CPU on torch≥2.12; CPU elsewhere. (CoreML / FluidAudio stays a future Swift option for a further ~5×.)
+- **Always chunk** long files (~2 min) to stay within Metal's buffer cap.
 - **Target:** a 1-hour interview in **≤ ~30 min** end-to-end (diarization-bound), vs ~64 today.
 
 ### Prosody / descriptive layer
