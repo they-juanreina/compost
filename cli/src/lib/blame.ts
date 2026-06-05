@@ -111,10 +111,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
   const humanRow = tryResolveHumanRef(db, query)
   if (humanRow !== undefined) return humanRow.artifact_id
   if (HUMAN_REF_RE.test(query)) {
-    throw new CompostError(
-      'FILE_NOT_FOUND',
-      `No artifact with id "${query}" in seed "${seed}".`,
-    )
+    throw new CompostError('FILE_NOT_FOUND', `No artifact with id "${query}" in seed "${seed}".`)
   }
 
   const latestMatch = LATEST_REF_RE.exec(query)
