@@ -239,4 +239,72 @@ describe('endorseArtifact', () => {
       (e: unknown) => e instanceof CompostError && e.code === 'FILE_NOT_FOUND',
     )
   })
+
+  // The id `compost create` prints (C-slug / H-NNN / T-slug) must round-trip
+  // into endorse — the obvious next command. Before #168, only SHA prefixes
+  // and `latest:` refs worked, so users had to copy the artifact_id instead.
+  describe('accepts the human id from create (#168)', () => {
+    it('endorses a code by its C-slug', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const code = createCode(path, { name: 'access-model-clarity', definition: 'x', author: AI })
+      assert.equal(code.id, 'C-access-model-clarity')
+
+      const res = endorseArtifact(path, code.id, 'juan@example.com')
+      assert.equal(res.artifact_id, code.artifact_id)
+      assert.equal(res.parent_event_id, code.event_id)
+    })
+
+    it('endorses a highlight by its H-NNN id', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const hl = createHighlight(path, {
+        sessionId: 'S001',
+        utteranceId: 'U-1',
+        span: [0, 4],
+        text: 'foo',
+        author: AI,
+      })
+      assert.equal(hl.id, 'H-001')
+
+      const res = endorseArtifact(path, hl.id, 'juan@example.com')
+      assert.equal(res.artifact_id, hl.artifact_id)
+    })
+
+    it('endorses a theme by its T-slug', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const theme = createTheme(path, {
+        name: 'control-earns-trust',
+        summary: 'x',
+        author: AI,
+      })
+      assert.equal(theme.id, 'T-control-earns-trust')
+
+      const res = endorseArtifact(path, theme.id, 'juan@example.com')
+      assert.equal(res.artifact_id, theme.artifact_id)
+    })
+
+    it('errors with a clear message when the human id has no match', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      createCode(path, { name: 'one', definition: 'x', author: AI })
+      assert.throws(
+        () => endorseArtifact(path, 'C-nope', 'juan@example.com'),
+        (e: unknown) =>
+          e instanceof CompostError &&
+          e.code === 'FILE_NOT_FOUND' &&
+          /C-nope/.test((e as CompostError).message),
+      )
+    })
+
+    it('rejects a wholly-malformed ref with a message that names the accepted forms', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      createCode(path, { name: 'one', definition: 'x', author: AI })
+      assert.throws(
+        () => endorseArtifact(path, 'not-a-ref!', 'juan@example.com'),
+        (e: unknown) =>
+          e instanceof CompostError &&
+          e.code === 'INVALID_INPUT' &&
+          /C-slug/.test((e as CompostError).message) &&
+          /SHA256/.test((e as CompostError).message),
+      )
+    })
+  })
 })

@@ -14,7 +14,7 @@ export function registerBlame(program: Command): void {
     .description('Print the lineage chain (three-actor events) for an artifact')
     .argument(
       '<artifact-ref>',
-      'SHA256 of the artifact (prefix accepted, min 8 chars) or `latest:<kind>=<seed>`',
+      'Id from `compost create` (C-slug / H-NNN / T-slug), SHA256 prefix (min 8 chars), or `latest:<kind>=<seed>`',
     )
     .option(
       '--seed <name>',

@@ -211,10 +211,34 @@ interface CreateEventRow {
 }
 
 /**
- * Resolve an artifact ref (full/prefix SHA, or `latest:<kind>=<seed>`) to its
- * create event, then emit a researcher endorse chaining it. Mirrors blame's
- * ref resolution so `compost endorse` accepts the same refs `compost blame`
- * prints.
+ * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug` — the id
+ * `compost create` prints. We accept it wherever a SHA prefix is accepted so
+ * the obvious `endorse <id-from-create>` round-trip works (#168). The dash and
+ * non-hex chars make it unambiguous vs a SHA prefix (`^[a-f0-9]{8,64}$`).
+ */
+export const HUMAN_REF_RE = /^[CHT]-[A-Za-z0-9_-]+$/
+
+/**
+ * Look up a create event by the human id stored in its payload (initialState.id).
+ * Returns undefined when the ref isn't a human id OR no matching create exists,
+ * so callers can fall through to SHA-prefix / latest: handling.
+ */
+export function tryResolveHumanRef(
+  db: Database.Database,
+  ref: string,
+): (CreateEventRow & { artifact_id: string }) | undefined {
+  if (!HUMAN_REF_RE.test(ref)) return undefined
+  return db
+    .prepare(
+      "SELECT id, artifact_kind, artifact_id FROM events WHERE action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1",
+    )
+    .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
+}
+
+/**
+ * Resolve an artifact ref (human id, full/prefix SHA, or `latest:<kind>=<seed>`)
+ * to its create event, then emit a researcher endorse chaining it. Mirrors
+ * blame's ref resolution so `compost endorse <id-from-create>` works (#168).
  */
 export function endorseArtifact(
   seedPath: string,
@@ -228,27 +252,33 @@ export function endorseArtifact(
   const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
   let createRow: (CreateEventRow & { artifact_id: string }) | undefined
   try {
-    const latest = /^latest:(\w+)=(.+)$/.exec(artifactRef)
-    if (latest) {
-      const kind = latest[1] as string
-      createRow = db
-        .prepare(
-          "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
+    createRow = tryResolveHumanRef(db, artifactRef)
+    if (createRow === undefined) {
+      const latest = /^latest:(\w+)=(.+)$/.exec(artifactRef)
+      if (latest) {
+        const kind = latest[1] as string
+        createRow = db
+          .prepare(
+            "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
+          )
+          .get(kind) as (CreateEventRow & { artifact_id: string }) | undefined
+      } else if (/^[a-f0-9]{8,64}$/i.test(artifactRef)) {
+        createRow = db
+          .prepare(
+            "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
+          )
+          .get(`${artifactRef.toLowerCase()}%`) as
+          | (CreateEventRow & { artifact_id: string })
+          | undefined
+      } else if (!HUMAN_REF_RE.test(artifactRef)) {
+        // Not human-shaped, not SHA-shaped, not latest: → user typed something
+        // unparseable. (Human-shaped refs that didn't resolve fall through to
+        // the FILE_NOT_FOUND below with a clearer message.)
+        throw new CompostError(
+          'INVALID_INPUT',
+          `Invalid artifact ref "${artifactRef}". Use the id from \`compost create\` (e.g. C-slug, H-001), a SHA256 prefix, or latest:<kind>=<seed>.`,
         )
-        .get(kind) as (CreateEventRow & { artifact_id: string }) | undefined
-    } else if (/^[a-f0-9]{8,64}$/i.test(artifactRef)) {
-      createRow = db
-        .prepare(
-          "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
-        )
-        .get(`${artifactRef.toLowerCase()}%`) as
-        | (CreateEventRow & { artifact_id: string })
-        | undefined
-    } else {
-      throw new CompostError(
-        'INVALID_INPUT',
-        `Invalid artifact ref "${artifactRef}". Use a SHA256 prefix or latest:<kind>=<seed>.`,
-      )
+      }
     }
   } finally {
     db.close()
