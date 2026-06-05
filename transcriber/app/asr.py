@@ -25,6 +25,7 @@ class ASRConfig:
     compute_type: str = "int8"
     language: str | None = None
     event_tags: bool = True
+    engine: str = "whisper"  # "whisper" (WhisperX, Docker/CPU) | "parakeet" (parakeet-mlx, native Metal)
 
 
 @dataclass
@@ -131,6 +132,12 @@ class Transcriber:
     def _get_backend(self) -> WhisperBackend:
         if self._backend is not None:
             return self._backend
+        if self.config.engine == "parakeet":
+            from .asr_parakeet import _load_parakeet_backend, resolve_parakeet_model
+
+            return _load_parakeet_backend(
+                resolve_parakeet_model(self.config.model_name), self.config.language
+            )
         key = f"{self.config.model_name}:{self.config.device}:{self.config.compute_type}"
         return _load_whisperx_backend(key)
 
