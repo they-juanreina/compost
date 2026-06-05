@@ -25,3 +25,25 @@ describe('stub honesty (#161)', () => {
     }
   })
 })
+
+describe('seed-scoped stubs accept --seed (#167)', () => {
+  // Lands the flag contract before the action ships so multi-seed workspaces
+  // can target a specific seed from the moment query/synthesize go live.
+  const hasSeed = (program: Command, name: string): boolean => {
+    const c = program.commands.find((x) => x.name() === name)
+    assert.ok(c, `${name} should be registered`)
+    return (c as Command).options.some((o) => o.long === '--seed')
+  }
+
+  it('query exposes --seed', () => {
+    const program = new Command()
+    registerQuery(program)
+    assert.ok(hasSeed(program, 'query'), '--seed should be on query')
+  })
+
+  it('synthesize exposes --seed', () => {
+    const program = new Command()
+    registerSynthesize(program)
+    assert.ok(hasSeed(program, 'synthesize'), '--seed should be on synthesize')
+  })
+})
