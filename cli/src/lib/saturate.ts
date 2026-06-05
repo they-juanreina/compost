@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { listCanonicalSessionIds } from './canonicalSessions.js'
 import { resolveSeedPath } from './seedResolve.js'
 
 export interface SessionWithThemes {
@@ -34,7 +35,11 @@ export function gatherSessionsWithThemes(opts: GatherOptions = {}): SessionWithT
   const themeToCodes = readThemeCodes(join(seedPath, 'synthesis', 'themes'))
 
   const sessionToThemes = new Map<string, Set<string>>()
-  for (const sessionId of listSessionIds(join(seedPath, 'sessions'))) {
+  // Single source of truth (#166): the same canonical-session predicate
+  // `compost status` uses — `S\d+` names OR a transcript.json/source.* file.
+  // Pre-fix: every subdir of sessions/ (incl. legacy Attachments/, Transcripts/)
+  // was counted, inflating the session set vs status's view.
+  for (const sessionId of listCanonicalSessionIds(join(seedPath, 'sessions'))) {
     sessionToThemes.set(sessionId, new Set())
   }
 
@@ -62,14 +67,6 @@ export function gatherSessionsWithThemes(opts: GatherOptions = {}): SessionWithT
   return [...sessionToThemes.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([id, themes]) => ({ id, themes: [...themes].sort() }))
-}
-
-function listSessionIds(sessionsDir: string): string[] {
-  if (!existsSync(sessionsDir)) return []
-  return readdirSync(sessionsDir).filter((entry) => {
-    if (entry.startsWith('.') || entry === '_inbox') return false
-    return statSync(join(sessionsDir, entry)).isDirectory()
-  })
 }
 
 function readHighlightSessions(dir: string): Map<string, string> {

@@ -83,6 +83,49 @@ describe('gatherSessionsWithThemes', () => {
     )
   })
 
+  // saturate must use the same canonical-session predicate as `compost status`
+  // (#166). Pre-fix: legacy carry-over folders like `Attachments/`, `Transcripts/`
+  // were counted as sessions, so `saturate.sessions: 5` while `status` showed 1.
+  it('skips non-canonical session folders (Attachments, Transcripts, Output, …) (#166)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/S001'))
+    // Legacy carry-over folders that survived a partial seed migration.
+    mkdirSync(join(path, 'sessions/Attachments'))
+    mkdirSync(join(path, 'sessions/Output'))
+    mkdirSync(join(path, 'sessions/Survey'))
+    mkdirSync(join(path, 'sessions/Transcripts'))
+
+    const result = gatherSessionsWithThemes({ cwd: work, seed: 'demo' })
+    assert.deepEqual(
+      result.map((r) => r.id),
+      ['S001'],
+    )
+  })
+
+  it('counts a non-S\\d+ folder when it has a transcript.json (canonical via content) (#166)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/Pilot-1'))
+    writeFileSync(join(path, 'sessions/Pilot-1/transcript.json'), '{}')
+
+    const result = gatherSessionsWithThemes({ cwd: work, seed: 'demo' })
+    assert.deepEqual(
+      result.map((r) => r.id),
+      ['Pilot-1'],
+    )
+  })
+
+  it('counts a non-S\\d+ folder when it has a source.<ext> file (queued) (#166)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/queued-interview'))
+    writeFileSync(join(path, 'sessions/queued-interview/source.mp4'), '')
+
+    const result = gatherSessionsWithThemes({ cwd: work, seed: 'demo' })
+    assert.deepEqual(
+      result.map((r) => r.id),
+      ['queued-interview'],
+    )
+  })
+
   it('throws SCHEMA_VIOLATION when a highlight points at a missing session dir', () => {
     const { path } = initSeed('demo', { cwd: work })
     mkdirSync(join(path, 'sessions/S001'))
