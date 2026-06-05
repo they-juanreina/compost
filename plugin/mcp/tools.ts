@@ -26,13 +26,24 @@ export interface ToolDef {
 const str = (desc: string) => ({ type: 'string', description: desc })
 
 /**
- * Actor id for an AI-authored artifact. The hash is over the tool-call args —
- * NOT the upstream LLM prompt, which the MCP layer can't observe. It still
- * uniquely fingerprints what was created and tags it as Claude-Code-authored.
+ * Provenance fingerprint for an AI-authored artifact: sha256 over the tool-call
+ * args. It is NOT the upstream LLM prompt (the MCP layer can't observe that),
+ * but it uniquely fingerprints what was created — the closest observable proxy.
+ * Doubles as the `--prompt-hash` the events schema requires for actor_type=ai.
  */
+export function argsPromptHash(args: Record<string, unknown>): string {
+  return createHash('sha256').update(JSON.stringify(args)).digest('hex')
+}
+
+/** Actor id for an AI-authored artifact: `claude-code:<ver>:<sha8(args)>`. */
 export function aiActorId(args: Record<string, unknown>): string {
-  const sha = createHash('sha256').update(JSON.stringify(args)).digest('hex').slice(0, 8)
-  return `claude-code:${PLUGIN_VERSION}:${sha}`
+  return `claude-code:${PLUGIN_VERSION}:${argsPromptHash(args).slice(0, 8)}`
+}
+
+/** Model recorded for an AI-authored event. Claude knows its own id and may
+ * pass it as the `model` arg; absent that, fall back to the authoring agent. */
+function aiModel(args: Record<string, unknown>): string {
+  return typeof args.model === 'string' && args.model.trim() !== '' ? args.model : 'claude-code'
 }
 
 /**
@@ -148,6 +159,7 @@ export const TOOLS: ToolDef[] = [
         span: str('Char span "start,end" into the utterance text, e.g. 0,16'),
         text: str('The highlighted verbatim text'),
         seed: str('Seed'),
+        model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
       },
     },
     toArgv: (a) => [
@@ -178,6 +190,7 @@ export const TOOLS: ToolDef[] = [
         definition: str('What this code captures'),
         evidence: str('Comma-separated highlight ids, e.g. H-001,H-002'),
         seed: str('Seed'),
+        model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
       },
     },
     toArgv: (a) => [
@@ -205,6 +218,7 @@ export const TOOLS: ToolDef[] = [
         summary: str('The theme statement'),
         codes: str('Comma-separated code ids, e.g. C-distrust,C-override'),
         seed: str('Seed'),
+        model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
       },
     },
     toArgv: (a) => [
@@ -344,7 +358,18 @@ const defaultRunner: CliRunner = async (argv) => {
 export function buildArgv(tool: ToolDef, args: Record<string, unknown>): string[] {
   const argv = tool.toArgv(args)
   if (tool.aiAuthored === true) {
-    argv.push('--ai', '--actor-id', aiActorId(args))
+    // AI-authored events require actor_id + model + prompt_hash (events schema).
+    // Supply all three so the create lands as a [draft] instead of failing
+    // validation and orphaning the markdown (#165).
+    argv.push(
+      '--ai',
+      '--actor-id',
+      aiActorId(args),
+      '--model',
+      aiModel(args),
+      '--prompt-hash',
+      argsPromptHash(args),
+    )
   }
   return argv
 }

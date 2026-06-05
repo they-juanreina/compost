@@ -22,21 +22,37 @@ interface CommonFlags {
 /**
  * Resolve the author from flags. Direct CLI use = researcher (a human ran it).
  * The MCP wrapper passes `--ai --actor-id claude-code:<ver>:<sha>` so the
- * artifact lands as an un-endorsed AI [draft].
+ * artifact lands as an un-endorsed AI [draft]. Exported for tests — it is the
+ * fail-fast gate that keeps a missing --model/--prompt-hash from orphaning a
+ * .md (#165).
  */
-function resolveAuthor(flags: CommonFlags): Author {
+export function resolveAuthor(flags: CommonFlags): Author {
   if (flags.ai === true) {
-    if (flags.actorId === undefined) {
+    // AI-authored events MUST record actor_id, model, and a prompt_hash (the
+    // events schema requires model + prompt_hash for actor_type=ai). Validate
+    // up front and name the missing flag — the create funcs write the markdown,
+    // so a late schema failure would orphan a .md with no event (#165).
+    const missing: string[] = []
+    if (flags.actorId === undefined) missing.push('--actor-id')
+    if (flags.model === undefined) missing.push('--model')
+    if (flags.promptHash === undefined) missing.push('--prompt-hash')
+    if (missing.length > 0) {
       throw new CompostError(
         'INVALID_INPUT',
-        '--ai requires --actor-id (e.g. claude-code:0.1.0:abc12345)',
+        `--ai requires ${missing.join(', ')} (AI-authored artifacts record the actor, model, and prompt hash for provenance; e.g. --actor-id claude-code:0.1.0:abc12345)`,
+      )
+    }
+    if (!/^[a-f0-9]{64}$/.test(flags.promptHash as string)) {
+      throw new CompostError(
+        'INVALID_INPUT',
+        `--prompt-hash must be a 64-char sha256 hex (sha256 of prompt+model+temp+ctx); got ${JSON.stringify(flags.promptHash)}`,
       )
     }
     return {
       actorType: 'ai',
-      actorId: flags.actorId,
-      ...(flags.model !== undefined ? { model: flags.model } : {}),
-      ...(flags.promptHash !== undefined ? { promptHash: flags.promptHash } : {}),
+      actorId: flags.actorId as string,
+      model: flags.model as string,
+      promptHash: flags.promptHash as string,
     }
   }
   return { actorType: 'researcher', actorId: flags.actorId ?? defaultResearcherId() }
@@ -81,8 +97,11 @@ function addAuthorFlags(c: Command): Command {
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--ai', 'Mark the artifact as AI-authored (lands as [draft] until endorsed)')
     .option('--actor-id <id>', 'Actor id (required with --ai; e.g. claude-code:0.1.0:abc12345)')
-    .option('--model <model>', 'Model that produced the suggestion (with --ai)')
-    .option('--prompt-hash <sha>', 'sha256(prompt+model+temp+ctx) (with --ai)')
+    .option('--model <model>', 'Model that produced the suggestion (required with --ai)')
+    .option(
+      '--prompt-hash <sha>',
+      'sha256(prompt+model+temp+ctx), 64-char hex (required with --ai)',
+    )
 }
 
 export function registerCreate(program: Command): void {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, it } from 'node:test'
 import { CompostError } from '../errors.js'
 import { createCode, createHighlight, createTheme, endorseArtifact } from './artifacts.js'
 import { blame } from './blame.js'
+import type { Author } from './events.js'
 import { initSeed } from './seed.js'
 
 const RESEARCHER = { actorType: 'researcher' as const, actorId: 'juan@example.com' }
@@ -139,6 +140,62 @@ describe('createCode / createTheme', () => {
       () => createCode(path, { name: '!!!', definition: 'x', author: RESEARCHER }),
       (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
     )
+  })
+})
+
+describe('create is atomic — no orphaned markdown (#165)', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-artifacts-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  // An AI author missing prompt_hash fails the events schema. The file is
+  // written before the event is emitted, so without rollback it would orphan.
+  const AI_NO_HASH: Author = {
+    actorType: 'ai',
+    actorId: 'claude-code:0.1.0:abc12345',
+    model: 'anthropic:claude',
+    // promptHash deliberately omitted → SCHEMA_VIOLATION on emit
+  }
+
+  it('rolls the markdown back when the create event fails validation', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    assert.throws(() => createCode(path, { name: 'orphan', definition: 'x', author: AI_NO_HASH }))
+    // The orphan-to-be must NOT remain on disk.
+    assert.equal(existsSync(join(path, 'codebook', 'orphan.md')), false)
+  })
+
+  it('does not block re-creation after a failed create', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    assert.throws(() => createCode(path, { name: 'retry', definition: 'x', author: AI_NO_HASH }))
+    // Re-running with a valid author now succeeds (the failed attempt left nothing behind).
+    const ok = createCode(path, {
+      name: 'retry',
+      definition: 'x',
+      author: {
+        actorType: 'ai',
+        actorId: 'claude-code:0.1.0:abc12345',
+        model: 'm',
+        promptHash: 'a'.repeat(64),
+      },
+    })
+    assert.equal(ok.id, 'C-retry')
+    assert.ok(existsSync(ok.path))
+  })
+
+  it('also rolls back highlights (fresh sequential id is freed)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    assert.throws(() =>
+      createHighlight(path, {
+        sessionId: 'S001',
+        utteranceId: 'U-1',
+        span: [0, 1],
+        text: 'x',
+        author: AI_NO_HASH,
+      }),
+    )
+    assert.equal(existsSync(join(path, 'highlights', 'H-001.md')), false)
   })
 })
 
