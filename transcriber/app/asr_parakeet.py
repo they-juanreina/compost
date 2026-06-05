@@ -19,10 +19,50 @@ frame-level word timestamps and 25-language (incl. Spanish) coverage.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Any
 
 from .asr import ASRConfig, WhisperBackend
+
+# A tiny EN-vs-ES language heuristic for the native Parakeet path (#190).
+# parakeet-mlx auto-detects internally but doesn't surface the detection in its
+# AlignedResult, so without a `--language` hint the transcript previously
+# recorded `language: "und"` (via `_detect_language`'s fallback). For a turnkey
+# zero-config run we'd rather record something sensible. Counts function-word
+# hits in the transcribed text; biased toward English when the signal is weak
+# (the v3 model is English-first multilingual).
+_ES_HEURISTIC_TOKENS = frozenset(
+    {
+        "que", "de", "la", "los", "las", "el", "en", "es", "no",
+        "una", "por", "con", "para", "del", "como", "pero", "más",
+    }
+)
+_EN_HEURISTIC_TOKENS = frozenset(
+    {
+        "the", "and", "of", "to", "in", "is", "for", "with",
+        "on", "that", "this", "you", "are", "was", "but", "they",
+    }
+)
+_WORD_RE = re.compile(r"[a-zA-Záéíóúñü]+")
+
+
+def guess_lang_from_text(text: str) -> str:
+    """Best-effort EN/ES guess for the Parakeet path when neither the model
+    nor a `--language` hint reveal the language. Falls back to ``en`` when the
+    text is empty or signal is too weak — never returns ``und`` (#190).
+    """
+    if not text:
+        return "en"
+    tokens = _WORD_RE.findall(text.lower())
+    if not tokens:
+        return "en"
+    es = sum(1 for t in tokens if t in _ES_HEURISTIC_TOKENS)
+    en = sum(1 for t in tokens if t in _EN_HEURISTIC_TOKENS)
+    # Require a clear ES margin to flip — otherwise default to EN (v3 is EN-first).
+    if es > max(en, 1) * 1.2:
+        return "es"
+    return "en"
 
 # Multilingual v3 (English + 24 European languages incl. Spanish) is the default;
 # v2 (`...-0.6b-v2`) is English-only with marginally better English WER.
@@ -111,12 +151,19 @@ class ParakeetMLXBackend:  # pragma: no cover - needs MLX + weights
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         # chunk_duration keeps long files within Metal's buffer cap (see above).
         result = self._model.transcribe(audio_path, chunk_duration=self._chunk_s)
-        return {
-            "segments": result_to_segments(result),
-            # parakeet-mlx doesn't surface a detected language; record the hint so
-            # `_detect_language` keeps it (falls back to 'und' when unset).
-            "language": self._language,
-        }
+        segments = result_to_segments(result)
+        # Language resolution priority (#190):
+        #   1. Whatever parakeet-mlx surfaces on the result (future-proof — the
+        #      API doesn't expose it today, but a future minor might).
+        #   2. The configured `--language` hint, if any.
+        #   3. A tiny EN/ES heuristic on the transcribed text — better than
+        #      letting `_detect_language` fall back to "und" on the zero-config
+        #      turnkey path.
+        language = getattr(result, "language", None) or self._language
+        if not language:
+            full_text = " ".join((s.get("text") or "") for s in segments)
+            language = guess_lang_from_text(full_text)
+        return {"segments": segments, "language": language}
 
 
 @lru_cache(maxsize=1)
