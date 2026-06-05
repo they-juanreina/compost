@@ -2,7 +2,9 @@
 
 Compost runs entirely on your machine. The core loop (ingest documents → embed →
 search, plus highlight/code/theme + provenance) needs only Node and Ollama.
-Audio transcription additionally needs Docker and a HuggingFace token.
+Audio transcription additionally needs a HuggingFace token (for pyannote); on
+Apple Silicon it runs **natively** (Metal), with Docker as a cross-platform
+fallback — see [transcription.md](transcription.md).
 
 Run `compost setup` at any point — it checks every item below and tells you
 exactly what's missing and how to fix it.
@@ -20,7 +22,9 @@ exactly what's missing and how to fix it.
 
 ### Required only for audio transcription
 
-- **[OrbStack](https://orbstack.dev)** (recommended on macOS) or Docker Desktop.
+- **Apple Silicon (default):** a Python 3.11+ venv with the native ASR deps —
+  the fastest path, no container. **Other platforms:** **[OrbStack](https://orbstack.dev)** or Docker Desktop
+  (cross-platform fallback). Either way, see [transcription.md](transcription.md) for setup.
 - **A HuggingFace token** for pyannote speaker diarization (a gated model):
   1. Create a token at <https://huggingface.co/settings/tokens>.
   2. Accept the license on **both** gated repos, logged in as the token's account:

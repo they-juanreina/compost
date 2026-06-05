@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
+import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { transcribeNative } from '../lib/transcribeNative.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -40,7 +41,10 @@ export function registerTranscribe(program: Command): void {
       '--language <tag>',
       'BCP-47 language hint (e.g. en, es-CO). Whisper auto-detects when omitted.',
     )
-    .option('--runtime <mode>', 'native (Apple-Silicon, no Docker) | docker', 'docker')
+    .option(
+      '--runtime <mode>',
+      'native (Apple-Silicon, no Docker) | docker. Default: native when available, else docker.',
+    )
     .option('--engine <name>', 'ASR engine for the native runtime: parakeet | whisper', 'parakeet')
     .option('--model <id>', 'ASR model id (engine default when omitted)')
     .option('--python <path>', 'Native-runtime venv python (or env COMPOST_TRANSCRIBER_PYTHON)')
@@ -54,21 +58,41 @@ export function registerTranscribe(program: Command): void {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const source = resolveSource(seedPath, sessionId)
 
-        // Native runtime (#176): run the pipeline on the host so Apple-Silicon
-        // ASR (parakeet-mlx / Metal) + pyannote use the GPU/CPU directly.
-        if ((flags.runtime ?? 'docker') === 'native') {
-          const python = flags.python ?? process.env.COMPOST_TRANSCRIBER_PYTHON
-          const transcriberDir = flags.transcriberDir ?? process.env.COMPOST_TRANSCRIBER_DIR
-          if (python === undefined || transcriberDir === undefined) {
+        if (
+          flags.runtime !== undefined &&
+          flags.runtime !== 'native' &&
+          flags.runtime !== 'docker'
+        ) {
+          throw new CompostError(
+            'INVALID_INPUT',
+            `--runtime must be 'native' or 'docker' (got '${flags.runtime}')`,
+          )
+        }
+
+        // Runtime selection (#176, native-first): native on Apple Silicon when a
+        // venv + transcriber dir resolve; Docker is the cross-platform fallback.
+        const native = resolveNativeRuntime({
+          ...(flags.python !== undefined ? { python: flags.python } : {}),
+          ...(flags.transcriberDir !== undefined ? { transcriberDir: flags.transcriberDir } : {}),
+        })
+        // Explicit native intent (--runtime native, or --python/--transcriber-dir)
+        // must never silently fall back to Docker — error if it can't be resolved.
+        const nativeRequested =
+          flags.runtime === 'native' ||
+          flags.python !== undefined ||
+          flags.transcriberDir !== undefined
+        if (pickRuntime(flags.runtime, native) === 'native' || nativeRequested) {
+          if (native === null) {
             throw new CompostError(
               'INVALID_INPUT',
-              'native runtime needs --python and --transcriber-dir (or COMPOST_TRANSCRIBER_PYTHON / ' +
-                'COMPOST_TRANSCRIBER_DIR). Run `compost setup` to provision the native venv.',
+              'native transcription requested but no Python venv / transcriber dir resolved. Pass both ' +
+                '--python and --transcriber-dir (or set COMPOST_TRANSCRIBER_PYTHON / COMPOST_TRANSCRIBER_DIR), ' +
+                'or run `compost setup` to provision the native venv.',
             )
           }
           const resp = transcribeNative(seedPath, sessionId, source, {
-            python,
-            transcriberDir,
+            python: native.python,
+            transcriberDir: native.transcriberDir,
             engine: flags.engine ?? 'parakeet',
             ...(flags.model !== undefined ? { model: flags.model } : {}),
             ...(flags.language !== undefined ? { language: flags.language } : {}),
@@ -89,6 +113,13 @@ export function registerTranscribe(program: Command): void {
           return
         }
 
+        // Docker fallback. On Apple Silicon, nudge toward the much faster native path.
+        if (isAppleSilicon() && flags.runtime === undefined && out.human) {
+          process.stderr.write(
+            'note: using the Docker fallback — native transcription is not provisioned. Run ' +
+              '`compost setup` to enable native Apple-Silicon transcription (~20× faster).\n',
+          )
+        }
         const client = new TranscriberClient(
           flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {},
         )

@@ -7,7 +7,7 @@ own recordings.
 ## 0. Prerequisites
 
 - compost installed (`pnpm add -g @they-juanreina/compost-cli`)
-- OrbStack running the transcriber: `docker compose -f transcriber/compose.yaml up -d`
+- Transcription: on Apple Silicon, the native venv (see [transcription.md](../transcription.md)); on other platforms, OrbStack running the Docker fallback (`docker compose -f transcriber/compose.yaml up -d`)
 - Ollama with the default models (`ollama pull bge-m3 && ollama pull llama3.1:8b`)
 
 ## 1. Create a seed

@@ -83,6 +83,16 @@ describe('transcribeNative', () => {
     assert.match(err.message, /no parseable result/)
   })
 
+  it('throws a CompostError (not a raw TypeError) on a non-object JSON primitive', () => {
+    for (const stdout of ['null', '123', '"str"', 'true']) {
+      const err = catchErr(() =>
+        transcribeNative('/seed', 'S001', '/s.mp3', { ...base, spawnImpl: fakeSpawn({ stdout }) }),
+      ) as Error
+      assert.ok(isCompostError(err), `${stdout} should yield a CompostError`)
+      assert.match(err.message, /no parseable result/)
+    }
+  })
+
   it('throws when spawn itself fails', () => {
     const err = catchErr(() =>
       transcribeNative('/seed', 'S001', '/s.mp3', {

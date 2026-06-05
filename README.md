@@ -8,7 +8,7 @@ Runs on your machine. **No API key required** — the filesystem is canonical, e
 
 ## Quick start
 
-Prerequisites (one-time — `compost setup` checks all of them): [Node 22+](https://nodejs.org), [Ollama](https://ollama.com) with the `bge-m3` embedding model, and — only if you want to transcribe audio — [OrbStack](https://orbstack.dev) or Docker plus a HuggingFace token. See [docs/install.md](docs/install.md).
+Prerequisites (one-time — `compost setup` checks all of them): [Node 22+](https://nodejs.org), [Ollama](https://ollama.com) with the `bge-m3` embedding model, and — only if you want to transcribe audio — a HuggingFace token (for pyannote). On Apple Silicon, transcription runs **natively** (Metal, ~16× realtime); Docker is the cross-platform fallback. See [docs/install.md](docs/install.md) and [docs/transcription.md](docs/transcription.md).
 
 ```sh
 # 1. Build the CLI (from a clone of this repo)
@@ -44,7 +44,7 @@ Every change to every artifact is an append-only event in `.compost/events.sqlit
 
 ## Status
 
-**v0.1 (shareable harness)** is feature-complete: ingest, transcription (WhisperX + pyannote + Silero), legacy document ingest, local embeddings (Ollama + LanceDB), BM25 retrieval, three-actor provenance, the Claude Code plugin, and the `compost setup` doctor.
+**v0.1 (shareable harness)** is feature-complete: ingest, transcription (native Parakeet/Whisper + pyannote on Metal, Docker fallback), legacy document ingest, local embeddings (Ollama + LanceDB), hybrid retrieval, three-actor provenance, the Claude Code plugin, and the `compost setup` doctor.
 
 Known limitations, tracked as issues:
 - Retrieval is BM25 today; the embeddings index is built but dense ranking isn't wired into the query path yet ([#151](https://github.com/they-juanreina/compost/issues/151)).

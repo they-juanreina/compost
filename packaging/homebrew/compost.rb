@@ -4,8 +4,8 @@
 #   brew tap they-juanreina/tap
 #   brew install compost
 #
-# Bundles the Node CLI; the Python transcriber runs in OrbStack via
-# `docker compose -f transcriber/compose.yaml up` (see docs/quickstart.md).
+# Bundles the Node CLI. On Apple Silicon, transcription runs natively
+# (see docs/transcription.md); Docker/OrbStack is the cross-platform fallback.
 class Compost < Formula
   desc "Local-first, AI-first research analysis harness for coding agents and humans"
   homepage "https://github.com/they-juanreina/compost"
@@ -23,7 +23,8 @@ class Compost < Formula
 
   def caveats
     <<~EOS
-      The transcriber runs in OrbStack/Docker:
+      Transcription runs natively on Apple Silicon (see docs/transcription.md).
+      Cross-platform fallback via OrbStack/Docker:
         docker compose -f #{opt_prefix}/transcriber/compose.yaml up -d
         curl http://localhost:7862/health
       Ollama is required for embeddings + local chat:
