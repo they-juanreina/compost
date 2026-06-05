@@ -144,6 +144,59 @@ describe('LLMAdapter routing', () => {
     }
   })
 
+  // Ollama returns 404 + `{"error":"model 'X' not found"}` when the model
+  // hasn't been pulled. Pre-fix, the user saw a raw HTTP dump — unactionable.
+  // After #191 it's a CompostError that names the exact `ollama pull` to run.
+  it('translates Ollama 404 model-not-found into an actionable error (#191)', async () => {
+    const fetchImpl: FetchLike = async () => ({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({ error: "model 'llama3.1:8b' not found" }),
+      text: async () => '{"error":"model \'llama3.1:8b\' not found"}',
+    })
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+    await assert.rejects(
+      () => adapter.chat('quick_chat', [{ role: 'user', content: 'hi' }]),
+      (e: unknown) =>
+        isCompostError(e) &&
+        (e as Error).message.includes("'llama3.1:8b'") &&
+        /ollama pull llama3\.1:8b/.test((e as Error).message),
+    )
+  })
+
+  it('translates the embed-path 404 the same way (#191)', async () => {
+    const fetchImpl: FetchLike = async () => ({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({ error: "model 'bge-m3' not found" }),
+      text: async () => '{"error":"model \'bge-m3\' not found"}',
+    })
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+    await assert.rejects(
+      () => adapter.embed('embeddings', ['hello']),
+      (e: unknown) => isCompostError(e) && /ollama pull bge-m3/.test((e as Error).message),
+    )
+  })
+
+  it('lets non-404 Ollama errors propagate untranslated (provider_down etc.)', async () => {
+    // 503 from Ollama → keep the original Error so callers can surface it as
+    // a service-down problem, not a missing-model problem.
+    const fetchImpl: FetchLike = async () => ({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      json: async () => ({}),
+      text: async () => 'down',
+    })
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+    await assert.rejects(
+      () => adapter.chat('quick_chat', [{ role: 'user', content: 'hi' }]),
+      (e: unknown) => !isCompostError(e) && /503/.test((e as Error).message),
+    )
+  })
+
   it('does not require an API key for a local task', async () => {
     delete process.env.TEST_ANTHROPIC_KEY
     const fetchImpl: FetchLike = async () => ({
