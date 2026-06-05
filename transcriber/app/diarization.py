@@ -24,6 +24,14 @@ class Turn:
     speaker: str
 
 
+# Speakers below this share of total speech are treated as over-segmentation
+# fragments and merged into the nearest dominant cluster (#178). pyannote 3.1
+# routinely splits a clean 2-party interview into 5–6 speakers (~85% / 10% +
+# three 1–3% slivers); the slivers are temporal fragments of the dominant
+# pair, not extra speakers.
+DEFAULT_MIN_SPEAKER_SHARE = 0.05
+
+
 class DiarizationBackend(Protocol):
     def diarize(self, audio_path: str) -> list[dict[str, Any]]: ...
 
@@ -125,6 +133,71 @@ def _overlap_ms(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     return max(0, min(a_end, b_end) - max(a_start, b_start))
 
 
+def merge_subthreshold_speakers(
+    turns: list[Turn], min_share: float = DEFAULT_MIN_SPEAKER_SHARE
+) -> list[Turn]:
+    """Collapse speakers with sub-threshold airtime into the nearest dominant
+    cluster (#178). Pure transformation; safe to skip when nothing's spurious.
+
+    A 60-min 2-party interview routinely diarizes as 6 speakers (~85% / 10%
+    + three 1–3% slivers). The slivers are temporal fragments of the real
+    pair, not extra speakers — reassign each sliver-turn to whichever
+    dominant speaker is temporally closest (gap to the nearest dominant
+    turn before vs after).
+
+    Conservative: when every speaker meets the threshold the input is
+    returned unchanged, and when no speaker meets the threshold (degenerate)
+    the input is also returned unchanged rather than zeroing the speaker set.
+    """
+    if not turns:
+        return turns
+    total = sum(t.end_ms - t.start_ms for t in turns)
+    if total <= 0:
+        return turns
+    by_speaker: dict[str, int] = {}
+    for t in turns:
+        by_speaker[t.speaker] = by_speaker.get(t.speaker, 0) + (t.end_ms - t.start_ms)
+    dominant = {s for s, dur in by_speaker.items() if dur / total >= min_share}
+    if not dominant or len(dominant) == len(by_speaker):
+        return turns
+    ordered = sorted(turns, key=lambda t: t.start_ms)
+    out: list[Turn] = []
+    for i, t in enumerate(ordered):
+        if t.speaker in dominant:
+            out.append(t)
+            continue
+        prev_dom = next((o for o in reversed(ordered[:i]) if o.speaker in dominant), None)
+        next_dom = next((o for o in ordered[i + 1 :] if o.speaker in dominant), None)
+        if prev_dom is None and next_dom is None:
+            out.append(t)  # no anchor — leave as-is rather than guess
+            continue
+        if prev_dom is None:
+            chosen = next_dom.speaker  # type: ignore[union-attr]
+        elif next_dom is None:
+            chosen = prev_dom.speaker
+        else:
+            gap_prev = t.start_ms - prev_dom.end_ms
+            gap_next = next_dom.start_ms - t.end_ms
+            chosen = prev_dom.speaker if gap_prev <= gap_next else next_dom.speaker
+        out.append(Turn(t.start_ms, t.end_ms, chosen))
+    return out
+
+
+def _nearest_turn_speaker(utt_start_ms: int, utt_end_ms: int, turns: list[Turn]) -> str | None:
+    """Pick the speaker of the turn whose nearest edge is closest to the
+    utterance's midpoint (#178). Used to rescue 'S?' orphans — utterances
+    whose timing didn't overlap any diarization turn (a few-ms sliver
+    between turn boundaries). Returns None if turns is empty.
+    """
+    if not turns:
+        return None
+    mid = (utt_start_ms + utt_end_ms) // 2
+    return min(
+        turns,
+        key=lambda t: min(abs(t.start_ms - mid), abs(t.end_ms - mid)),
+    ).speaker
+
+
 def assign_speaker(utterance: dict[str, Any], turns: list[Turn]) -> tuple[str, float]:
     """Return (speaker_id, confidence) for an utterance by max overlap.
 
@@ -179,10 +252,21 @@ def align(transcript: dict[str, Any], turns: list[Turn]) -> dict[str, Any]:
     """Assign speaker_id + per-utterance diarization confidence, attach overlap
     cues, and set session status when mean confidence is below the floor.
     Mutates and returns the transcript.
+
+    Post-fix (#178): an utterance whose timing doesn't overlap any diarization
+    turn (an "S?" orphan, e.g. a sliver between turn boundaries) is rescued by
+    attaching the nearest turn's speaker. The confidence stays 0.0 to mark the
+    assignment as a fallback rather than a verified overlap — those still
+    accumulate against the mean-confidence floor and can trigger the
+    needs_speaker_labels gate when there are many.
     """
     confidences: list[float] = []
     for utt in transcript.get("utterances", []):
         speaker, conf = assign_speaker(utt, turns)
+        if speaker == "S?":
+            rescued = _nearest_turn_speaker(utt["start_ms"], utt["end_ms"], turns)
+            if rescued is not None:
+                speaker = rescued  # confidence stays 0.0 (fallback marker)
         utt["speaker_id"] = speaker
         utt.setdefault("diarization", {})["confidence"] = round(conf, 3)
         confidences.append(conf)
@@ -210,4 +294,7 @@ class Diarizer:
 
     def diarize(self, audio_path: str) -> list[Turn]:
         raw = self._get_backend().diarize(audio_path)
-        return [Turn(int(t["start_ms"]), int(t["end_ms"]), str(t["speaker"])) for t in raw]
+        turns = [Turn(int(t["start_ms"]), int(t["end_ms"]), str(t["speaker"])) for t in raw]
+        # Collapse over-segmentation slivers into the dominant cluster (#178)
+        # before align() and detect_overlaps() consume the turns.
+        return merge_subthreshold_speakers(turns)
