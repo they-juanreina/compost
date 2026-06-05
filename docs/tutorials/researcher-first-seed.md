@@ -36,23 +36,26 @@ The ingest-watcher assigns session ids and moves files to
 
 ## 3. Highlight + code
 
-In the web UI (`compost serve`) drag to highlight; from the CLI/agent, the
-cross-session-similarity scanner proposes codes:
+From the CLI/agent, the cross-session-similarity scanner proposes codes:
 
 ```sh
 compost rescan --seed data-hub         # clusters un-coded highlights → AI code drafts
 ```
 
 AI suggestions surface as `[draft]` until you endorse them — `compost blame`
-shows the full lineage.
+shows the full lineage. (Drag-to-highlight in the web UI arrives with
+`compost serve` in **v0.2** — [#32](https://github.com/they-juanreina/compost/issues/32); not implemented yet.)
 
 ## 4. Synthesize
 
+> **Upcoming — not implemented yet** ([#59](https://github.com/they-juanreina/compost/issues/59)).
+> `compost synthesize` will draft themes/journey-maps from the coded corpus:
+
 ```sh
-compost synthesize --seed data-hub --kind themes
+compost synthesize --seed data-hub --kind themes   # [not implemented yet]
 ```
 
-Saturation pulses tell you when to stop collecting; journey-map drafts pull
+Saturation pulses will tell you when to stop collecting; journey-map drafts pull
 from your coded data.
 
 ## 5. Export
