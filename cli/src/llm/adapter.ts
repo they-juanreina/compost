@@ -75,12 +75,29 @@ export class LLMAdapter {
     extra: { schema?: Record<string, unknown>; temperature?: number; maxTokens?: number } = {},
   ): Promise<ChatResponse> {
     const { provider, model } = this.resolveTask(task)
+    this.assertProviderHasKey(task, provider)
     return this.getProvider(provider).chat({ model, messages, ...extra })
   }
 
   async embed(task: string, input: string[]): Promise<EmbedResponse> {
     const { provider, model } = this.resolveTask(task)
+    this.assertProviderHasKey(task, provider)
     return this.getProvider(provider).embed({ model, input })
+  }
+
+  /** Fail fast with an actionable message when a task routes to a key-requiring
+   * provider whose key isn't set — instead of a raw 401 from the HTTP layer. A
+   * provider needs a key iff it declares `api_key_env` in [providers] (local
+   * providers like ollama/lmstudio don't). */
+  private assertProviderHasKey(task: string, provider: string): void {
+    const envName = this.config.providers[provider]?.api_key_env
+    if (envName === undefined) return // local provider — no key needed
+    if (providerApiKey(this.config, provider) !== undefined) return // key present
+    throw new CompostError(
+      'CONFIG_ERROR',
+      `The "${task}" task routes to ${provider}, which needs an API key — set ${envName}, ` +
+        'or route to a local model (e.g. `compost chat --task quick_chat`).',
+    )
   }
 
   /** Probe every distinct provider referenced by [defaults] plus those configured. */
