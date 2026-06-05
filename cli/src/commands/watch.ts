@@ -24,7 +24,19 @@ export function registerWatch(program: Command): void {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         if (flags.once === true) {
           const result = await runSupervisorOnce(seedPath)
-          emit({ status: 'ok', command: 'watch', mode: 'once', ...result }, out)
+          // A drained-but-failed job is not success (#164): non-ok status + exit 1
+          // so scripts/CI can gate, with the failures surfaced inline.
+          const ok = result.failures.length === 0
+          emit(
+            {
+              status: ok ? 'ok' : 'completed_with_failures',
+              command: 'watch',
+              mode: 'once',
+              ...result,
+            },
+            out,
+          )
+          if (!ok) process.exitCode = 1
           return
         }
         // Live mode: wind down cleanly on Ctrl-C; in-flight is bounded per pass.

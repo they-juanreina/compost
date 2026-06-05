@@ -6,9 +6,24 @@ import { runTranscribeWorkerOnce, type WorkerDeps } from './transcribe_worker.js
 
 export interface SupervisorResult {
   inbox: { moved: number; unsupported: number }
-  transcribe: { processed: number }
-  legacy: { processed: number }
+  transcribe: { processed: number; failed: number }
+  legacy: { processed: number; failed: number }
   embed: { embedded: number; inserted: number; transcripts_scanned: number }
+  /** Human-readable failure summaries; empty when the pass was clean. The watch
+   * command turns a non-empty list into a non-ok status + non-zero exit (#164). */
+  failures: string[]
+}
+
+/** A drained job whose status marks it as failed (vs ok / needs_speaker_labels). */
+export function isFailedResult(r: { status: string }): boolean {
+  return r.status === 'error' || r.status === 'failed_transcription'
+}
+
+/** Count DISTINCT failed jobs. A job retried up to MAX_ATTEMPTS within one pass
+ * produces several failed result rows, but it's one failed job — report jobs,
+ * not attempts. */
+export function countFailedJobs(results: Array<{ job_id: number; status: string }>): number {
+  return new Set(results.filter(isFailedResult).map((r) => r.job_id)).size
 }
 
 export interface SupervisorDeps extends WorkerDeps {
@@ -37,22 +52,28 @@ export async function runSupervisorOnce(
   deps: SupervisorDeps = {},
 ): Promise<SupervisorResult> {
   const logger = loopLogger(seedPath, 'supervisor')
+  const failures: string[] = []
   const inbox = processInbox(seedPath)
   await logger.info('inbox drained', {
     moved: inbox.moved.length,
     unsupported: inbox.unsupported.length,
   })
   const worker = await runTranscribeWorkerOnce(seedPath, deps)
-  await logger.info('transcribe drained', { processed: worker.processed })
+  const transcribeFailed = countFailedJobs(worker.results)
+  if (transcribeFailed > 0) failures.push(`transcribe: ${transcribeFailed} job(s) failed`)
+  await logger.info('transcribe drained', { processed: worker.processed, failed: transcribeFailed })
 
-  let legacy = { processed: 0 }
+  let legacy = { processed: 0, failed: 0 }
   if (deps.skipLegacy !== true) {
     try {
       const result = await runLegacyWorkerOnce(seedPath, deps.legacy ?? {})
-      legacy = { processed: result.processed }
+      const failed = countFailedJobs(result.results)
+      legacy = { processed: result.processed, failed }
+      if (failed > 0) failures.push(`legacy: ${failed} job(s) failed`)
       await logger.info('legacy drained', legacy)
     } catch (err) {
-      // Legacy failures don't block transcribe progress — log and continue.
+      // The whole legacy pass threw (e.g. service down) — surface it, don't block.
+      failures.push(`legacy: ${String(err)}`)
       await logger.error('legacy failed', { error: String(err) })
     }
   }
@@ -63,17 +84,19 @@ export async function runSupervisorOnce(
       embed = await runEmbedWorkerOnce(seedPath, deps.embed ?? {})
       await logger.info('embed drained', embed)
     } catch (err) {
-      // Embed failures must not block ingest/transcribe/legacy progress — log and continue.
+      // Embed failures must not block ingest/transcribe/legacy progress — surface + continue.
       // Common cause: Ollama not running. Surfaced clearly by `compost-setup` (v0.1-07).
+      failures.push(`embed: ${String(err)}`)
       await logger.error('embed failed', { error: String(err) })
     }
   }
 
   return {
     inbox: { moved: inbox.moved.length, unsupported: inbox.unsupported.length },
-    transcribe: { processed: worker.processed },
+    transcribe: { processed: worker.processed, failed: transcribeFailed },
     legacy,
     embed,
+    failures,
   }
 }
 
