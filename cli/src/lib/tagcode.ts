@@ -17,13 +17,93 @@ export interface TermSuggestion {
   count: number
 }
 
+// Function words, modals, pronouns, common conversational fillers (EN + ES) —
+// any phrase touching one of these is dropped. Scoped to grammatical glue and
+// filler; content nouns/verbs/adjectives don't appear here, so legitimate noun
+// phrases ("manual override", "alerta automática") survive (#171). The pre-fix
+// list was 24 tokens and only dropped *all-stopword* phrases, so "you know"
+// (64), "and like" (40), "right like" (38) leaked into glossary suggestions.
 const STOPWORDS = new Set([
+  // EN — fillers, modals, pronouns, common helpers
   'the',
   'and',
+  'but',
   'for',
   'with',
   'that',
   'this',
+  'these',
+  'those',
+  'you',
+  'your',
+  'yours',
+  'his',
+  'her',
+  'hers',
+  'its',
+  'our',
+  'ours',
+  'they',
+  'their',
+  'them',
+  'theirs',
+  'mine',
+  'ours',
+  'are',
+  'was',
+  'were',
+  'been',
+  'being',
+  'have',
+  'has',
+  'had',
+  'having',
+  'will',
+  'would',
+  'could',
+  'should',
+  'can',
+  'may',
+  'might',
+  'must',
+  'into',
+  'onto',
+  'about',
+  'from',
+  'over',
+  'under',
+  'after',
+  'before',
+  'like',
+  'just',
+  'kind',
+  'sort',
+  'know',
+  'mean',
+  'think',
+  'say',
+  'said',
+  'got',
+  'get',
+  'going',
+  'gone',
+  'want',
+  'need',
+  'see',
+  'look',
+  'take',
+  'make',
+  'made',
+  'come',
+  'came',
+  'well',
+  'okay',
+  'right',
+  'yeah',
+  'really',
+  'actually',
+  'maybe',
+  // ES — equivalents
   'una',
   'unos',
   'unas',
@@ -32,20 +112,78 @@ const STOPWORDS = new Set([
   'del',
   'por',
   'con',
+  'sin',
   'que',
+  'qué',
   'para',
-  'como',
   'pero',
+  'sino',
+  'como',
   'más',
   'muy',
-  'sin',
   'sus',
   'les',
-  'una',
+  'nos',
+  'mis',
+  'tus',
+  'este',
+  'esta',
+  'estos',
+  'estas',
+  'eso',
+  'esa',
+  'esos',
+  'esas',
+  'ese',
+  'todo',
+  'todos',
+  'toda',
+  'todas',
+  'ser',
+  'estar',
+  'son',
+  'soy',
+  'eres',
+  'era',
+  'eran',
+  'fue',
+  'fueron',
+  'está',
+  'están',
+  'estaba',
+  'estaban',
+  'hay',
+  'había',
+  'hubo',
+  'haya',
+  'voy',
+  'vas',
+  'vamos',
+  'van',
+  'sea',
+  'sean',
+  'pues',
+  'bueno',
+  'vale',
+  'claro',
+  'entonces',
+  'así',
+  'bien',
+  'también',
+  'tampoco',
+  'cuando',
+  'donde',
+  'cómo',
 ])
 
+// Pre-fix, "hour minutes seconds1"(78) topped the list — utterance text leaked
+// raw `.srt`-style timecodes. Any candidate token containing a digit is
+// suppressed: that's never a content noun phrase.
+const TOKEN_HAS_DIGIT_RE = /\d/
+
 /** Extract candidate glossary terms: multiword phrases (2-3 tokens) that recur
- * >= minCount times across utterances, excluding stopword-only phrases. */
+ * >= minCount times across utterances. Phrases are dropped when ANY token is
+ * a stopword (grammatical glue / filler) OR contains a digit (timestamp noise). */
 export function suggestTerms(
   utterances: Array<{ text: string }>,
   opts: { minCount?: number } = {},
@@ -61,7 +199,11 @@ export function suggestTerms(
     for (let n = 2; n <= 3; n++) {
       for (let i = 0; i + n <= tokens.length; i++) {
         const gram = tokens.slice(i, i + n)
-        if (gram.every((t) => STOPWORDS.has(t))) continue
+        // Drop the candidate when ANY token is a stopword or has a digit —
+        // pre-fix this was `every` (drop only when ALL tokens were stopwords),
+        // which let "you know" / "and like" through because of the non-stopword
+        // partner. Content noun phrases never contain function words or digits.
+        if (gram.some((t) => STOPWORDS.has(t) || TOKEN_HAS_DIGIT_RE.test(t))) continue
         const phrase = gram.join(' ')
         counts.set(phrase, (counts.get(phrase) ?? 0) + 1)
       }
