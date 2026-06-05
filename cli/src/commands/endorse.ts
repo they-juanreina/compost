@@ -27,7 +27,11 @@ export function registerEndorse(program: Command): void {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const researcher = flags.researcher ?? defaultResearcherId()
         const result = endorseArtifact(seedPath, artifactRef, researcher)
-        emit({ status: 'ok', command: 'endorse', researcher, ...result }, out)
+        // A second endorse by the same researcher is a no-op (#169) — surface
+        // that distinctly so callers/scripts can tell "ok, just did it" from
+        // "ok, was already endorsed" without parsing event ids.
+        const status = result.already_endorsed === true ? 'already_endorsed' : 'ok'
+        emit({ status, command: 'endorse', researcher, ...result }, out)
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err
