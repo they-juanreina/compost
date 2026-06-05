@@ -17,7 +17,7 @@ export function registerEndorse(program: Command): void {
     )
     .argument(
       '<artifact-ref>',
-      'SHA256 prefix or latest:<kind>=<seed> (same refs as `compost blame`)',
+      'Id from `compost create` (C-slug / H-NNN / T-slug), SHA256 prefix, or latest:<kind>=<seed>',
     )
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--researcher <id>', 'Researcher identity (default: $COMPOST_USER)')

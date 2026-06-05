@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
+import { HUMAN_REF_RE, tryResolveHumanRef } from './artifacts.js'
 
 export interface BlameEvent {
   id: string
@@ -105,6 +106,17 @@ function rowToEvent(row: EventRow): BlameEvent {
 }
 
 function resolveArtifactId(db: Database.Database, query: string, seed: string): string {
+  // Human id (H-NNN / C-slug / T-slug) — the form `compost create` prints (#168).
+  // Tried first so a human ref short-circuits before the SHA/latest branches.
+  const humanRow = tryResolveHumanRef(db, query)
+  if (humanRow !== undefined) return humanRow.artifact_id
+  if (HUMAN_REF_RE.test(query)) {
+    throw new CompostError(
+      'FILE_NOT_FOUND',
+      `No artifact with id "${query}" in seed "${seed}".`,
+    )
+  }
+
   const latestMatch = LATEST_REF_RE.exec(query)
   if (latestMatch !== null) {
     const kind = latestMatch[1]!
@@ -129,7 +141,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
   if (!ARTIFACT_PREFIX_RE.test(query)) {
     throw new CompostError(
       'INVALID_INPUT',
-      `Invalid artifact ref "${query}". Expected a SHA256 prefix (8-64 hex chars) or "latest:<kind>=<seed>".`,
+      `Invalid artifact ref "${query}". Expected the id from \`compost create\` (e.g. C-slug, H-001), a SHA256 prefix (8-64 hex chars), or "latest:<kind>=<seed>".`,
     )
   }
 

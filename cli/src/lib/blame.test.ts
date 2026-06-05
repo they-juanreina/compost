@@ -264,6 +264,66 @@ describe('blame', () => {
   //
   // The check uses readdirSync rather than existsSync because macOS HFS+/APFS
   // is case-insensitive by default — existsSync would lie.
+  // The id `compost create` prints (C-slug / H-NNN / T-slug) must round-trip
+  // into blame too — the symmetric half of #168 (endorse + blame share the
+  // resolver via tryResolveHumanRef).
+  it('resolves a code by its C-slug human id (#168)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const codeArtifactId = sha('code-1')
+    seedEvents(join(path, '.compost', 'events.sqlite'), [
+      {
+        artifact_kind: 'code',
+        artifact_id: codeArtifactId,
+        action: 'create',
+        payload: { id: 'C-access-model-clarity', kind: 'code', name: 'access-model-clarity' },
+      },
+    ])
+    const result = blame('C-access-model-clarity', { cwd: work })
+    assert.equal(result.resolved_artifact_id, codeArtifactId)
+  })
+
+  it('resolves a highlight by its H-NNN human id (#168)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const hlArtifactId = sha('h-1')
+    seedEvents(join(path, '.compost', 'events.sqlite'), [
+      {
+        artifact_kind: 'highlight',
+        artifact_id: hlArtifactId,
+        action: 'create',
+        payload: { id: 'H-007', kind: 'highlight' },
+      },
+    ])
+    const result = blame('H-007', { cwd: work })
+    assert.equal(result.resolved_artifact_id, hlArtifactId)
+  })
+
+  it('errors with a human-id-named message when the id has no match (#168)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    seedEvents(join(path, '.compost', 'events.sqlite'), [
+      { artifact_id: sha('x'), action: 'create', payload: { id: 'C-real', kind: 'code' } },
+    ])
+    assert.throws(
+      () => blame('C-not-here', { cwd: work }),
+      (err: unknown) =>
+        err instanceof CompostError &&
+        err.code === 'FILE_NOT_FOUND' &&
+        /C-not-here/.test(err.message),
+    )
+  })
+
+  it('error message for a wholly-malformed ref names the human-id form (#168)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    seedEvents(join(path, '.compost', 'events.sqlite'), [{ action: 'create' }])
+    assert.throws(
+      () => blame('not-a-ref!', { cwd: work }),
+      (err: unknown) =>
+        err instanceof CompostError &&
+        err.code === 'INVALID_INPUT' &&
+        /C-slug/.test(err.message) &&
+        /SHA256/.test(err.message),
+    )
+  })
+
   it('explains case-sensitivity when --seed only differs by case and is not an actual directory entry', () => {
     const { path: lineage } = initSeed('Lineage', { cwd: work })
     initSeed('beta', { cwd: work })
