@@ -179,7 +179,7 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
         label: 'Native transcription',
         status: 'warn',
         detail: 'no native venv resolved (Apple Silicon runs ~20× faster than the Docker fallback)',
-        fix: 'compost setup will provision it (#183), or set COMPOST_TRANSCRIBER_PYTHON + COMPOST_TRANSCRIBER_DIR',
+        fix: 'compost setup --provision-native  (or set COMPOST_TRANSCRIBER_PYTHON + COMPOST_TRANSCRIBER_DIR)',
       })
     } else {
       const probe = await exec(native.python, ['-c', 'import parakeet_mlx, pyannote.audio'])
