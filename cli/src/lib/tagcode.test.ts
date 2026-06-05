@@ -23,6 +23,65 @@ describe('suggestTerms', () => {
     const terms = suggestTerms([{ text: 'unique phrase here' }], { minCount: 2 })
     assert.equal(terms.length, 0)
   })
+
+  // Conversational filler n-grams must NOT survive suggestion (#171).
+  // Pre-fix, the corpus drowned in "you know"(64), "and like"(40), "right like"(38),
+  // "and then"(31), "like that"(17) because the stopword filter only dropped
+  // *all-stopword* phrases, letting any non-stopword partner ("know", "like")
+  // anchor the candidate.
+  describe('drops conversational filler / boundary stopwords (#171)', () => {
+    const noisy = Array.from({ length: 3 }, () => ({
+      text: 'you know and like right like and then like that',
+    }))
+
+    it('"you know" is not suggested', () => {
+      const t = suggestTerms(noisy, { minCount: 2 })
+      assert.ok(!t.some((s) => s.phrase === 'you know'))
+    })
+
+    it('"and like" / "right like" / "like that" are not suggested', () => {
+      const t = suggestTerms(noisy, { minCount: 2 })
+      const phrases = t.map((s) => s.phrase)
+      assert.ok(!phrases.includes('and like'))
+      assert.ok(!phrases.includes('right like'))
+      assert.ok(!phrases.includes('like that'))
+      assert.ok(!phrases.includes('and then'))
+    })
+
+    it('still surfaces legitimate noun phrases ("alerta automática")', () => {
+      const utts = [
+        { text: 'la alerta automática me preocupa' },
+        { text: 'cada alerta automática es ruidosa' },
+        { text: 'la alerta automática otra vez' },
+      ]
+      const t = suggestTerms(utts, { minCount: 2 })
+      assert.ok(t.some((s) => s.phrase === 'alerta automática' && s.count >= 2))
+    })
+
+    it('still surfaces "manual override" — content nouns survive', () => {
+      const utts = [
+        { text: 'manual override needed' },
+        { text: 'manual override again' },
+        { text: 'manual override prevented escalation' },
+      ]
+      const t = suggestTerms(utts, { minCount: 2 })
+      assert.ok(t.some((s) => s.phrase === 'manual override'))
+    })
+  })
+
+  // The #1 garbage candidate from real dogfooding was "hour minutes seconds1"(78) —
+  // raw .srt timecode markers leaking into utterance text. Any token with a
+  // digit is suppressed: never a real noun phrase (#171).
+  it('drops n-grams that contain a digit token (timestamp noise) (#171)', () => {
+    const utts = Array.from({ length: 5 }, () => ({
+      text: 'hour minutes seconds1 alerta automática',
+    }))
+    const t = suggestTerms(utts, { minCount: 2 })
+    assert.ok(!t.some((s) => /seconds\d/.test(s.phrase)))
+    assert.ok(!t.some((s) => /\d/.test(s.phrase)))
+    // The legitimate phrase still surfaces.
+    assert.ok(t.some((s) => s.phrase === 'alerta automática'))
+  })
 })
 
 describe('tagSeed', () => {
