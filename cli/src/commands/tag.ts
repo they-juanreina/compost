@@ -1,9 +1,10 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
+import { listCanonicalSessionIds } from '../lib/canonicalSessions.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { tagSeed } from '../lib/tagcode.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -16,9 +17,12 @@ interface TagFlags {
 function loadUtterances(seedPath: string): Array<{ text: string }> {
   const sessionsDir = join(seedPath, 'sessions')
   const out: Array<{ text: string }> = []
-  if (!existsSync(sessionsDir)) return out
-  for (const entry of readdirSync(sessionsDir)) {
-    if (entry.startsWith('.') || entry === '_inbox') continue
+  // Only scan canonical sessions (#171): pre-fix tag walked every subdir of
+  // sessions/ that had a transcript.json — incl. legacy folders left behind
+  // by partial migrations — which leaked non-canonical content (incl. raw
+  // `.srt`-like timestamps) into the noun-phrase frequencies. Sharing the
+  // resolver with status/saturate (#166) keeps the session set consistent.
+  for (const entry of listCanonicalSessionIds(sessionsDir)) {
     const t = join(sessionsDir, entry, 'transcript.json')
     if (!existsSync(t)) continue
     const parsed = JSON.parse(readFileSync(t, 'utf8')) as { utterances?: Array<{ text: string }> }
