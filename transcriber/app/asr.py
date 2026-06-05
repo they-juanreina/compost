@@ -42,6 +42,20 @@ class WhisperBackend(Protocol):
     def transcribe(self, audio_path: str) -> dict[str, Any]: ...
 
 
+def build_whisperx_transcribe_kwargs(language: str | None) -> dict[str, Any]:
+    """Build the per-call kwargs for `whisperx.Model.transcribe()` so the
+    configured language hint reaches transcribe, not just load_model (#180).
+
+    Pre-fix, the hint was only passed to ``whisperx.load_model``; ``transcribe``
+    re-ran auto-detect per file, so the request-level ``"language":"en"`` was
+    effectively ignored. Tests the pure mapping without needing whisperx weights.
+    """
+    kwargs: dict[str, Any] = {"batch_size": 16}
+    if language:
+        kwargs["language"] = language
+    return kwargs
+
+
 class WhisperXBackend:  # pragma: no cover - needs multi-GB weights
     """Concrete WhisperBackend wrapping `whisperx`.
 
@@ -74,11 +88,20 @@ class WhisperXBackend:  # pragma: no cover - needs multi-GB weights
         self._device = device
         self._whisperx = whisperx
         self._torch = torch
+        # Pre-fix (#180): load_model() received the language hint but
+        # model.transcribe() didn't — WhisperX re-ran auto-detect per file
+        # ("No language specified, language will be detected ... (increases
+        # inference time)"). Hold the configured language on the backend and
+        # pass it through on every transcribe call so the hint actually skips
+        # the per-file detection step.
+        self._language = config.language
 
     def transcribe(self, audio_path: str) -> dict[str, Any]:
         audio = self._whisperx.load_audio(audio_path)
-        result = self._model.transcribe(audio, batch_size=16)
-        language = result.get("language") or "en"
+        # Forward the configured language so WhisperX skips per-file auto-detect.
+        # When None, behavior is unchanged (auto-detect, then we use the result).
+        result = self._model.transcribe(audio, **build_whisperx_transcribe_kwargs(self._language))
+        language = result.get("language") or self._language or "en"
 
         # Lazy-load the alignment model on first use (depends on detected language).
         if self._align_model is None:
