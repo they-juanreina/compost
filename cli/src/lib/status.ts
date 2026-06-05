@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { isCanonicalSession } from './canonicalSessions.js'
 
 export interface SessionCounts {
   total: number
@@ -99,26 +100,6 @@ function readSeed(name: string, path: string): SeedStatus {
     },
     warnings,
   }
-}
-
-/**
- * A subdir of `sessions/` is treated as a session when ANY holds:
- *   - its name matches `S\d+` (the canonical id shape used by ingest-watcher), OR
- *   - it contains a `transcript.json` (already transcribed), OR
- *   - it contains a `source.<ext>` file (queued, waiting to be transcribed).
- *
- * Other subdirs (`Notes/`, `Transcripts/`, `Attachments/`, …) are non-canonical —
- * usually carry-over from legacy seed layouts that didn't fully migrate. They
- * show up as warnings instead of being silently counted.
- */
-const CANONICAL_SESSION_ID_RE = /^S\d+$/
-
-function isCanonicalSession(absDir: string, name: string): boolean {
-  if (CANONICAL_SESSION_ID_RE.test(name)) return true
-  if (existsSync(join(absDir, 'transcript.json'))) return true
-  // source.<ext> files are written by processInbox; their presence means the
-  // dir is a queued session even before its id has been canonicalized.
-  return readdirSync(absDir).some((f) => f.startsWith('source.'))
 }
 
 function countSessions(sessionsDir: string, warnings: string[]): SessionCounts {
