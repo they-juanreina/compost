@@ -181,6 +181,15 @@ create (actor=ai, human_approved=false)
 
 `compost blame <artifact_id>` prints the lineage chain in the CLI for agents to inspect.
 
+### Reproducible provenance + agreement
+
+The event log is also a reproducibility and trust-measurement layer (see [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md)):
+
+- **Captured inputs.** Migration `0003` adds an `ai_inputs` table; `events.input_id` content-addresses the reconstructable generation bundle (model, params, system prompt, prompt, context). `prompt_hash` remains as an integrity digest, but the bundle is now replayable — captured automatically for internal/agent calls and best-effort for host creates (`--inputs-file`). Prospective only (pre-migration events carry `input_id = NULL`).
+- **`compost rerun <ref>`** — verify the inputs are intact (default), or `--apply` to regenerate and diff under an optional model override. Deterministic agents reproduce exactly; LLM regeneration is deferred.
+- **`compost recode` + `compost agreement`** — a researcher codes a sampled highlight set *blind* (independently of the machine), then agreement reports Cohen's κ + Krippendorff's α over the doubly-coded set. This operationalizes the "conditional trust" the endorsement gate exists to manage; `recode` is deliberately human-only.
+- **`compost export --format prov`** — W3C PROV-O (JSON-LD) export of the event log, so the three-actor provenance is externally verifiable and citable.
+
 ## Transcription — Python WhisperX, not anarlog reuse
 
 Anarlog is MIT-licensed, so reuse is legally clean. But anarlog's pipeline:

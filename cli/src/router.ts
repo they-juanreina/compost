@@ -1,5 +1,6 @@
 import { Command } from 'commander'
 
+import { registerAgreement } from './commands/agreement.js'
 import { registerBlame } from './commands/blame.js'
 import { registerChat } from './commands/chat.js'
 import { registerCode } from './commands/code.js'
@@ -13,7 +14,9 @@ import { registerInit } from './commands/init.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
 import { registerQuery } from './commands/query.js'
+import { registerRecode } from './commands/recode.js'
 import { registerReindex } from './commands/reindex.js'
+import { registerRerun } from './commands/rerun.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
 import { registerSearch } from './commands/search.js'
@@ -59,6 +62,9 @@ export function buildProgram(): Command {
   registerValidate(program)
   registerTag(program)
   registerCode(program)
+  registerRecode(program)
+  registerAgreement(program)
+  registerRerun(program)
   registerSynthesize(program)
   registerSearch(program)
   registerSession(program)

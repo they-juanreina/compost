@@ -71,6 +71,27 @@ export const TOOLS: ToolDef[] = [
     toArgv: (a) => ['blame', String(a.artifact), ...(a.seed ? ['--seed', String(a.seed)] : [])],
   },
   {
+    name: 'compost_agreement',
+    description:
+      "Human↔machine intercoder agreement (Cohen's κ + Krippendorff's α) over highlights coded by BOTH a blind researcher and the machine. Read-only. Reports `insufficient` below the minimum sample. NOTE: the human side comes from `compost recode`, which is intentionally NOT an agent tool — only a researcher codes blind.",
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seed: str('Seed'),
+        min_units: {
+          type: 'number',
+          description: 'Minimum doubly-coded units for a meaningful κ (default 10)',
+        },
+      },
+    },
+    toArgv: (a) => [
+      'agreement',
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+      ...(a.min_units ? ['--min-units', String(a.min_units)] : []),
+    ],
+  },
+  {
     name: 'compost_ingest',
     description:
       'Route a file or folder into the seed job queue (audio/video/PDF/DOCX/PPTX/CSV/MD).',
@@ -95,14 +116,25 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'compost_export',
-    description: 'Export a transcript.json to CSV or Markdown.',
+    description:
+      "Export a transcript.json (csv | md | eaf) or a seed's provenance event log to W3C PROV-O JSON-LD (prov).",
     readOnly: true,
     inputSchema: {
       type: 'object',
-      required: ['transcript', 'format'],
-      properties: { transcript: str('Path to transcript.json'), format: str('csv | md') },
+      required: ['format'],
+      properties: {
+        transcript: str('Path to transcript.json (required for csv | md | eaf)'),
+        format: str('csv | md | eaf | prov'),
+        seed: str('Seed (for prov)'),
+      },
     },
-    toArgv: (a) => ['export', String(a.transcript), '--format', String(a.format)],
+    toArgv: (a) => [
+      'export',
+      ...(a.transcript ? [String(a.transcript)] : []),
+      '--format',
+      String(a.format),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
   },
   {
     name: 'compost_models_doctor',
@@ -252,6 +284,32 @@ export const TOOLS: ToolDef[] = [
       'endorse',
       String(a.artifact),
       ...(a.researcher ? ['--researcher', String(a.researcher)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
+    name: 'compost_rerun',
+    description:
+      'Rerun an AI/agent generation from its captured inputs. Default verifies the inputs are intact and reconstructable; with apply=true, regenerates a deterministic agent artifact and emits a chained diff. LLM regeneration is not wired yet.',
+    readOnly: false,
+    inputSchema: {
+      type: 'object',
+      required: ['ref'],
+      properties: {
+        ref: str('Event ULID, artifact id/prefix, human id (C-/H-/T-), or latest:<kind>=<seed>'),
+        apply: {
+          type: 'boolean',
+          description: 'Regenerate and emit a chained event (default false)',
+        },
+        model: str('Override the model for regeneration'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'rerun',
+      String(a.ref),
+      ...(a.apply === true ? ['--apply'] : []),
+      ...(a.model ? ['--model', String(a.model)] : []),
       ...(a.seed ? ['--seed', String(a.seed)] : []),
     ],
   },

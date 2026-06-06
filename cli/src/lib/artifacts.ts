@@ -4,7 +4,14 @@ import { join } from 'node:path'
 import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
-import { type Author, artifactId, emitCreate, emitEndorse, openSeedEvents } from './events.js'
+import {
+  type AiInputBundle,
+  type Author,
+  artifactId,
+  emitCreate,
+  emitEndorse,
+  openSeedEvents,
+} from './events.js'
 
 export interface CreatedArtifact {
   id: string // human/file id (H-NNN, C-slug, T-slug)
@@ -71,7 +78,12 @@ function writeArtifactAtomic(
   seedPath: string,
   path: string,
   body: string,
-  event: { artifactKind: string; initialState: Record<string, unknown>; author: Author },
+  event: {
+    artifactKind: string
+    initialState: Record<string, unknown>
+    author: Author
+    inputs?: AiInputBundle
+  },
 ): string {
   writeFileSync(path, body, 'utf8')
   const events = openSeedEvents(seedPath)
@@ -95,6 +107,7 @@ export interface CreateHighlightInput {
   span: [number, number]
   text: string
   author: Author
+  inputs?: AiInputBundle
 }
 
 export function createHighlight(seedPath: string, input: CreateHighlightInput): CreatedArtifact {
@@ -126,6 +139,7 @@ export function createHighlight(seedPath: string, input: CreateHighlightInput): 
     artifactKind: 'highlight',
     initialState,
     author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
   })
   return { id, artifact_id: sha, path, event_id }
 }
@@ -135,6 +149,7 @@ export interface CreateCodeInput {
   definition: string
   evidence?: string[]
   author: Author
+  inputs?: AiInputBundle
 }
 
 export function createCode(seedPath: string, input: CreateCodeInput): CreatedArtifact {
@@ -162,6 +177,7 @@ export function createCode(seedPath: string, input: CreateCodeInput): CreatedArt
     artifactKind: 'code',
     initialState,
     author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
   })
   return { id, artifact_id: sha, path, event_id }
 }
@@ -171,6 +187,7 @@ export interface CreateThemeInput {
   summary: string
   codes?: string[]
   author: Author
+  inputs?: AiInputBundle
 }
 
 export function createTheme(seedPath: string, input: CreateThemeInput): CreatedArtifact {
@@ -199,6 +216,7 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
     artifactKind: 'theme',
     initialState,
     author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
   })
   return { id, artifact_id: sha, path, event_id }
 }

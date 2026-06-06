@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from 'node:fs'
 import type { Command } from 'commander'
 import { CompostError, isCompostError } from '../errors.js'
 import {
@@ -7,7 +8,7 @@ import {
   createTheme,
   defaultResearcherId,
 } from '../lib/artifacts.js'
-import type { Author } from '../lib/events.js'
+import type { AiInputBundle, Author } from '../lib/events.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -17,6 +18,39 @@ interface CommonFlags {
   actorId?: string
   model?: string
   promptHash?: string
+  inputsFile?: string
+}
+
+/**
+ * Best-effort capture of a host-agent generation's inputs. compost never sees the
+ * prompt the host LLM built — only the prompt_hash — so `--inputs-file` lets the
+ * MCP wrapper (or a researcher) hand over the bundle that backs `compost rerun`
+ * and PROV-O. Only meaningful with `--ai`; absent → hash-only, as before.
+ */
+function loadInputs(flags: CommonFlags): AiInputBundle | undefined {
+  if (flags.inputsFile === undefined) return undefined
+  if (flags.ai !== true) {
+    throw new CompostError('INVALID_INPUT', '--inputs-file only applies to AI creates (use --ai)')
+  }
+  if (!existsSync(flags.inputsFile)) {
+    throw new CompostError('FILE_NOT_FOUND', `No inputs file at ${flags.inputsFile}`)
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(readFileSync(flags.inputsFile, 'utf8'))
+  } catch (cause) {
+    throw new CompostError('INVALID_INPUT', `Could not parse inputs JSON at ${flags.inputsFile}`, {
+      cause,
+    })
+  }
+  const b = parsed as Partial<AiInputBundle>
+  if (typeof b.model !== 'string' || typeof b.prompt !== 'string') {
+    throw new CompostError(
+      'SCHEMA_VIOLATION',
+      `${flags.inputsFile} must be an input bundle with at least string "model" and "prompt"`,
+    )
+  }
+  return parsed as AiInputBundle
 }
 
 /**
@@ -102,6 +136,10 @@ function addAuthorFlags(c: Command): Command {
       '--prompt-hash <sha>',
       'sha256(prompt+model+temp+ctx), 64-char hex (required with --ai)',
     )
+    .option(
+      '--inputs-file <path>',
+      'JSON input bundle (model, params, system_prompt, prompt, context) to persist for rerun/PROV-O (optional, --ai only)',
+    )
 }
 
 export function registerCreate(program: Command): void {
@@ -121,12 +159,14 @@ export function registerCreate(program: Command): void {
     try {
       const seedPath = resolveSeedPath(process.cwd(), flags.seed)
       const span = parseSpan(flags.span)
+      const inputs = loadInputs(flags)
       const created = createHighlight(seedPath, {
         sessionId: flags.session,
         utteranceId: flags.utterance,
         span,
         text: flags.text,
         author: resolveAuthor(flags),
+        ...(inputs !== undefined ? { inputs } : {}),
       })
       emitCreated('highlight', created, cmd)
     } catch (err) {
@@ -148,11 +188,13 @@ export function registerCreate(program: Command): void {
   ).action((flags: CodeFlags, cmd: Command) => {
     try {
       const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+      const inputs = loadInputs(flags)
       const created = createCode(seedPath, {
         name: flags.name,
         definition: flags.definition,
         evidence: parseList(flags.evidence),
         author: resolveAuthor(flags),
+        ...(inputs !== undefined ? { inputs } : {}),
       })
       emitCreated('code', created, cmd)
     } catch (err) {
@@ -171,11 +213,13 @@ export function registerCreate(program: Command): void {
   ).action((flags: ThemeFlags, cmd: Command) => {
     try {
       const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+      const inputs = loadInputs(flags)
       const created = createTheme(seedPath, {
         name: flags.name,
         summary: flags.summary,
         codes: parseList(flags.codes),
         author: resolveAuthor(flags),
+        ...(inputs !== undefined ? { inputs } : {}),
       })
       emitCreated('theme', created, cmd)
     } catch (err) {
