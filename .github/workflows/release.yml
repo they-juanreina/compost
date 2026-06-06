@@ -7,6 +7,13 @@ on:
 
 permissions:
   contents: write
+  # OIDC for npm Trusted Publishing (#208). With trusted publishers configured
+  # per-package on npm, GitHub Actions exchanges an OIDC token for npm publish
+  # credentials at runtime — no long-lived NPM_TOKEN secret in the repo. The
+  # `--provenance` flag attaches a verifiable provenance attestation to each
+  # tarball ("Built by GitHub Actions in <repo>@<sha>"), discoverable via
+  # `npm audit signatures`.
+  id-token: write
 
 jobs:
   release:
@@ -84,32 +91,20 @@ jobs:
           fi
 
       - name: Publish @they-juanreina/compost-provenance to npm
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         working-directory: provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm publish --no-git-checks --access public --tag ${{ steps.npmtag.outputs.tag }}
+        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: Publish @they-juanreina/compost-retrieval to npm
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         working-directory: retrieval
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm publish --no-git-checks --access public --tag ${{ steps.npmtag.outputs.tag }}
+        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: Publish @they-juanreina/compost-evals to npm
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         working-directory: evals
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm publish --no-git-checks --access public --tag ${{ steps.npmtag.outputs.tag }}
+        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: Publish @they-juanreina/compost-cli to npm
-        if: ${{ env.NODE_AUTH_TOKEN != '' }}
         working-directory: cli
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: pnpm publish --no-git-checks --access public --tag ${{ steps.npmtag.outputs.tag }}
+        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
