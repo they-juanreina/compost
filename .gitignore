@@ -35,6 +35,12 @@ build/
 # — CI and local — runs the generator first, so it never needs to be tracked.
 cli/src/lib/schemas.generated.ts
 
+# Generated build artifact: the Python transcriber source bundled into the cli
+# tarball by `prepack` (copy-transcriber.mjs) so global installs transcribe
+# natively (#206). Materialized only at pack/publish time from the canonical
+# repo-root transcriber/, so it never shadows the real source in dev.
+cli/transcriber/
+
 # Python
 __pycache__/
 *.py[cod]

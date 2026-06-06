@@ -131,11 +131,18 @@ describe('nativeRuntime', () => {
   })
 
   describe('findRepoTranscriberDir', () => {
-    it('finds transcriber/ by walking up from the module dir', () => {
+    it('finds the repo transcriber/ by walking up from the module dir (dev install)', () => {
       const exists = (p: string) => p === '/repo/transcriber/app/transcribe_cli.py'
       assert.equal(findRepoTranscriberDir('/repo/cli/dist/lib', exists), '/repo/transcriber')
     })
-    it('returns undefined when not found (e.g. a bare global install)', () => {
+    it('finds the bundled transcriber/ inside the package on a global install (#206)', () => {
+      // A published install has no sibling repo transcriber/; prepack bundled the
+      // source at <pkgroot>/transcriber, one level up from dist/.
+      const pkg = '/usr/local/lib/node_modules/@they-juanreina/compost-cli'
+      const exists = (p: string) => p === `${pkg}/transcriber/app/transcribe_cli.py`
+      assert.equal(findRepoTranscriberDir(`${pkg}/dist/lib`, exists), `${pkg}/transcriber`)
+    })
+    it('returns undefined when no transcriber source is reachable', () => {
       assert.equal(
         findRepoTranscriberDir('/usr/local/lib/node_modules/compost', () => false),
         undefined,

@@ -17,12 +17,14 @@
     "bin",
     "dist",
     "templates",
+    "transcriber",
     "package.json"
   ],
   "scripts": {
     "prebuild": "node scripts/generate-schemas.mjs",
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
+    "prepack": "node scripts/copy-transcriber.mjs",
     "pretest": "node scripts/generate-schemas.mjs",
     "dev": "tsx src/index.ts",
     "test": "node --import tsx --test 'src/**/*.test.ts'"

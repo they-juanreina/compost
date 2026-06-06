@@ -67,10 +67,11 @@ compost transcribe S001 --seed my-study
 
 **Path resolution** (precedence): `--python` / `--transcriber-dir` flags →
 `COMPOST_TRANSCRIBER_PYTHON` / `COMPOST_TRANSCRIBER_DIR` env →
-`~/.compost/transcriber-venv` + the repo's `transcriber/` (auto-discovered from
-a checkout). Set `COMPOST_HOME` to move the managed venv. If you installed the
-CLI globally (no repo checkout), set `COMPOST_TRANSCRIBER_DIR` to the
-`transcriber/` package.
+`~/.compost/transcriber-venv` + the `transcriber/` source (auto-discovered from a
+checkout, or from the copy bundled in the cli package on a global install). Set
+`COMPOST_HOME` to move the managed venv. A global `npm i -g` install bundles the
+transcriber source, so it resolves automatically; `COMPOST_TRANSCRIBER_DIR`
+remains available to point at a working-tree copy instead.
 
 Tune with `--engine parakeet|whisper`, `--model <id>`, `--language <tag>`, and
 `COMPOST_PARAKEET_CHUNK_S` (chunk seconds; default 120 — long files are chunked

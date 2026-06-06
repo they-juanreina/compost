@@ -39,9 +39,12 @@ export function managedVenvPython(env: NodeJS.ProcessEnv = process.env): string 
   return join(managedVenvDir(env), 'bin', 'python')
 }
 
-/** Walk up from this module to find the repo's `transcriber/` package — works
- * for repo/dev installs where cli/ and transcriber/ are siblings. Returns
- * undefined for a bare global install (use the env var or managed venv there). */
+/** Walk up from this module to find the `transcriber/` package. Works both for
+ * repo/dev installs (cli/ and transcriber/ are siblings) and for a published
+ * global install, where `prepack` (copy-transcriber.mjs) bundles the source into
+ * the cli package so the walk finds `<pkgroot>/transcriber/app/transcribe_cli.py`
+ * one level up from dist/ (#206). Returns undefined only when no source is
+ * reachable; an explicit `COMPOST_TRANSCRIBER_DIR` overrides this. */
 export function findRepoTranscriberDir(
   startDir: string = dirname(fileURLToPath(import.meta.url)),
   exists: (p: string) => boolean = existsSync,
