@@ -3,6 +3,11 @@
   "version": "0.1.2",
   "description": "Compost CLI engine. Subcommand router, JSON-out, harness loop runner.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/they-juanreina/compost.git",
+    "directory": "cli"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -3,6 +3,11 @@
   "version": "0.1.2",
   "description": "Eval surfaces: versioned LLM-as-judge rubric, eval-grader loop, skill golden-set runner.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/they-juanreina/compost.git",
+    "directory": "evals"
+  },
   "license": "MIT",
   "exports": {
     ".": "./dist/index.js"
