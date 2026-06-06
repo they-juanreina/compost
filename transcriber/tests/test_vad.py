@@ -13,6 +13,7 @@ from app.vad import (
     Segment,
     silences_to_schema,
     speech_to_silences,
+    utterance_energies,
 )
 
 
@@ -83,3 +84,66 @@ def test_vad_with_injected_backend():
     speech, silences = VAD(backend=FakeVAD()).segment("/fake.wav", total_duration_ms=12000)
     assert len(speech) == 2
     assert [(s.start_ms, s.end_ms) for s in silences] == [(5000, 8000)]
+    # No "energy" key in the backend dicts → Segment.energy is None.
+    assert all(s.energy is None for s in speech)
+
+
+def test_vad_segment_carries_backend_energy():
+    class FakeVAD:
+        def speech_timestamps(self, audio_path: str):
+            return [
+                {"start_ms": 0, "end_ms": 5000, "energy": 0.04},
+                {"start_ms": 8000, "end_ms": 12000, "energy": 0.20},
+            ]
+
+    speech, _ = VAD(backend=FakeVAD()).segment("/fake.wav", total_duration_ms=12000)
+    assert [s.energy for s in speech] == [0.04, 0.20]
+
+
+# --- utterance_energies (VAD segment energy → per-utterance, normalized) ----
+
+
+def _utt(uid, start, end):
+    return {"id": uid, "start_ms": start, "end_ms": end}
+
+
+def test_utterance_energies_normalized_to_session_peak():
+    # Each utterance fully overlaps one speech segment. Raw RMS values are small;
+    # the helper normalizes by the loudest utterance so the peak becomes 1.0.
+    speech = [
+        Segment(0, 1000, energy=0.05),
+        Segment(1000, 2000, energy=0.20),  # loudest
+        Segment(2000, 3000, energy=0.10),
+    ]
+    utts = [_utt("U1", 0, 1000), _utt("U2", 1000, 2000), _utt("U3", 2000, 3000)]
+    energies = utterance_energies(speech, utts)
+    assert energies["U2"] == 1.0
+    assert energies["U1"] == 0.05 / 0.20
+    assert energies["U3"] == 0.10 / 0.20
+    # Normalized values land in distinct prosody buckets (low / normal / high).
+    assert energies["U1"] < 0.33 < energies["U3"] < 0.66 < energies["U2"]
+
+
+def test_utterance_energies_overlap_weighted_mean():
+    # One utterance spanning two segments of different loudness: energy is the
+    # overlap-duration-weighted mean (here a 3:1 weighting toward the quiet one).
+    speech = [Segment(0, 3000, energy=0.10), Segment(3000, 4000, energy=0.50)]
+    utts = [_utt("U1", 0, 4000)]
+    # raw = (0.10*3000 + 0.50*1000) / 4000 = 0.20; single utterance → peak == itself.
+    assert utterance_energies(speech, utts) == {"U1": 1.0}
+
+
+def test_utterance_energies_omits_utterances_without_overlap():
+    speech = [Segment(0, 1000, energy=0.10)]
+    utts = [_utt("U1", 0, 1000), _utt("U2", 5000, 6000)]  # U2 overlaps nothing
+    energies = utterance_energies(speech, utts)
+    assert "U2" not in energies
+    assert energies["U1"] == 1.0
+
+
+def test_utterance_energies_empty_when_no_energy_signal():
+    # Segments without energy readings (e.g. a backend that doesn't report it)
+    # yield no map → prosody falls back to "normal" for every utterance.
+    speech = [Segment(0, 1000), Segment(1000, 2000)]
+    utts = [_utt("U1", 0, 1000), _utt("U2", 1000, 2000)]
+    assert utterance_energies(speech, utts) == {}

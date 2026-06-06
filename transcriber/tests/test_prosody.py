@@ -67,3 +67,32 @@ def test_annotate_prosody_attaches_to_every_utterance():
     out = annotate_prosody(transcript, energies={"U1": 0.9})
     assert all("prosody" in u for u in out["utterances"])
     assert set(out["utterances"][0]["prosody"]) == {"volume", "pace", "hesitations"}
+
+
+def test_annotate_prosody_volume_varies_with_per_utterance_energy():
+    # Regression guard for the wiring bug (pipeline.py:173): when a per-utterance
+    # energy map is supplied, volume must actually bucket low/normal/high instead
+    # of defaulting to "normal" for every utterance.
+    transcript = {
+        "utterances": [
+            {"id": "U1", "start_ms": 0, "end_ms": 1000, "text": "bajo"},
+            {"id": "U2", "start_ms": 1000, "end_ms": 2000, "text": "medio"},
+            {"id": "U3", "start_ms": 2000, "end_ms": 3000, "text": "alto"},
+        ],
+    }
+    out = annotate_prosody(transcript, energies={"U1": 0.1, "U2": 0.5, "U3": 0.9})
+    volumes = [u["prosody"]["volume"] for u in out["utterances"]]
+    assert volumes == ["low", "normal", "high"]
+    assert len(set(volumes)) == 3  # volume genuinely varies, not all "normal"
+
+
+def test_annotate_prosody_without_energies_is_all_normal():
+    # No energy map (the pre-fix call shape) → volume stays "normal" everywhere.
+    transcript = {
+        "utterances": [
+            {"id": "U1", "start_ms": 0, "end_ms": 1000, "text": "hola"},
+            {"id": "U2", "start_ms": 1000, "end_ms": 2000, "text": "adios"},
+        ],
+    }
+    out = annotate_prosody(transcript)
+    assert {u["prosody"]["volume"] for u in out["utterances"]} == {"normal"}

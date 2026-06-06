@@ -23,7 +23,7 @@ from .cue_parser import parse_transcript_cues
 from .diarization import DiarizationBackend, Diarizer, align
 from .prosody import annotate_prosody
 from .silence_typer import type_all_silences
-from .vad import VAD, VADBackend, silences_to_schema
+from .vad import VAD, VADBackend, silences_to_schema, utterance_energies
 
 SCHEMA_VERSION = "1.0"
 DEFAULT_TRANSCRIBER_VERSION = "compost-transcriber@0.1.0"
@@ -122,9 +122,9 @@ def run_pipeline(
 
     duration_ms = probe_duration_ms(source_path)
 
-    # 1. VAD — speech segments + first-class silences
+    # 1. VAD — speech segments (carry per-segment RMS energy) + first-class silences
     vad = VAD(backend=backends.vad)
-    _, silences = vad.segment(source_path, duration_ms)
+    speech, silences = vad.segment(source_path, duration_ms)
 
     # 2. ASR — utterances with word timings, may contain event tags inline
     asr = Transcriber(config=config.asr, backend=backends.asr)
@@ -169,8 +169,11 @@ def run_pipeline(
     # 7. Silence semantic typing (after_question / thinking / interruption / …)
     type_all_silences(transcript)
 
-    # 8. Prosody hints per utterance (deterministic, cheap)
-    annotate_prosody(transcript)
+    # 8. Prosody hints per utterance (deterministic, cheap). Volume bucketing
+    # needs the per-utterance VAD RMS energy signal mapped from the speech
+    # segments; without it volume would default to "normal" for every utterance.
+    energies = utterance_energies(speech, transcript["utterances"])
+    annotate_prosody(transcript, energies)
 
     return transcript
 
