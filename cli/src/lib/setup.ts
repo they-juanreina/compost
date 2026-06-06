@@ -172,8 +172,9 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
 
   // 4b. Native transcription (Apple Silicon, #176) — the default fast path.
   // (#207) Pre-fix this reported "no native venv" when the actual gap was the
-  // transcriber Python source dir (the venv DID exist; the repo walk failed
-  // on a global npm install). Now we report each missing piece separately.
+  // transcriber Python source dir (the venv DID exist). We report each missing
+  // piece separately. The source ships bundled in the cli tarball (#206), so a
+  // healthy global install resolves it without any env var.
   if (deps.appleSilicon ?? isAppleSilicon()) {
     const diag = diagnoseNativeRuntime({ env })
     if (diag.python === undefined) {
@@ -185,16 +186,16 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
         fix: 'compost setup --provision-native  (or set COMPOST_TRANSCRIBER_PYTHON)',
       })
     } else if (diag.transcriberDir === undefined) {
-      // The venv resolved; the missing piece is the transcriber/ source dir.
-      // For a global npm install this is currently the documented limitation
-      // — track at #206 (bundle source in the cli tarball, or have
-      // provision-native materialize it).
+      // The venv resolved but no transcriber source did. A healthy global
+      // install bundles the source (#206), so reaching here means the bundle is
+      // missing (a broken/partial install) or a checkout without it — a
+      // reinstall or an explicit override resolves it.
       checks.push({
         id: 'native-transcribe',
         label: 'Native transcription',
         status: 'warn',
-        detail: `venv ready (${diag.python}) but transcriber source not resolved — global install can't find the Python package (#206)`,
-        fix: 'set COMPOST_TRANSCRIBER_DIR=/path/to/compost/transcriber (a repo clone), or use the Docker fallback',
+        detail: `venv ready (${diag.python}) but no transcriber source resolved`,
+        fix: 'reinstall @they-juanreina/compost-cli, or set COMPOST_TRANSCRIBER_DIR to a transcriber/ dir (the Docker fallback also works)',
       })
     } else {
       const native = resolveNativeRuntime({ env }) ?? {

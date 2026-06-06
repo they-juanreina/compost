@@ -93,6 +93,27 @@ jobs:
             echo "tag=latest" >> "$GITHUB_OUTPUT"
           fi
 
+      # Guard the #206 shipping surface: cli's `prepack` (copy-transcriber.mjs)
+      # bundles the Python transcriber source into the tarball so global installs
+      # transcribe natively. Pack a real tarball and assert the source shipped —
+      # and that no compiled bytecode / the multi-GB .venv leaked in — so a broken
+      # bundle fails the release instead of publishing silently.
+      - name: Verify cli tarball bundles the transcriber source (#206)
+        working-directory: cli
+        run: |
+          pnpm pack
+          TGZ=$(ls they-juanreina-compost-cli-*.tgz)
+          echo "Packed $TGZ"
+          tar -tzf "$TGZ" | grep -q 'package/transcriber/app/transcribe_cli.py' \
+            || { echo "::error::transcriber source missing from cli tarball (#206)"; exit 1; }
+          tar -tzf "$TGZ" | grep -q 'package/transcriber/pyproject.toml' \
+            || { echo "::error::transcriber pyproject.toml missing from cli tarball"; exit 1; }
+          if tar -tzf "$TGZ" | grep -Eq 'package/transcriber/(\.venv|tests/|.*__pycache__|.*egg-info|.*\.pyc)'; then
+            echo "::error::cli tarball contains transcriber cruft (.venv/__pycache__/tests/egg-info/.pyc)"
+            exit 1
+          fi
+          rm -f "$TGZ"
+
       - name: Publish @they-juanreina/compost-provenance to npm
         working-directory: provenance
         run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
