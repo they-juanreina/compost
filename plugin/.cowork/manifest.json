@@ -10,8 +10,6 @@
     "saturation-analysis",
     "compost-setup"
   ],
-  "mcp": [
-    "compost"
-  ],
+  "mcp": ["compost"],
   "derived_from": ".claude-plugin/plugin.json"
 }
