@@ -89,6 +89,24 @@ describe('MCP tool definitions', () => {
     assert.ok(READ_ONLY_TOOLS.includes('compost_get_session'))
   })
 
+  it('exposes agreement as a read-only tool (recode is intentionally not a tool)', () => {
+    const agree = tool('compost_agreement')
+    assert.deepEqual(agree.toArgv({}), ['agreement'])
+    assert.deepEqual(agree.toArgv({ seed: 's', min_units: 20 }), [
+      'agreement',
+      '--seed',
+      's',
+      '--min-units',
+      '20',
+    ])
+    assert.ok(READ_ONLY_TOOLS.includes('compost_agreement'))
+    // recode (the human's blind-coding act) must NOT be agent-callable.
+    assert.equal(
+      TOOLS.find((t) => t.name === 'compost_recode'),
+      undefined,
+    )
+  })
+
   it('maps the write tools to `compost create <kind>` / `endorse` argv', () => {
     const hl = tool('compost_create_highlight')
     assert.deepEqual(hl.toArgv({ session: 'S001', utterance: 'U-0002', span: '0,16', text: 'q' }), [

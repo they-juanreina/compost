@@ -47,6 +47,26 @@ export const TOOLS = [
         toArgv: (a) => ['blame', String(a.artifact), ...(a.seed ? ['--seed', String(a.seed)] : [])],
     },
     {
+        name: 'compost_agreement',
+        description: "Human↔machine intercoder agreement (Cohen's κ + Krippendorff's α) over highlights coded by BOTH a blind researcher and the machine. Read-only. Reports `insufficient` below the minimum sample. NOTE: the human side comes from `compost recode`, which is intentionally NOT an agent tool — only a researcher codes blind.",
+        readOnly: true,
+        inputSchema: {
+            type: 'object',
+            properties: {
+                seed: str('Seed'),
+                min_units: {
+                    type: 'number',
+                    description: 'Minimum doubly-coded units for a meaningful κ (default 10)',
+                },
+            },
+        },
+        toArgv: (a) => [
+            'agreement',
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+            ...(a.min_units ? ['--min-units', String(a.min_units)] : []),
+        ],
+    },
+    {
         name: 'compost_ingest',
         description: 'Route a file or folder into the seed job queue (audio/video/PDF/DOCX/PPTX/CSV/MD).',
         readOnly: false,
