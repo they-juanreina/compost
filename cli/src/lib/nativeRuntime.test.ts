@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { findRepoTranscriberDir, pickRuntime, resolveNativeRuntime } from './nativeRuntime.js'
+import {
+  diagnoseNativeRuntime,
+  findRepoTranscriberDir,
+  pickRuntime,
+  resolveNativeRuntime,
+} from './nativeRuntime.js'
 
 const PATHS = { python: '/p', transcriberDir: '/t' }
 
@@ -60,6 +65,68 @@ describe('nativeRuntime', () => {
         }),
         null,
       )
+    })
+  })
+
+  // The doctor (#207) needs to distinguish "venv missing" from "transcriber
+  // source missing" so it can give the right remediation. diagnoseNativeRuntime
+  // returns each piece independently (and its source), instead of collapsing
+  // both gaps into a single null like resolveNativeRuntime.
+  describe('diagnoseNativeRuntime (#207)', () => {
+    it('returns both paths + sources when fully resolvable', () => {
+      const d = diagnoseNativeRuntime({
+        env: { COMPOST_TRANSCRIBER_PYTHON: '/env/py', COMPOST_TRANSCRIBER_DIR: '/env/t' },
+        exists: () => false,
+      })
+      assert.deepEqual(d, {
+        python: '/env/py',
+        transcriberDir: '/env/t',
+        pythonSource: 'env',
+        transcriberDirSource: 'env',
+      })
+    })
+
+    it('reports venv via managed-venv source when only that exists', () => {
+      const d = diagnoseNativeRuntime({
+        env: { COMPOST_HOME: '/home/.compost' },
+        exists: (p) => p === '/home/.compost/transcriber-venv/bin/python',
+        repoTranscriberDir: () => undefined,
+      })
+      assert.equal(d.python, '/home/.compost/transcriber-venv/bin/python')
+      assert.equal(d.pythonSource, 'managed-venv')
+      assert.equal(d.transcriberDir, undefined)
+      assert.equal(d.transcriberDirSource, undefined)
+    })
+
+    it('reports transcriberDir via repo-walk source when only that exists', () => {
+      const d = diagnoseNativeRuntime({
+        env: {},
+        exists: () => false,
+        repoTranscriberDir: () => '/repo/transcriber',
+      })
+      assert.equal(d.python, undefined)
+      assert.equal(d.transcriberDir, '/repo/transcriber')
+      assert.equal(d.transcriberDirSource, 'repo-walk')
+    })
+
+    it('reports both undefined cleanly when nothing resolves', () => {
+      const d = diagnoseNativeRuntime({
+        env: {},
+        exists: () => false,
+        repoTranscriberDir: () => undefined,
+      })
+      assert.deepEqual(d, {})
+    })
+
+    it('explicit args take precedence and their source is "explicit"', () => {
+      const d = diagnoseNativeRuntime({
+        python: '/x/py',
+        transcriberDir: '/x/t',
+        env: { COMPOST_TRANSCRIBER_PYTHON: '/env/py', COMPOST_TRANSCRIBER_DIR: '/env/t' },
+        exists: () => false,
+      })
+      assert.equal(d.pythonSource, 'explicit')
+      assert.equal(d.transcriberDirSource, 'explicit')
     })
   })
 

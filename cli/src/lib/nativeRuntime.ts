@@ -84,6 +84,64 @@ export function resolveNativeRuntime(opts: ResolveNativeOpts = {}): NativeRuntim
   return { python, transcriberDir }
 }
 
+/** Diagnostic view for the doctor (#207): which of the two pieces is
+ * missing? `resolveNativeRuntime` returns null when EITHER is missing, which
+ * sends users down the wrong remediation when the venv DOES exist but the
+ * transcriber source doesn't (e.g. a global npm install). */
+export interface NativeRuntimeDiagnosis {
+  python?: string
+  transcriberDir?: string
+  /** Names which inputs would resolve; useful for the "ok with what" path. */
+  pythonSource?: 'explicit' | 'env' | 'managed-venv'
+  transcriberDirSource?: 'explicit' | 'env' | 'repo-walk'
+}
+
+export function diagnoseNativeRuntime(opts: ResolveNativeOpts = {}): NativeRuntimeDiagnosis {
+  const env = opts.env ?? process.env
+  const exists = opts.exists ?? existsSync
+  const managed = managedVenvPython(env)
+
+  let python: string | undefined
+  let pythonSource: NativeRuntimeDiagnosis['pythonSource']
+  if (opts.python !== undefined) {
+    python = opts.python
+    pythonSource = 'explicit'
+  } else if (env.COMPOST_TRANSCRIBER_PYTHON !== undefined) {
+    python = env.COMPOST_TRANSCRIBER_PYTHON
+    pythonSource = 'env'
+  } else if (exists(managed)) {
+    python = managed
+    pythonSource = 'managed-venv'
+  }
+
+  let transcriberDir: string | undefined
+  let transcriberDirSource: NativeRuntimeDiagnosis['transcriberDirSource']
+  if (opts.transcriberDir !== undefined) {
+    transcriberDir = opts.transcriberDir
+    transcriberDirSource = 'explicit'
+  } else if (env.COMPOST_TRANSCRIBER_DIR !== undefined) {
+    transcriberDir = env.COMPOST_TRANSCRIBER_DIR
+    transcriberDirSource = 'env'
+  } else {
+    const walked = (opts.repoTranscriberDir ?? (() => findRepoTranscriberDir(undefined, exists)))()
+    if (walked !== undefined) {
+      transcriberDir = walked
+      transcriberDirSource = 'repo-walk'
+    }
+  }
+
+  const out: NativeRuntimeDiagnosis = {}
+  if (python !== undefined) {
+    out.python = python
+    if (pythonSource !== undefined) out.pythonSource = pythonSource
+  }
+  if (transcriberDir !== undefined) {
+    out.transcriberDir = transcriberDir
+    if (transcriberDirSource !== undefined) out.transcriberDirSource = transcriberDirSource
+  }
+  return out
+}
+
 /**
  * Pick the runtime: an explicit `--runtime` wins; otherwise native on Apple
  * Silicon when resolvable, else Docker (the cross-platform fallback).
