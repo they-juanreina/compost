@@ -11,7 +11,7 @@ import {
   HybridRetriever,
   openLanceDBForRead,
   type ScoredChunk,
-} from 'compost-retrieval'
+} from '@they-juanreina/compost-retrieval'
 
 import { LLMAdapter } from '../llm/adapter.js'
 import { type CompostConfig, loadConfig } from './config.js'

@@ -1,8 +1,7 @@
 {
-  "name": "compost-evals",
-  "version": "0.1.0-rc.1",
+  "name": "@they-juanreina/compost-evals",
+  "version": "0.1.0-rc.2",
   "description": "Eval surfaces: versioned LLM-as-judge rubric, eval-grader loop, skill golden-set runner.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -25,5 +24,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "tsx": "^4.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

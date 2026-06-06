@@ -1,8 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-
+import type { EmbeddedItem } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
-import type { EmbeddedItem } from 'compost-retrieval'
 
 import { isCompostError } from '../errors.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'

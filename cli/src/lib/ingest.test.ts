@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
-import { EventWriter } from 'compost-provenance'
+import { EventWriter } from '@they-juanreina/compost-provenance'
 
 import { classify, SUPPORTED_EXTENSIONS } from './dispatch.js'
 import { ingestPath } from './ingest.js'

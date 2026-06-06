@@ -1,8 +1,7 @@
 {
-  "name": "compost-retrieval",
-  "version": "0.1.0-rc.1",
+  "name": "@they-juanreina/compost-retrieval",
+  "version": "0.1.0-rc.2",
   "description": "Retrieval: chunker, BM25 + dense hybrid with RRF, schema-bound citation validator.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -23,5 +22,8 @@
   },
   "devDependencies": {
     "tsx": "^4.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

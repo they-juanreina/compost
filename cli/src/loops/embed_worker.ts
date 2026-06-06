@@ -1,8 +1,17 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import type { Chunk, ChunkerTranscript, IndexableArtifact, LanceDBWriter } from 'compost-retrieval'
-import { buildVectorRecords, chunkTranscript, openLanceDBForWrite } from 'compost-retrieval'
+import type {
+  Chunk,
+  ChunkerTranscript,
+  IndexableArtifact,
+  LanceDBWriter,
+} from '@they-juanreina/compost-retrieval'
+import {
+  buildVectorRecords,
+  chunkTranscript,
+  openLanceDBForWrite,
+} from '@they-juanreina/compost-retrieval'
 
 import { CompostError } from '../errors.js'
 import { loadConfig, parseRoute } from '../lib/config.js'

@@ -1,5 +1,5 @@
+import { saturationPulse } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
-import { saturationPulse } from 'compost-retrieval'
 
 import { isCompostError } from '../errors.js'
 import { gatherSessionsWithThemes } from '../lib/saturate.js'

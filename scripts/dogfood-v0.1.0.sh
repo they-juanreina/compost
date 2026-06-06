@@ -107,7 +107,7 @@ echo "${DIM}workspace: $WORKSPACE${RST}"
 # Need a `compost` on PATH. Allow override via COMPOST_BIN.
 COMPOST="${COMPOST_BIN:-compost}"
 if ! command -v "$COMPOST" >/dev/null 2>&1; then
-  echo "error: '$COMPOST' not on PATH. Set COMPOST_BIN=... or install compost-cli." >&2
+  echo "error: '$COMPOST' not on PATH. Set COMPOST_BIN=... or install @they-juanreina/compost-cli." >&2
   exit 2
 fi
 

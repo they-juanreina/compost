@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
-import type { LanceDBWriter, VectorRecord } from 'compost-retrieval'
+import type { LanceDBWriter, VectorRecord } from '@they-juanreina/compost-retrieval'
 
 import { initSeed } from '../lib/seed.js'
 import { runEmbedWorkerOnce } from './embed_worker.js'

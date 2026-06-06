@@ -3,7 +3,7 @@ import {
   type SaturationPulse,
   saturationPulse,
   suggestCodeClusters,
-} from 'compost-retrieval'
+} from '@they-juanreina/compost-retrieval'
 
 import { artifactId, emitAgentCreate, openSeedEvents } from '../lib/events.js'
 

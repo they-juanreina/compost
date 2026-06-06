@@ -4,7 +4,7 @@ import {
   gradeSuggestions,
   type Judge,
   type Suggestion,
-} from 'compost-evals'
+} from '@they-juanreina/compost-evals'
 
 export interface EvalGraderDeps {
   judge: Judge

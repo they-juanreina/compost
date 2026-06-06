@@ -1,6 +1,5 @@
+import { runGolden, runHarness } from '@they-juanreina/compost-evals'
 import type { Command } from 'commander'
-
-import { runGolden, runHarness } from 'compost-evals'
 
 import { isCompostError } from '../errors.js'
 import { emit, emitError, getOutputOpts } from '../output.js'

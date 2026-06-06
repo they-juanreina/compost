@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
-import type { Answer } from 'compost-retrieval'
+import type { Answer } from '@they-juanreina/compost-retrieval'
 
 import { chat } from './chat.js'
 import { initSeed } from './seed.js'
