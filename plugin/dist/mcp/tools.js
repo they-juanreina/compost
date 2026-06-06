@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
-export const PLUGIN_VERSION = '0.1.0';
+export const PLUGIN_VERSION = '0.1.1';
 const str = (desc) => ({ type: 'string', description: desc });
 /**
  * Provenance fingerprint for an AI-authored artifact: sha256 over the tool-call

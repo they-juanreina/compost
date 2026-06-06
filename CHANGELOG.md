@@ -1,5 +1,71 @@
 # Changelog
 
+## v0.1.1 — 2026-06-05
+
+Security + UX patch. Five fixes landed since v0.1.0; bundle them into one
+release so `npm i -g @they-juanreina/compost-cli@latest` picks them up.
+
+A multi-dimension security audit ran on v0.1.0 (see
+[SECURITY.md](SECURITY.md) → "v0.1.0 security audit"). It produced 27 raw
+findings, 5 confirmed after two-lens adversarial verification; the three
+actionable ones are fixed here.
+
+### Security
+
+- **HIGH — pin third-party Actions to SHAs (#210).** `softprops/action-gh-release@v2`
+  and `pnpm/action-setup@v4` co-resided with `NPM_TOKEN` in the release job.
+  Same attack class as `tj-actions/changed-files` (Mar 2024) and
+  `reviewdog/action-setup` (Mar 2025) — an upstream maintainer compromise
+  could repoint a `vN` tag and exfil the npm token. Every `uses:` line
+  in `.github/workflows/*` now pins a 40-char commit SHA, including first-party
+  `actions/*`. New `.github/dependabot.yml` watches the `github-actions`
+  ecosystem and PRs grouped upgrades weekly.
+- **MEDIUM — `--seed` path-traversal (#211).** `resolveSeedPath` did
+  `join(root, seed)` with no validation. `--seed '../../foo'` resolved
+  outside `Seeds/`, and every seed-scoped command (highlight/code/theme/
+  endorse/ingest/transcribe/chat/tag/search/saturate) wrote there. Two-layer
+  defense added: deny-list for `/`, `\`, `..`, absolute paths, and empty;
+  plus a post-resolve containment check that asserts the path stays under
+  `<cwd>/Seeds/`. Legacy seed names with spaces or uppercase keep working.
+- **LOW — ingest symlink-following (#212).** `walk()` used `statSync` (follows
+  symlinks); a tarball with a subdir symlinked to `~/.ssh` or `/var/log`
+  silently traversed those destinations and queued arbitrary files for
+  ingest. Switched to `lstatSync` and surfaced any skipped symlinks on
+  `IngestResult.symlinks_skipped` so they don't silently disappear.
+
+The audit's two **accepted risks** are unchanged: `better-sqlite3`'s
+prebuild binary fetch (TLS-only integrity) and the `NPM_TOKEN` long-lived
+secret (closed by [#208](https://github.com/they-juanreina/compost/issues/208)
+when we migrate to Trusted Publishing).
+
+### UX
+
+- **`compost setup` distinguishes venv vs transcriber-source gaps (#207).**
+  Pre-fix the doctor reported "no native venv resolved" even when the venv
+  existed — `resolveNativeRuntime` returns null on either missing piece. New
+  `diagnoseNativeRuntime` returns each piece independently. The doctor now
+  branches: "managed venv missing" (suggests `--provision-native`) vs
+  "venv ready, but transcriber source not resolved" (suggests
+  `COMPOST_TRANSCRIBER_DIR` or the Docker fallback; cross-references the
+  open [#206](https://github.com/they-juanreina/compost/issues/206)).
+
+### Release infra
+
+- **Prereleases publish under the `rc` npm dist-tag (#209).** `v*-rc.N`
+  tags now publish with `pnpm publish --tag rc` so they don't claim
+  `latest`. Stable tags roll `latest` as usual.
+- **SECURITY.md** added (also part of this release): threat model, reporting
+  channel, supported-version policy, v0.1.0 audit summary, accepted risks,
+  user hardening notes.
+
+### Known limitations (unchanged from v0.1.0)
+
+The global npm install still doesn't include the transcriber Python source —
+native ASR on a `npm i -g` install needs `COMPOST_TRANSCRIBER_DIR` set to a
+repo clone, or fall back to Docker. Tracked at
+[#206](https://github.com/they-juanreina/compost/issues/206); the doctor
+now gives the right diagnostic.
+
 ## v0.1.0 — 2026-06-05
 
 First stable release. `@they-juanreina/compost-cli` + three scoped workspace
