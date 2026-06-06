@@ -90,14 +90,24 @@ export const TOOLS = [
     },
     {
         name: 'compost_export',
-        description: 'Export a transcript.json to CSV or Markdown.',
+        description: "Export a transcript.json (csv | md | eaf) or a seed's provenance event log to W3C PROV-O JSON-LD (prov).",
         readOnly: true,
         inputSchema: {
             type: 'object',
-            required: ['transcript', 'format'],
-            properties: { transcript: str('Path to transcript.json'), format: str('csv | md') },
+            required: ['format'],
+            properties: {
+                transcript: str('Path to transcript.json (required for csv | md | eaf)'),
+                format: str('csv | md | eaf | prov'),
+                seed: str('Seed (for prov)'),
+            },
         },
-        toArgv: (a) => ['export', String(a.transcript), '--format', String(a.format)],
+        toArgv: (a) => [
+            'export',
+            ...(a.transcript ? [String(a.transcript)] : []),
+            '--format',
+            String(a.format),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
     },
     {
         name: 'compost_models_doctor',
@@ -241,6 +251,31 @@ export const TOOLS = [
             'endorse',
             String(a.artifact),
             ...(a.researcher ? ['--researcher', String(a.researcher)] : []),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
+    },
+    {
+        name: 'compost_rerun',
+        description: 'Rerun an AI/agent generation from its captured inputs. Default verifies the inputs are intact and reconstructable; with apply=true, regenerates a deterministic agent artifact and emits a chained diff. LLM regeneration is not wired yet.',
+        readOnly: false,
+        inputSchema: {
+            type: 'object',
+            required: ['ref'],
+            properties: {
+                ref: str('Event ULID, artifact id/prefix, human id (C-/H-/T-), or latest:<kind>=<seed>'),
+                apply: {
+                    type: 'boolean',
+                    description: 'Regenerate and emit a chained event (default false)',
+                },
+                model: str('Override the model for regeneration'),
+                seed: str('Seed'),
+            },
+        },
+        toArgv: (a) => [
+            'rerun',
+            String(a.ref),
+            ...(a.apply === true ? ['--apply'] : []),
+            ...(a.model ? ['--model', String(a.model)] : []),
             ...(a.seed ? ['--seed', String(a.seed)] : []),
         ],
     },

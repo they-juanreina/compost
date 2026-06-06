@@ -49,9 +49,9 @@ export function registerRecode(program: Command): void {
   program
     .command('recode')
     .description(
-      'Record a researcher\'s blind (independent) codings for intercoder agreement. ' +
+      "Record a researcher's blind (independent) codings for intercoder agreement. " +
         'Code highlights against the shared codebook WITHOUT seeing the machine codes, ' +
-        'then `compost agreement` computes Cohen\'s κ over the doubly-coded set.',
+        "then `compost agreement` computes Cohen's κ over the doubly-coded set.",
     )
     .requiredOption(
       '--assignments <path>',

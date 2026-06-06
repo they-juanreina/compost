@@ -74,5 +74,7 @@ function normalize(bundle: AiInputBundle): Record<string, unknown> {
 
 /** Content-address an input bundle: sha256 of its canonical JSON. */
 export function inputId(bundle: AiInputBundle): string {
-  return createHash('sha256').update(canonicalJson(normalize(bundle))).digest('hex')
+  return createHash('sha256')
+    .update(canonicalJson(normalize(bundle)))
+    .digest('hex')
 }

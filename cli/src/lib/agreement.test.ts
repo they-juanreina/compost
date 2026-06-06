@@ -90,7 +90,13 @@ describe('krippendorffAlphaNominal', () => {
   })
 
   it('units with fewer than two values are dropped → null when none pairable', () => {
-    assert.equal(krippendorffAlphaNominal([['a', null], [null, 'b']]), null)
+    assert.equal(
+      krippendorffAlphaNominal([
+        ['a', null],
+        [null, 'b'],
+      ]),
+      null,
+    )
   })
 })
 

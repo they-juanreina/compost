@@ -16,6 +16,7 @@ import { registerModels } from './commands/models.js'
 import { registerQuery } from './commands/query.js'
 import { registerRecode } from './commands/recode.js'
 import { registerReindex } from './commands/reindex.js'
+import { registerRerun } from './commands/rerun.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
 import { registerSearch } from './commands/search.js'
@@ -63,6 +64,7 @@ export function buildProgram(): Command {
   registerCode(program)
   registerRecode(program)
   registerAgreement(program)
+  registerRerun(program)
   registerSynthesize(program)
   registerSearch(program)
   registerSession(program)

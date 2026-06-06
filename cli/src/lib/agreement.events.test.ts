@@ -41,7 +41,8 @@ describe('agreement over the event log (recode + machine codes)', () => {
     })
     // Human (blind): 'distrust' on all 12; 'override' on 1–8 (2 more than the machine).
     const overrideHuman: Record<string, string[]> = {}
-    for (let i = 1; i <= 12; i++) overrideHuman[H(i)] = i <= 8 ? ['distrust', 'override'] : ['distrust']
+    for (let i = 1; i <= 12; i++)
+      overrideHuman[H(i)] = i <= 8 ? ['distrust', 'override'] : ['distrust']
     blindRecode(seed, { assignments: overrideHuman, researcherId: 'juan@x' })
 
     const { codings, excludedUnnamedMachineCodes } = readCodings(eventsDb())

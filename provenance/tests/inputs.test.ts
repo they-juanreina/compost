@@ -66,11 +66,16 @@ describe('EventWriter input persistence (migration 0003)', () => {
   it('applies 0003 — ai_inputs table and events.input_id column exist', () => {
     const w = new EventWriter({ dbPath: ':memory:' })
     // @ts-expect-error: reach into private db for the assertion only
-    const tbl = w.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_inputs'").get()
+    const tbl = w.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_inputs'")
+      .get()
     assert.ok(tbl, 'ai_inputs table exists')
     // @ts-expect-error: private db
     const cols = w.db.prepare('PRAGMA table_info(events)').all() as Array<{ name: string }>
-    assert.ok(cols.some((c) => c.name === 'input_id'), 'events.input_id column exists')
+    assert.ok(
+      cols.some((c) => c.name === 'input_id'),
+      'events.input_id column exists',
+    )
     w.close()
   })
 

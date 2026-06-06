@@ -179,9 +179,7 @@ export function computeAgreement(codings: Coding[], opts: AgreementOptions = {})
     allCodes.add(code)
   }
 
-  const doublyCoded = [...byCoderUnit.human.keys()]
-    .filter((u) => byCoderUnit.machine.has(u))
-    .sort()
+  const doublyCoded = [...byCoderUnit.human.keys()].filter((u) => byCoderUnit.machine.has(u)).sort()
   const codes = [...allCodes].sort()
 
   const base = {
