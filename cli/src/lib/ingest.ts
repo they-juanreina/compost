@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
@@ -22,19 +22,50 @@ export interface IngestResult {
   queued: number
   skipped: number
   unsupported: string[]
+  symlinks_skipped?: string[]
   items: IngestItem[]
 }
 
-function walk(path: string): string[] {
-  if (statSync(path).isFile()) return [path]
-  const out: string[] = []
-  for (const entry of readdirSync(path)) {
-    if (entry.startsWith('.')) continue
-    const abs = join(path, entry)
-    if (statSync(abs).isDirectory()) out.push(...walk(abs))
-    else out.push(abs)
+/**
+ * Walk a folder collecting candidate files. Uses `lstatSync` (NOT `statSync`)
+ * so symlinks are NOT followed (#212). A tarball whose subdir is a symlink to
+ * `~/.ssh` or `/var/log` would otherwise silently enqueue and ingest every
+ * file under the destination.
+ *
+ * Symlinks encountered during the walk are skipped and returned alongside the
+ * file list so the caller can surface them (rather than silently dropping
+ * them, which is its own bug). The top-level target IS allowed to be a
+ * symlink — the user typed it on purpose; we just don't traverse INTO
+ * unexpected destinations.
+ */
+function walk(path: string): { files: string[]; symlinksSkipped: string[] } {
+  // Top-level: use statSync so the user CAN pass an explicit symlink path.
+  // The classify() pass later still uses lstatSync to refuse symlinked files.
+  const topStat = lstatSync(path)
+  if (topStat.isFile() || topStat.isSymbolicLink()) {
+    return { files: [path], symlinksSkipped: [] }
   }
-  return out
+  const files: string[] = []
+  const symlinksSkipped: string[] = []
+  const recur = (dir: string): void => {
+    for (const entry of readdirSync(dir)) {
+      if (entry.startsWith('.')) continue
+      const abs = join(dir, entry)
+      const st = lstatSync(abs)
+      if (st.isSymbolicLink()) {
+        symlinksSkipped.push(abs)
+        continue
+      }
+      if (st.isDirectory()) {
+        recur(abs)
+      } else if (st.isFile()) {
+        files.push(abs)
+      }
+      // other types (sockets, fifos, devices) are intentionally ignored
+    }
+  }
+  recur(path)
+  return { files, symlinksSkipped }
 }
 
 /**
@@ -45,7 +76,7 @@ function walk(path: string): string[] {
 export function ingestPath(seedPath: string, target: string): IngestResult {
   if (!existsSync(target)) throw new CompostError('FILE_NOT_FOUND', `No such path: ${target}`)
 
-  const files = walk(target)
+  const { files, symlinksSkipped } = walk(target)
   const queue = new JobQueue(stateDbPath(seedPath))
   const events = openSeedEvents(seedPath)
   try {
@@ -75,7 +106,9 @@ export function ingestPath(seedPath: string, target: string): IngestResult {
       items.push({ path: file, kind: d.kind, category: d.category, job_id: id, queued: inserted })
     }
 
-    return { seed: seedPath, queued, skipped, unsupported, items }
+    const result: IngestResult = { seed: seedPath, queued, skipped, unsupported, items }
+    if (symlinksSkipped.length > 0) result.symlinks_skipped = symlinksSkipped
+    return result
   } finally {
     queue.close()
     events.close()
