@@ -34,10 +34,19 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          # registry-url is intentionally NOT set: it tells setup-node to write
-          # ~/.npmrc with `${NODE_AUTH_TOKEN}` auth, which makes npm prefer the
-          # (non-existent) token over the OIDC handshake for Trusted Publishing
-          # (#208). pnpm publish picks npmjs.org by default; OIDC handles auth.
+          # registry-url is intentionally NOT set: it makes setup-node write
+          # ~/.npmrc with a `${NODE_AUTH_TOKEN}` auth line, and an empty token
+          # there shadows the OIDC handshake (that was the rc.0 404). With no
+          # token line, npm targets the default registry (npmjs.org) and
+          # authenticates via OIDC Trusted Publishing. (#208)
+
+      # pnpm publish (10.x) does NOT perform the OIDC registry-auth handshake —
+      # it only signs the provenance attestation, then looks for a token and
+      # 404s / ENEEDAUTHs. The npm CLI (>= 11.5.1) DOES auto-detect the GitHub
+      # Actions OIDC environment and exchange it for a short-lived publish token,
+      # so the publish steps below use npm. Node 22 ships npm 10.x — upgrade it.
+      - name: Upgrade npm to >= 11.5.1 for OIDC trusted publishing (#208)
+        run: npm install -g npm@^11.5.1
 
       - name: Install + build + test
         run: |
@@ -114,21 +123,34 @@ jobs:
           fi
           rm -f "$TGZ"
 
+      # Publish with the npm CLI (OIDC; see the npm-upgrade step). `pnpm pack`
+      # rewrites each package's `workspace:*` deps to the real version and runs
+      # cli's `prepack` (the #206 transcriber bundle); `npm publish <tarball>
+      # --provenance` then authenticates via OIDC and attaches the provenance
+      # attestation. Publishing a pre-packed tarball does not re-run prepack.
       - name: Publish @they-juanreina/compost-provenance to npm
         working-directory: provenance
-        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
+        run: |
+          pnpm pack
+          npm publish "$(ls *.tgz)" --provenance --access public --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: Publish @they-juanreina/compost-retrieval to npm
         working-directory: retrieval
-        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
+        run: |
+          pnpm pack
+          npm publish "$(ls *.tgz)" --provenance --access public --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: Publish @they-juanreina/compost-evals to npm
         working-directory: evals
-        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
+        run: |
+          pnpm pack
+          npm publish "$(ls *.tgz)" --provenance --access public --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: Publish @they-juanreina/compost-cli to npm
         working-directory: cli
-        run: pnpm publish --no-git-checks --access public --provenance --tag ${{ steps.npmtag.outputs.tag }}
+        run: |
+          pnpm pack
+          npm publish "$(ls *.tgz)" --provenance --access public --tag ${{ steps.npmtag.outputs.tag }}
 
       - name: GitHub Release
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2

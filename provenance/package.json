@@ -3,6 +3,11 @@
   "version": "0.1.2",
   "description": "Append-only event log: ULID generation, three-actor schema validation, SQLite writer + snapshot reducer.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/they-juanreina/compost.git",
+    "directory": "provenance"
+  },
   "license": "MIT",
   "exports": {
     ".": "./dist/index.js"
