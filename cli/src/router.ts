@@ -28,7 +28,7 @@ import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
 import { registerWatch } from './commands/watch.js'
 
-const VERSION = '0.1.0-rc.2'
+const VERSION = '0.1.0'
 
 export function buildProgram(): Command {
   const program = new Command()
