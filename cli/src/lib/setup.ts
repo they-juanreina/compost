@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
-import { isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
+import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -171,17 +171,36 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
   )
 
   // 4b. Native transcription (Apple Silicon, #176) — the default fast path.
+  // (#207) Pre-fix this reported "no native venv" when the actual gap was the
+  // transcriber Python source dir (the venv DID exist; the repo walk failed
+  // on a global npm install). Now we report each missing piece separately.
   if (deps.appleSilicon ?? isAppleSilicon()) {
-    const native = resolveNativeRuntime({ env })
-    if (native === null) {
+    const diag = diagnoseNativeRuntime({ env })
+    if (diag.python === undefined) {
       checks.push({
         id: 'native-transcribe',
         label: 'Native transcription',
         status: 'warn',
-        detail: 'no native venv resolved (Apple Silicon runs ~20× faster than the Docker fallback)',
-        fix: 'compost setup --provision-native  (or set COMPOST_TRANSCRIBER_PYTHON + COMPOST_TRANSCRIBER_DIR)',
+        detail: 'managed venv missing (Apple Silicon runs ~20× faster than the Docker fallback)',
+        fix: 'compost setup --provision-native  (or set COMPOST_TRANSCRIBER_PYTHON)',
+      })
+    } else if (diag.transcriberDir === undefined) {
+      // The venv resolved; the missing piece is the transcriber/ source dir.
+      // For a global npm install this is currently the documented limitation
+      // — track at #206 (bundle source in the cli tarball, or have
+      // provision-native materialize it).
+      checks.push({
+        id: 'native-transcribe',
+        label: 'Native transcription',
+        status: 'warn',
+        detail: `venv ready (${diag.python}) but transcriber source not resolved — global install can't find the Python package (#206)`,
+        fix: 'set COMPOST_TRANSCRIBER_DIR=/path/to/compost/transcriber (a repo clone), or use the Docker fallback',
       })
     } else {
+      const native = resolveNativeRuntime({ env }) ?? {
+        python: diag.python,
+        transcriberDir: diag.transcriberDir,
+      }
       const probe = await exec(native.python, ['-c', 'import parakeet_mlx, pyannote.audio'])
       checks.push(
         probe.ok
@@ -189,7 +208,7 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
               id: 'native-transcribe',
               label: 'Native transcription',
               status: 'ok',
-              detail: `parakeet-mlx + pyannote ready (${native.python})`,
+              detail: `parakeet-mlx + pyannote ready — venv: ${native.python}  source: ${native.transcriberDir}`,
               fix: null,
             }
           : {
