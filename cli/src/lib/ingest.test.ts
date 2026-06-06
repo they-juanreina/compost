@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -134,5 +142,58 @@ describe('ingestPath', () => {
     const result = ingestPath(path, f)
     assert.equal(result.queued, 1)
     assert.equal(readdirSync(join(path, '.compost')).includes('state.sqlite'), true)
+  })
+
+  // Pre-fix, walk() used statSync (follows symlinks) — a tarball with a
+  // symlinked subdir would silently traverse into ~/.ssh, /var/log, etc.,
+  // queueing arbitrary files under the destination for ingest (#212).
+  describe('symlink safety (#212)', () => {
+    it('does not follow symlinked subdirectories', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const folder = join(work, 'drop')
+      mkdirSync(folder, { recursive: true })
+      writeFileSync(join(folder, 'real.mp3'), '')
+
+      // External "escape" dir holding what would be exfil-shaped content if
+      // walked. We point a symlink at it from inside the ingest target.
+      const elsewhere = join(work, 'elsewhere')
+      mkdirSync(elsewhere)
+      writeFileSync(join(elsewhere, 'secret.wav'), '')
+      symlinkSync(elsewhere, join(folder, 'escape'))
+
+      const result = ingestPath(path, folder)
+      // Only the real file inside the ingest target should be queued.
+      assert.equal(result.queued, 1)
+      assert.equal(result.items[0]?.path.endsWith('real.mp3'), true)
+      // The symlink is reported separately, not silently dropped.
+      assert.deepEqual(result.symlinks_skipped, [join(folder, 'escape')])
+    })
+
+    it('skips symlinked files within the target (does not queue them)', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      const folder = join(work, 'drop')
+      mkdirSync(folder, { recursive: true })
+      writeFileSync(join(folder, 'real.mp3'), '')
+
+      const elsewhereFile = join(work, 'outside.mp3')
+      writeFileSync(elsewhereFile, '')
+      symlinkSync(elsewhereFile, join(folder, 'fake.mp3'))
+
+      const result = ingestPath(path, folder)
+      assert.equal(result.queued, 1)
+      assert.equal(result.items[0]?.path.endsWith('real.mp3'), true)
+      assert.deepEqual(result.symlinks_skipped, [join(folder, 'fake.mp3')])
+    })
+
+    it('still accepts the top-level target being an explicit file path', () => {
+      // The user can still type `compost ingest some.wav` — only the walk
+      // refuses to follow symlinks discovered DURING traversal.
+      const { path } = initSeed('demo', { cwd: work })
+      const f = join(work, 'one.wav')
+      writeFileSync(f, '')
+      const result = ingestPath(path, f)
+      assert.equal(result.queued, 1)
+      assert.equal(result.symlinks_skipped, undefined)
+    })
   })
 })
