@@ -1,6 +1,6 @@
 {
   "name": "compost-provenance",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Append-only event log: ULID generation, three-actor schema validation, SQLite writer + snapshot reducer.",
   "private": true,
   "type": "module",
