@@ -99,15 +99,6 @@ export async function retrieveChunks(
   return { retrieved, corpus, mode }
 }
 
-/** Embedding-vector dimension by model tag (mirrors the embed-worker's table). */
-const DIM_BY_MODEL: Record<string, number> = {
-  'bge-m3': 1024,
-  'bge-m3:q4_k_m': 1024,
-  'mxbai-embed-large': 1024,
-  'nomic-embed-text': 768,
-  'all-minilm': 384,
-}
-
 /**
  * Build a dense retriever for a seed, or return null when dense isn't available
  * — no LanceDB index yet, the native binary absent, or the embeddings provider

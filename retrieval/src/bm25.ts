@@ -47,7 +47,9 @@ export class BM25Index {
     const qTerms = [...new Set(tokenize(query))]
     const scored: ScoredChunk[] = []
     for (let i = 0; i < this.docs.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: termFreq is kept in lockstep with docs (every add() pushes both), so index i < docs.length is in-bounds
       const tf = this.termFreq[i]!
+      // biome-ignore lint/style/noNonNullAssertion: lengths is kept in lockstep with docs (every add() pushes both), so index i < docs.length is in-bounds
       const len = this.lengths[i]!
       let score = 0
       for (const term of qTerms) {
@@ -56,6 +58,7 @@ export class BM25Index {
         const denom = f + K1 * (1 - B + (B * len) / (this.avgLen || 1))
         score += this.idf(term) * ((f * (K1 + 1)) / denom)
       }
+      // biome-ignore lint/style/noNonNullAssertion: i < docs.length per the loop condition, so docs[i] is in-bounds
       if (score > 0) scored.push({ ...this.docs[i]!, score })
     }
     scored.sort((a, b) => b.score - a.score)

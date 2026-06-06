@@ -78,5 +78,6 @@ export function resolveSeedPath(cwd: string, seed?: string): string {
       `Multiple seeds under ${root} (${entries.join(', ')}). Pass --seed <name>.`,
     )
   }
+  // biome-ignore lint/style/noNonNullAssertion: prior guards throw for length 0 and >1, so entries has exactly one element here
   return resolve(root, entries[0]!)
 }

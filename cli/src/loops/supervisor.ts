@@ -134,6 +134,7 @@ export async function runLive(seedPath: string, opts: RunLiveOptions = {}): Prom
       } catch (err) {
         opts.onError?.('supervisor', err)
         if (attempt >= backoff.length) break
+        // biome-ignore lint/style/noNonNullAssertion: guard above guarantees attempt is in bounds for backoff
         await sleep(backoff[attempt]!, opts.signal)
         attempt += 1
       }

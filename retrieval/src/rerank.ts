@@ -27,8 +27,11 @@ export async function rerank(
       `cross-encoder returned ${scores.length} scores for ${candidates.length} candidates`,
     )
   }
-  return candidates
-    .map((c, i) => ({ ...c, score: scores[i]! }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topN)
+  return (
+    candidates
+      // biome-ignore lint/style/noNonNullAssertion: scores.length === candidates.length checked above, so index i is in bounds
+      .map((c, i) => ({ ...c, score: scores[i]! }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topN)
+  )
 }

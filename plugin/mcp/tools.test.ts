@@ -13,9 +13,18 @@ import {
   resolveCompostInvocation,
   runTool,
   TOOLS,
+  type ToolDef,
 } from './tools.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// Looks up a tool by name and asserts it exists, narrowing away `undefined`
+// so callers read the known-present fixture without a non-null assertion.
+function tool(name: string): ToolDef {
+  const found = TOOLS.find((t) => t.name === name)
+  assert.ok(found, `tool ${name} should be defined`)
+  return found
+}
 
 describe('MCP tool definitions', () => {
   it('separates read-only from mutation tools', () => {
@@ -36,20 +45,20 @@ describe('MCP tool definitions', () => {
   })
 
   it('maps args to the correct CLI argv', () => {
-    const status = TOOLS.find((t) => t.name === 'compost_status')!
+    const status = tool('compost_status')
     assert.deepEqual(status.toArgv({}), ['status'])
     assert.deepEqual(status.toArgv({ seed: 'demo' }), ['status', '--seed', 'demo'])
 
-    const blame = TOOLS.find((t) => t.name === 'compost_blame')!
+    const blame = tool('compost_blame')
     assert.deepEqual(blame.toArgv({ artifact: 'abc123' }), ['blame', 'abc123'])
 
-    const ingest = TOOLS.find((t) => t.name === 'compost_ingest')!
+    const ingest = tool('compost_ingest')
     assert.deepEqual(ingest.toArgv({ path: '/x', seed: 's' }), ['ingest', '/x', '--seed', 's'])
 
-    const dr = TOOLS.find((t) => t.name === 'compost_models_doctor')!
+    const dr = tool('compost_models_doctor')
     assert.deepEqual(dr.toArgv({}), ['models', 'doctor'])
 
-    const search = TOOLS.find((t) => t.name === 'compost_search')!
+    const search = tool('compost_search')
     assert.deepEqual(search.toArgv({ query: 'trust' }), ['search', 'trust'])
     assert.deepEqual(search.toArgv({ query: 'trust', seed: 's', top_k: 5 }), [
       'search',
@@ -60,7 +69,7 @@ describe('MCP tool definitions', () => {
       '5',
     ])
 
-    const session = TOOLS.find((t) => t.name === 'compost_get_session')!
+    const session = tool('compost_get_session')
     assert.deepEqual(session.toArgv({ session: 'S001' }), ['session', 'S001'])
     assert.deepEqual(session.toArgv({ session: 'S001', seed: 's' }), [
       'session',
@@ -76,7 +85,7 @@ describe('MCP tool definitions', () => {
   })
 
   it('maps the write tools to `compost create <kind>` / `endorse` argv', () => {
-    const hl = TOOLS.find((t) => t.name === 'compost_create_highlight')!
+    const hl = tool('compost_create_highlight')
     assert.deepEqual(hl.toArgv({ session: 'S001', utterance: 'U-0002', span: '0,16', text: 'q' }), [
       'create',
       'highlight',
@@ -90,7 +99,7 @@ describe('MCP tool definitions', () => {
       'q',
     ])
 
-    const code = TOOLS.find((t) => t.name === 'compost_create_code')!
+    const code = tool('compost_create_code')
     assert.deepEqual(code.toArgv({ name: 'distrust', definition: 'd', evidence: 'H-001' }), [
       'create',
       'code',
@@ -102,7 +111,7 @@ describe('MCP tool definitions', () => {
       'H-001',
     ])
 
-    const endorse = TOOLS.find((t) => t.name === 'compost_endorse')!
+    const endorse = tool('compost_endorse')
     assert.deepEqual(endorse.toArgv({ artifact: 'abc123' }), ['endorse', 'abc123'])
   })
 
@@ -118,7 +127,7 @@ describe('MCP tool definitions', () => {
   })
 
   it('buildArgv appends AI authorship flags ONLY for aiAuthored tools', () => {
-    const hl = TOOLS.find((t) => t.name === 'compost_create_highlight')!
+    const hl = tool('compost_create_highlight')
     const args = { session: 'S001', utterance: 'U-1', span: '0,5', text: 'hello' }
     const argv = buildArgv(hl, args)
     assert.ok(argv.includes('--ai'))
@@ -128,7 +137,7 @@ describe('MCP tool definitions', () => {
     assert.match(argv[idIdx + 1] as string, /^claude-code:0\.1\.2-rc\.0:[a-f0-9]{8}$/)
 
     // endorse is NOT ai-authored — no --ai injected (researcher's act).
-    const endorse = TOOLS.find((t) => t.name === 'compost_endorse')!
+    const endorse = tool('compost_endorse')
     const eArgv = buildArgv(endorse, { artifact: 'abc123' })
     assert.ok(!eArgv.includes('--ai'))
   })
@@ -136,7 +145,7 @@ describe('MCP tool definitions', () => {
   it('buildArgv supplies the schema-required model + prompt_hash for AI creates (#165)', () => {
     // actor_type=ai events require model + a 64-hex prompt_hash; without them the
     // CLI fails schema validation and orphans the markdown.
-    const code = TOOLS.find((t) => t.name === 'compost_create_code')!
+    const code = tool('compost_create_code')
     const argv = buildArgv(code, { name: 'distrust', definition: 'x' })
     const phIdx = argv.indexOf('--prompt-hash')
     assert.ok(phIdx > 0, '--prompt-hash should be injected')
@@ -147,7 +156,7 @@ describe('MCP tool definitions', () => {
   })
 
   it('buildArgv records the agent-supplied model id when present (#165)', () => {
-    const theme = TOOLS.find((t) => t.name === 'compost_create_theme')!
+    const theme = tool('compost_create_theme')
     const argv = buildArgv(theme, { name: 't', summary: 's', model: 'claude-opus-4-8' })
     const mIdx = argv.indexOf('--model')
     assert.equal(argv[mIdx + 1], 'claude-opus-4-8')
@@ -187,11 +196,11 @@ describe('runTool', () => {
   })
 
   it('maps code_suggest (read) and code_apply (mutation) to `compost code`', () => {
-    const suggest = TOOLS.find((t) => t.name === 'compost_code_suggest')!
+    const suggest = tool('compost_code_suggest')
     assert.deepEqual(suggest.toArgv({ seed: 's' }), ['code', '--seed', 's'])
     assert.ok(READ_ONLY_TOOLS.includes('compost_code_suggest'))
 
-    const apply = TOOLS.find((t) => t.name === 'compost_code_apply')!
+    const apply = tool('compost_code_apply')
     assert.deepEqual(apply.toArgv({ seed: 's', threshold: 0.8 }), [
       'code',
       '--apply',

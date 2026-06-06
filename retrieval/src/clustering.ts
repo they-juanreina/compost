@@ -93,8 +93,10 @@ export function saturationPulse(
 
 function meanVector(vectors: number[][]): number[] {
   if (vectors.length === 0) return []
+  // biome-ignore lint/style/noNonNullAssertion: vectors is non-empty (length checked on prior line), so vectors[0] is defined
   const dim = vectors[0]!.length
   const out = new Array(dim).fill(0)
+  // biome-ignore lint/style/noNonNullAssertion: i < dim bounds the index in-range for each vector
   for (const v of vectors) for (let i = 0; i < dim; i++) out[i] += v[i]!
   return out.map((x) => x / vectors.length)
 }
@@ -105,6 +107,7 @@ function meanPairwiseCohesion(vectors: number[][]): number {
   let n = 0
   for (let i = 0; i < vectors.length; i++) {
     for (let j = i + 1; j < vectors.length; j++) {
+      // biome-ignore lint/style/noNonNullAssertion: i and j are bounded by vectors.length, so both indices are in-range
       sum += cosineSimilarity(vectors[i]!, vectors[j]!)
       n += 1
     }

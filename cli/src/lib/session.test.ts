@@ -88,7 +88,6 @@ describe('getSession', () => {
     const sdir = join(path, 'sessions', 'S001')
     mkdirSync(join(sdir, 'frames'), { recursive: true })
     const noFrames = { ...TRANSCRIPT }
-    // biome-ignore lint/performance/noDelete: test fixture shaping
     delete (noFrames as { frames?: unknown }).frames
     writeFileSync(join(sdir, 'transcript.json'), JSON.stringify(noFrames))
     writeFileSync(join(sdir, 'frames', '0002000.jpg'), '')

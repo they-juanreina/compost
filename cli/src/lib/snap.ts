@@ -26,9 +26,8 @@ export function parseTimestamp(input: string): number {
         throw new CompostError('INVALID_INPUT', `Bad time component "${p}"`)
       return Number(p)
     })
-    let seconds = 0
-    if (nums.length === 3) seconds = nums[0]! * 3600 + nums[1]! * 60 + nums[2]!
-    else seconds = nums[0]! * 60 + nums[1]!
+    const [a = 0, b = 0, c = 0] = nums
+    const seconds = nums.length === 3 ? a * 3600 + b * 60 + c : a * 60 + b
     return Math.round(seconds * 1000)
   }
   throw new CompostError(

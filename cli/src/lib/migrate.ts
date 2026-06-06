@@ -51,6 +51,7 @@ export interface MigrateResult extends MigratePlan {
 export function mapLegacyName(name: string): string {
   const m = NUMBERED_PREFIX_RE.exec(name)
   if (m === null) return name
+  // biome-ignore lint/style/noNonNullAssertion: capture group 2 (.+) is required by the regex, so it is always present on a non-null match
   return m[2]!.toLowerCase()
 }
 
