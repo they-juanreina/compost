@@ -34,7 +34,10 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          # registry-url is intentionally NOT set: it tells setup-node to write
+          # ~/.npmrc with `${NODE_AUTH_TOKEN}` auth, which makes npm prefer the
+          # (non-existent) token over the OIDC handshake for Trusted Publishing
+          # (#208). pnpm publish picks npmjs.org by default; OIDC handles auth.
 
       - name: Install + build + test
         run: |
