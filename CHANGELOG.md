@@ -1,6 +1,27 @@
 # Changelog
 
-## v0.1.0-rc.1 — release candidate
+## v0.1.0-rc.2 — release candidate
+
+Fixes rc.1's npm publish — `@they-juanreina/compost-cli` was published with
+unresolvable `workspace:*` dependencies (`compost-provenance`,
+`compost-retrieval`, `compost-evals` weren't on the registry), so any
+`npm i -g @they-juanreina/compost-cli` failed with a 404 on the workspace
+deps. rc.1 was the validation we wanted before promoting to v0.1.0 — caught
+exactly this.
+
+- The three workspace packages are renamed to `@they-juanreina/compost-{provenance,retrieval,evals}`, unprivated, and given `publishConfig: { access: public }` so they actually publish to the registry.
+- `cli/package.json` dependencies and 17 TypeScript imports updated to reference the scoped names.
+- `.github/workflows/release.yml` publishes the three workspace packages **before** `compost-cli` so the cli's `workspace:*` → resolved versions exist when downstream installs run.
+- `release.yml` also auto-flags `v*-rc.N` / `v*-beta` tags as prereleases now (the rc.1 GitHub Release had to be hand-flipped — release-workflow polish, #22).
+- Plugin-help and dogfood-script copy updated to point at `@they-juanreina/compost-cli`.
+
+rc.1 (the broken version) is deprecated on npm with a pointer to rc.2.
+
+## v0.1.0-rc.1 — release candidate (broken — see rc.2)
+
+> **Do not use.** This rc shipped a `compost-cli` whose `workspace:*` deps
+> (`compost-provenance`, `compost-retrieval`, `compost-evals`) weren't
+> published. `npm i -g …` 404s on those deps. Fixed in rc.2.
 
 First release candidate. Validates the publish path before promoting to v0.1.0.
 Contents are the same as the planned v0.1.0; the rc cycle exists so the npm

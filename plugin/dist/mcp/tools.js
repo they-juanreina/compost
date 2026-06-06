@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
-export const PLUGIN_VERSION = '0.1.0-rc.1';
+export const PLUGIN_VERSION = '0.1.0-rc.2';
 const str = (desc) => ({ type: 'string', description: desc });
 /**
  * Provenance fingerprint for an AI-authored artifact: sha256 over the tool-call
@@ -272,7 +272,7 @@ export const MUTATION_TOOLS = TOOLS.filter((t) => !t.readOnly).map((t) => t.name
  *
  *   1. COMPOST_CLI env var — an explicit path. If it ends in .js we run it
  *      with `node`; otherwise it's treated as an executable.
- *   2. `compost` on PATH — from `npm i -g compost-cli` or a pnpm link.
+ *   2. `compost` on PATH — from `npm i -g @they-juanreina/compost-cli` or a pnpm link.
  *
  * Returns the spawn command + any prefix args (e.g. the .js path for node).
  */
@@ -285,7 +285,7 @@ export function resolveCompostInvocation(env = process.env) {
     }
     return { command: 'compost', prefixArgs: [] };
 }
-const CLI_MISSING_HINT = 'compost CLI not found. Install it (`npm i -g compost-cli`, or clone the repo and `pnpm build`), ' +
+const CLI_MISSING_HINT = 'compost CLI not found. Install it (`npm i -g @they-juanreina/compost-cli`, or clone the repo and `pnpm build`), ' +
     'or set COMPOST_CLI to the path of dist/index.js. See docs/install.md.';
 const defaultRunner = async (argv) => {
     const { command, prefixArgs } = resolveCompostInvocation();

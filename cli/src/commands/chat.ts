@@ -1,6 +1,5 @@
+import type { Answer, Chunk } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
-
-import type { Answer, Chunk } from 'compost-retrieval'
 
 import { isCompostError } from '../errors.js'
 import { ANSWER_JSON_SCHEMA } from '../lib/answerSchema.js'

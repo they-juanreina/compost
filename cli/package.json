@@ -1,6 +1,6 @@
 {
   "name": "@they-juanreina/compost-cli",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "Compost CLI engine. Subcommand router, JSON-out, harness loop runner.",
   "type": "module",
   "publishConfig": {
@@ -28,14 +28,14 @@
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@they-juanreina/compost-evals": "workspace:*",
+    "@they-juanreina/compost-provenance": "workspace:*",
+    "@they-juanreina/compost-retrieval": "workspace:*",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "better-sqlite3": "^11.5.0",
     "chokidar": "^4.0.0",
     "commander": "^12.1.0",
-    "compost-evals": "workspace:*",
-    "compost-provenance": "workspace:*",
-    "compost-retrieval": "workspace:*",
     "smol-toml": "^1.3.0"
   },
   "devDependencies": {

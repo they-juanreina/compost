@@ -1,8 +1,7 @@
 {
-  "name": "compost-provenance",
-  "version": "0.1.0-rc.1",
+  "name": "@they-juanreina/compost-provenance",
+  "version": "0.1.0-rc.2",
   "description": "Append-only event log: ULID generation, three-actor schema validation, SQLite writer + snapshot reducer.",
-  "private": true,
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -25,5 +24,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",
     "tsx": "^4.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

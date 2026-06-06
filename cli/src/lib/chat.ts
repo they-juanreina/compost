@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { type Answer, type Chunk, validateAnswer } from 'compost-retrieval'
+import { type Answer, type Chunk, validateAnswer } from '@they-juanreina/compost-retrieval'
 
 import { buildDenseRetriever, retrieveChunks } from './retrieve.js'
 

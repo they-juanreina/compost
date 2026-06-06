@@ -1,6 +1,6 @@
 {
   "name": "compost",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "Local-first, AI-first research analysis harness. Ingest, transcribe, highlight, code, theme, and chat with your research corpus.",
   "author": "they-juanreina",
   "license": "MIT",

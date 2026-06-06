@@ -61,6 +61,32 @@ jobs:
             git log --pretty='- %s' >> NOTES.md
           fi
 
+      # Publish the workspace packages cli depends on FIRST — otherwise
+      # @they-juanreina/compost-cli's `workspace:*` deps resolve to versions
+      # that don't exist on the registry and `npm i -g …compost-cli` 404s.
+      # provenance/retrieval/evals have no inter-deps, so order among them
+      # doesn't matter; cli must come last.
+      - name: Publish @they-juanreina/compost-provenance to npm
+        if: ${{ env.NODE_AUTH_TOKEN != '' }}
+        working-directory: provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public
+
+      - name: Publish @they-juanreina/compost-retrieval to npm
+        if: ${{ env.NODE_AUTH_TOKEN != '' }}
+        working-directory: retrieval
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public
+
+      - name: Publish @they-juanreina/compost-evals to npm
+        if: ${{ env.NODE_AUTH_TOKEN != '' }}
+        working-directory: evals
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm publish --no-git-checks --access public
+
       - name: Publish @they-juanreina/compost-cli to npm
         if: ${{ env.NODE_AUTH_TOKEN != '' }}
         working-directory: cli
@@ -73,3 +99,6 @@ jobs:
         with:
           body_path: NOTES.md
           generate_release_notes: true
+          # Auto-flag `v*-rc.N` / `v*-beta` / `v*-alpha` tags as prereleases
+          # so they don't appear as "latest" on the releases page (#22).
+          prerelease: ${{ contains(github.ref_name, '-') }}

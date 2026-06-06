@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 
-import { type Event, type EventInput, EventWriter } from 'compost-provenance'
+import { type Event, type EventInput, EventWriter } from '@they-juanreina/compost-provenance'
 
 /** Open an EventWriter on a seed's .compost/events.sqlite. */
 export function openSeedEvents(seedPath: string): EventWriter {

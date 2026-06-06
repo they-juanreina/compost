@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { SnapshotStore } from '@they-juanreina/compost-provenance'
 import Database from 'better-sqlite3'
 import type { Command } from 'commander'
-import { SnapshotStore } from 'compost-provenance'
 
 import { CompostError, isCompostError } from '../errors.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
