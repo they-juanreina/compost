@@ -42,8 +42,9 @@ export function buildProgram(): Command {
     .version(VERSION, '-V, --version')
     .option(
       '--human',
-      'Pretty-print output for human eyes (JSON is the default — agents parse it directly).',
+      'Force human-readable output (auto-on at a TTY; JSON when piped or called by an agent).',
     )
+    .option('--json', 'Force machine-readable JSON output (overrides TTY auto-detection).')
     .showHelpAfterError()
     .configureHelp({ sortSubcommands: true })
 

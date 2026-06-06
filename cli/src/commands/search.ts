@@ -4,6 +4,7 @@ import { isCompostError } from '../errors.js'
 import { buildDenseRetriever, retrieveChunks } from '../lib/retrieve.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+import { renderSearch } from '../render/human.js'
 
 interface SearchFlags {
   seed?: string
@@ -55,6 +56,7 @@ export function registerSearch(program: Command): void {
             results,
           },
           out,
+          renderSearch,
         )
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)

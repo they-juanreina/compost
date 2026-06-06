@@ -16,6 +16,9 @@ export interface DoctorReport {
   schema_version: '1.0'
   providers: Record<string, ProviderHealth>
   tasks: TaskReport[]
+  /** Bidirectional reconcile (#175): models a provider has pulled but no
+   * `[defaults]` route uses. Informational — not an error. Keyed by provider. */
+  unused_models: Record<string, string[]>
   ok: boolean
 }
 
@@ -31,6 +34,18 @@ export async function runDoctor(adapter: LLMAdapter, config: CompostConfig): Pro
   const providers = await adapter.healthAll()
   const tasks: TaskReport[] = []
   let ok = true
+
+  // Configured model per provider, for the pulled-but-unused reconcile below.
+  const configuredByProvider = new Map<string, Set<string>>()
+  for (const route of Object.values(config.defaults)) {
+    try {
+      const { provider, model } = parseRoute(route)
+      if (!configuredByProvider.has(provider)) configuredByProvider.set(provider, new Set())
+      configuredByProvider.get(provider)?.add(model)
+    } catch {
+      // unroutable — handled per-task below
+    }
+  }
 
   for (const [task, route] of Object.entries(config.defaults)) {
     let provider = ''
@@ -61,5 +76,16 @@ export async function runDoctor(adapter: LLMAdapter, config: CompostConfig): Pro
     tasks.push({ task, route, provider, model, status: 'ok' })
   }
 
-  return { schema_version: '1.0', providers, tasks, ok }
+  // Reconcile the other direction: models a provider has pulled but nothing routes to.
+  const unused_models: Record<string, string[]> = {}
+  for (const [provider, health] of Object.entries(providers)) {
+    if (!health.ok || health.model_list.length === 0) continue
+    const configured = configuredByProvider.get(provider) ?? new Set<string>()
+    const unused = health.model_list.filter(
+      (m) => !configured.has(m) && ![...configured].some((c) => m === c || m.startsWith(`${c}:`)),
+    )
+    if (unused.length > 0) unused_models[provider] = unused
+  }
+
+  return { schema_version: '1.0', providers, tasks, unused_models, ok }
 }

@@ -6,6 +6,7 @@ import { runDoctor } from '../lib/doctor.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { LLMAdapter } from '../llm/adapter.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+import { renderDoctor } from '../render/human.js'
 
 interface DoctorFlags {
   seed?: string
@@ -28,7 +29,7 @@ export function registerModels(program: Command): void {
         const config = loadConfig(seedPath)
         const adapter = new LLMAdapter(config)
         const report = await runDoctor(adapter, config)
-        emit({ command: 'models doctor', ...report }, out)
+        emit({ command: 'models doctor', ...report }, out, renderDoctor)
         if (!report.ok) process.exitCode = 1
       } catch (err) {
         if (isCompostError(err)) {

@@ -6,14 +6,32 @@ export interface OutputOptions {
   human: boolean
 }
 
+/**
+ * Resolve the output mode (#173). Explicit flags win: `--json` → machine,
+ * `--human` → readable. With neither, auto-detect: a TTY (a researcher at a
+ * terminal) gets human output; a pipe/redirect/MCP spawn (no TTY) gets JSON, so
+ * the agent path is unaffected.
+ */
 export function getOutputOpts(cmd: Command): OutputOptions {
   let root: Command = cmd
   while (root.parent) root = root.parent
-  const opts = root.opts() as { human?: boolean }
-  return { human: opts.human === true }
+  const opts = root.opts() as { human?: boolean; json?: boolean }
+  if (opts.json === true) return { human: false }
+  if (opts.human === true) return { human: true }
+  return { human: process.stdout.isTTY === true }
 }
 
-export function emit(data: unknown, opts: OutputOptions): void {
+/**
+ * Emit a result. In human mode, if a `render` function is provided it prints a
+ * readable summary; otherwise (and for any command without a renderer) it
+ * pretty-prints the JSON. Machine mode always prints compact JSON — unchanged,
+ * so the MCP/agent path is byte-for-byte identical.
+ */
+export function emit(data: unknown, opts: OutputOptions, render?: (data: never) => string): void {
+  if (opts.human && render !== undefined) {
+    process.stdout.write(`${render(data as never)}\n`)
+    return
+  }
   const text = opts.human ? JSON.stringify(data, null, 2) : JSON.stringify(data)
   process.stdout.write(`${text}\n`)
 }
