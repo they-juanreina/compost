@@ -1,6 +1,6 @@
 [project]
 name = "compost-transcriber"
-version = "0.1.0rc2"
+version = "0.1.0"
 description = "Compost descriptive transcriber: WhisperX + pyannote + Silero VAD + Whisper-event-tags, plus frame extraction and legacy ingest."
 requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }

@@ -1,21 +1,114 @@
 # Changelog
 
-## v0.1.0-rc.2 — release candidate
+## v0.1.0 — 2026-06-05
 
-Fixes rc.1's npm publish — `@they-juanreina/compost-cli` was published with
-unresolvable `workspace:*` dependencies (`compost-provenance`,
-`compost-retrieval`, `compost-evals` weren't on the registry), so any
-`npm i -g @they-juanreina/compost-cli` failed with a 404 on the workspace
+First stable release. `@they-juanreina/compost-cli` + three scoped workspace
+packages (`compost-provenance`, `compost-retrieval`, `compost-evals`) published
+to npm; Cowork-distributed Claude Code plugin published from this repo.
+
+Promoted from `v0.1.0-rc.2` after a successful real-corpus dogfood pass
+([`scripts/dogfood-v0.1.0.sh`](scripts/dogfood-v0.1.0.sh)) — 17/17 functional
+checks green on a 28-min meeting recording: install + version, multi-seed
+status/saturate parity, the full v0.1.1 hardening loop (atomic create + AI
+fail-fast, human-id endorse, endorse idempotency, tag filler/timestamp filter,
+canonical-session resolver), native ASR (Parakeet on Metal) + diarization
+(pyannote on MPS), and the missing-Ollama-model actionable error. The
+small dogfood-script tunings (skip-audio handling for #191, widened #178
+threshold for legitimate meeting recordings) ride with this release.
+
+### Headlines
+
+- **Native Apple-Silicon transcription** (Parakeet-TDT 0.6B v3 via `parakeet-mlx`
+  + pyannote on Metal/MPS). ~16× realtime on an M1 Max vs ~0.8× in the Docker
+  CPU fallback. (#176, #182, #183)
+- **Three-actor provenance** (researcher / agent / AI-draft) with full
+  `compost blame` lineage. AI-authored artifacts surface as `[draft]` until
+  `compost endorse` promotes them.
+- **Hybrid retrieval** — BM25 + LanceDB dense, wired into search and chat. (#151)
+- **Claude Code plugin** with read + write MCP tools, the `compost-setup` doctor
+  skill, and a `/compost-welcome` walkthrough. (#154, #155, #156)
+- **Local-first by default** — `compost chat` routes to a local model
+  (Ollama-backed) and no cloud key is required for the core loop. (#160)
+
+### Hardening landed in v0.1.1 milestone (18 issues)
+
+- Atomic create + AI-author fail-fast (no orphaned markdown on event-validation
+  failure; `--ai` requires `actor-id`, `model`, and a 64-hex `prompt-hash`). (#165)
+- `endorse` / `blame` accept the human id `create` prints (`C-slug`, `H-NNN`,
+  `T-slug`) in addition to SHA prefixes and `latest:` refs. (#168)
+- `endorse` is idempotent per `(artifact, researcher)` — re-running returns
+  `status: "already_endorsed"`. (#169)
+- `saturate` and `tag` share a canonical-session resolver with `status` — no
+  more counting `Attachments/`, `Transcripts/`, … as sessions. (#166, #171)
+- `tag` filters conversational filler and timestamp noise. (#171)
+- `compost watch --once` reports failed jobs as `status: "completed_with_failures"`
+  with exit 1. (#164)
+- `compost setup --provision-native` provisions the native transcription venv
+  in one step. (#183)
+- Ollama 404 model-not-found surfaces as an actionable `CompostError`
+  naming the exact `ollama pull X`. (#191)
+- WhisperX honors `--language` on the per-call transcribe; native Parakeet
+  path never records `language: "und"`. (#180, #190)
+- Diarization over-segmentation collapse + `S?` orphan rescue — a clean
+  2-party interview yields 2 speakers; meeting recordings keep their real
+  participants. (#178)
+- Stubbed commands (`query`, `synthesize`, `serve`) honestly flagged
+  `[not implemented yet · #NN]` in `--help`; `--seed` in their contract. (#161, #167)
+- Plus six more — see [milestone v0.1.1](https://github.com/they-juanreina/compost/milestone/6).
+
+### Not in v0.1.0 (deferred)
+
+Eight researcher-quality items live in
+[milestone v0.1.2](https://github.com/they-juanreina/compost/milestone/7):
+speaker labeling (#177), MMR / dedup in retrieval (#170), human-readable CLI
+output (#173), `.txt` transcript importer (#172), `validate transcript.json`
+subcommand (#174), `doctor` ↔ pulled Ollama model reconcile (#175), native
+legacy-ingest (#184), CI ASR smoke (#185).
+
+### Known limitations
+
+- **The global npm install does not include the transcriber Python source.**
+  `compost transcribe` (native runtime) needs both a venv (provisioned by
+  `compost setup --provision-native`, lives at `~/.compost/transcriber-venv`)
+  **and** the `transcriber/` package directory. For globally-installed
+  cli, set `COMPOST_TRANSCRIBER_DIR=/path/to/compost/transcriber` (e.g. a
+  repo clone). The Docker fallback works without the env var. Bundling the
+  source into the global install is tracked for a future release.
+- The 5%-share **diarization merge threshold** (#178) and the **EN/ES language
+  heuristic** for the Parakeet path (#190) are deliberately conservative
+  defaults. Corner cases (a legitimate 30-second third-speaker interjection,
+  a corpus heavy on a third language) may need tuning. Both are pure helpers.
+- `compost query` and `compost synthesize` are still stubs (tracked as #51 and
+  #59). They show `[not implemented yet · #NN]` in `--help`.
+- npm: `@they-juanreina/compost-cli` is scoped under the maintainer's npm
+  handle. CLI binary is `compost`. `@they-juanreina/compost-{provenance,
+  retrieval,evals}` are workspace packages cli depends on — not consumed
+  directly.
+
+### Agent-version vs release-version
+
+The inline `AGENT_VERSION = '0.1.0'` constants in `cli/src/loops/*` and
+`cli/src/lib/{tagcode,ingest}.ts` are agent-behavior semver, **not** release
+version — stamped into `actor_id` on `actor_type=agent` events. They evolve
+independently per agent. `PLUGIN_VERSION` in `plugin/mcp/tools.ts` **does**
+track the release tag.
+
+## v0.1.0-rc.2 — release candidate (promoted to v0.1.0)
+
+Fixed rc.1's broken npm publish — `@they-juanreina/compost-cli` was published
+with unresolvable `workspace:*` dependencies (`compost-provenance`,
+`compost-retrieval`, `compost-evals` weren't on the registry), so
+`npm i -g @they-juanreina/compost-cli@0.1.0-rc.1` 404'd on the workspace
 deps. rc.1 was the validation we wanted before promoting to v0.1.0 — caught
 exactly this.
 
-- The three workspace packages are renamed to `@they-juanreina/compost-{provenance,retrieval,evals}`, unprivated, and given `publishConfig: { access: public }` so they actually publish to the registry.
-- `cli/package.json` dependencies and 17 TypeScript imports updated to reference the scoped names.
-- `.github/workflows/release.yml` publishes the three workspace packages **before** `compost-cli` so the cli's `workspace:*` → resolved versions exist when downstream installs run.
-- `release.yml` also auto-flags `v*-rc.N` / `v*-beta` tags as prereleases now (the rc.1 GitHub Release had to be hand-flipped — release-workflow polish, #22).
-- Plugin-help and dogfood-script copy updated to point at `@they-juanreina/compost-cli`.
+- The three workspace packages renamed to `@they-juanreina/compost-{provenance,retrieval,evals}`, unprivated, given `publishConfig: { access: public }`.
+- `cli/package.json` dependencies + 17 TypeScript imports updated.
+- `.github/workflows/release.yml` publishes the three workspace packages **before** `compost-cli` on every tag.
+- `release.yml` auto-flags `v*-rc.N` / `v*-beta` tags as prereleases (#22).
+- Plugin-help and dogfood-script copy updated to point at the scoped name.
 
-rc.1 (the broken version) is deprecated on npm with a pointer to rc.2.
+rc.1 (the broken version) deprecated on npm with a pointer to rc.2.
 
 ## v0.1.0-rc.1 — release candidate (broken — see rc.2)
 
