@@ -31,6 +31,11 @@ from typing import Any
 
 PACE_SLOW_WPS = 2.0
 PACE_FAST_WPS = 3.3
+# Volume thresholds applied to the normalized 0..1 energy. These are GLOBAL
+# constants, not per-speaker. The energy signal is session-normalized in
+# vad.utterance_energies(); a soft speaker's loudest moment can still read below
+# a loud speaker's baseline. TODO(#13): per-speaker normalization would make
+# these buckets speaker-relative — see vad.utterance_energies for the plan.
 VOLUME_LOW = 0.33
 VOLUME_HIGH = 0.66
 HESITATION_GAP_MS = 400

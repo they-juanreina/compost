@@ -21,10 +21,11 @@ import { type CompostConfig, loadConfig } from './config.js'
  * `compost chat` (retrieval + LLM synthesis). Extracted so the two commands
  * never diverge on how the corpus is loaded, chunked, and ranked.
  *
- * Retrieval is BM25-only today: HybridRetriever's dense slot is null because
- * nothing reads the LanceDB index the embed-worker writes (#137). Wiring
- * LanceDBRetriever into this shared path is a follow-up that upgrades both
- * `search` and `chat` ranking at once — see the tracking issue.
+ * Retrieval is hybrid: when a LanceDB index and an embeddings provider are
+ * both present, BM25 ∪ dense results are fused via RRF (HybridRetriever's dense
+ * slot is filled by buildDenseRetriever, which reads the index the embed-worker
+ * writes). When either is missing it falls back to BM25-only. `search` and
+ * `chat` share this path, so both rank the same way.
  */
 
 export interface LoadedCorpus {

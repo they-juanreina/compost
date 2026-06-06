@@ -23,12 +23,16 @@ from app.routes.transcribe import _build_backends
 
 
 class FakeVADBackend:
-    """Returns two speech segments with a 4-second gap → one first-class silence."""
+    """Returns two speech segments with a 4-second gap → one first-class silence.
 
-    def speech_timestamps(self, audio_path: str) -> list[dict[str, int]]:
+    The two segments carry different RMS energies so the prosody stage can
+    bucket utterance volume (quiet first segment, loud second).
+    """
+
+    def speech_timestamps(self, audio_path: str) -> list[dict[str, Any]]:
         return [
-            {"start_ms": 0, "end_ms": 5000},
-            {"start_ms": 9000, "end_ms": 14000},
+            {"start_ms": 0, "end_ms": 5000, "energy": 0.04},
+            {"start_ms": 9000, "end_ms": 14000, "energy": 0.20},
         ]
 
 
@@ -171,6 +175,25 @@ def test_transcript_has_speakers_utterances_silences_cues(
     # Provenance recorded
     assert transcript["provenance"]["asr_model"]
     assert transcript["provenance"]["diarizer"]
+
+
+def test_prosody_volume_wired_from_vad_energy(
+    client: TestClient, seed_dir: Path, source_audio: Path
+) -> None:
+    # End-to-end guard that the per-utterance VAD RMS energy reaches the prosody
+    # stage (pipeline.py step 8). The fake VAD reports a quiet first segment and
+    # a loud second one, so the two utterances must NOT both be "normal".
+    res = client.post(
+        "/transcribe",
+        json={
+            "seed_path": str(seed_dir),
+            "session_id": "S001",
+            "source_path": str(source_audio),
+        },
+    )
+    transcript = json.loads(Path(res.json()["transcript_path"]).read_text())
+    volumes = [u["prosody"]["volume"] for u in transcript["utterances"]]
+    assert volumes == ["low", "high"]
 
 
 def test_transcribe_404_when_source_missing(

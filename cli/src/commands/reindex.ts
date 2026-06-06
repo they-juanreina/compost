@@ -55,10 +55,12 @@ export function registerReindex(program: Command): void {
           }
 
           if (flags.vectors === true) {
-            // The embed-worker (v0.1-04) owns the LanceDB write path. Until it
-            // ships, --vectors is a recognized flag that emits a clear "wait" status
-            // instead of pretending to succeed.
-            result.note = '--vectors requires the embed-worker (v0.1-04, issue #137); not yet wired'
+            // The embed-worker already owns the LanceDB write path and rebuilds
+            // the index automatically during `compost watch`. The manual
+            // --vectors rebuild from here isn't wired yet, so it reports a clear
+            // status instead of pretending to succeed.
+            result.note =
+              '--vectors is not wired yet; the LanceDB index is rebuilt automatically by `compost watch`'
           }
 
           emit(result, out)
