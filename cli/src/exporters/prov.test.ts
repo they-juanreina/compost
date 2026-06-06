@@ -5,9 +5,15 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import { createCode, createHighlight } from '../lib/artifacts.js'
+import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { eventsToProvO } from './prov.js'
 
 const HASH = 'a'.repeat(64)
+
+function hasType(node: Record<string, unknown>, t: string): boolean {
+  const ty = node['@type']
+  return Array.isArray(ty) ? (ty as string[]).includes(t) : ty === t
+}
 
 describe('eventsToProvO', () => {
   let seed: string
@@ -18,8 +24,8 @@ describe('eventsToProvO', () => {
     rmSync(seed, { recursive: true, force: true })
   })
 
-  it('serializes the event log to PROV-O JSON-LD with the core relations', () => {
-    // an AI code with captured inputs, and a researcher highlight
+  it('serializes the event log to PROV-AGENT JSON-LD', () => {
+    // an AI code with captured inputs (→ AIModelInvocation, Prompt, AIModel, ResponseData)
     createCode(seed, {
       name: 'distrust',
       definition: 'd',
@@ -31,6 +37,7 @@ describe('eventsToProvO', () => {
       },
       inputs: { model: 'm', prompt: 'suggest a code', context: [{ utterance_id: 'U-0001' }] },
     })
+    // a researcher highlight (→ prov:Person)
     createHighlight(seed, {
       sessionId: 'S001',
       utteranceId: 'U-0001',
@@ -38,37 +45,75 @@ describe('eventsToProvO', () => {
       text: 'hello',
       author: { actorType: 'researcher', actorId: 'juan@x' },
     })
+    // a deterministic agent code (→ AgentTool)
+    const w = openSeedEvents(seed)
+    emitAgentCreate(w, {
+      artifactKind: 'code',
+      initialState: { kind: 'code', members: ['H-001'] },
+      agentName: 'similarity-scanner',
+      agentVersion: '0.1.0',
+    })
+    w.close()
 
     const prov = eventsToProvO(join(seed, '.compost', 'events.sqlite'))
-    assert.equal(prov.activities, 2)
-    assert.equal(prov.entities, 2) // code + highlight artifacts
-    assert.equal(prov.agents, 2) // ai actor + researcher
+    assert.equal(prov.activities, 3)
+    assert.equal(prov.entities, 3) // ai code + highlight + scanner code
+    assert.equal(prov.agents, 3) // ai actor + researcher + scanner agent
     assert.equal(prov.inputs, 1) // the AI create captured inputs
+    assert.equal(prov.models, 1) // model 'm'
+    assert.equal(prov.tools, 1) // the similarity-scanner
 
     const graph = prov.document['@graph'] as Array<Record<string, unknown>>
     assert.ok(prov.document['@context'])
 
-    // the AI actor is typed as an AIAgent
-    const aiAgent = graph.find(
-      (n) => Array.isArray(n['@type']) && (n['@type'] as string[]).includes('provagent:AIAgent'),
+    // PROV-AGENT classes are all present
+    assert.ok(
+      graph.some((n) => hasType(n, 'provagent:AIAgent')),
+      'AIAgent',
     )
-    assert.ok(aiAgent, 'expected a provagent:AIAgent node')
+    assert.ok(
+      graph.some((n) => hasType(n, 'provagent:AIModelInvocation')),
+      'AIModelInvocation',
+    )
+    assert.ok(
+      graph.some((n) => hasType(n, 'provagent:AIModel')),
+      'AIModel',
+    )
+    assert.ok(
+      graph.some((n) => hasType(n, 'provagent:Prompt')),
+      'Prompt',
+    )
+    assert.ok(
+      graph.some((n) => hasType(n, 'provagent:ResponseData')),
+      'ResponseData',
+    )
+    assert.ok(
+      graph.some((n) => hasType(n, 'provagent:AgentTool')),
+      'AgentTool',
+    )
+    assert.ok(
+      graph.some((n) => hasType(n, 'prov:Person')),
+      'Person',
+    )
 
-    // the AI create Activity prov:used its input bundle entity
-    const inputEntity = graph.find(
-      (n) => n['compost:kind'] === 'ai_input_bundle' && n['@type'] === 'prov:Entity',
+    // the AI invocation prov:used both a Prompt and an AIModel
+    const invocation = graph.find((n) => hasType(n, 'provagent:AIModelInvocation'))
+    assert.ok(invocation)
+    const used = ([] as Array<{ '@id': string }>).concat(
+      (invocation?.['prov:used'] as Array<{ '@id': string }>) ?? [],
     )
-    assert.ok(inputEntity, 'expected an ai_input_bundle entity')
-
-    // researcher is a prov:Person
-    const person = graph.find(
-      (n) => Array.isArray(n['@type']) && (n['@type'] as string[]).includes('prov:Person'),
+    assert.ok(
+      used.some((u) => u['@id'].startsWith('compost:model/')),
+      'invocation used an AIModel',
     )
-    assert.ok(person, 'expected a prov:Person node')
+    assert.ok(
+      used.some((u) => u['@id'].startsWith('compost:input/')),
+      'invocation used a Prompt',
+    )
 
     // every create Activity generated an entity
     const creates = graph.filter((n) => n['compost:action'] === 'create')
-    assert.equal(creates.length, 2)
+    assert.equal(creates.length, 3)
     for (const c of creates) assert.ok(c['prov:generated'], 'create Activity generates an entity')
   })
 

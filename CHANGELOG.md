@@ -26,11 +26,14 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
   researcher codings come from **`compost recode`** (intentionally CLI/human-only —
   not an agent tool, so an agent can't fabricate the comparison side). Read-only
   `compost_agreement` MCP tool.
-- **`compost export --format prov`.** W3C PROV-O JSON-LD serialization of the event
-  log (artifact→Entity, event→Activity, actor→Agent with `ai`→`provagent:AIAgent`,
-  `parent_event`→`wasInformedBy`, input bundle→`prov:used` Entity). Because inputs
-  are now persisted, an AI Activity expresses its real inputs, not an opaque hash.
-  Extended `compost_export` MCP tool.
+- **`compost export --format prov`.** W3C PROV JSON-LD serialization of the event
+  log using the PROV-AGENT vocabulary (arXiv:2508.02866): artifact→Entity,
+  event→Activity, actor→Agent (`ai`→`provagent:AIAgent`), `parent_event`→
+  `wasInformedBy`; an AI event is a `provagent:AIModelInvocation` that `prov:used` a
+  `provagent:Prompt` (captured input bundle) + `provagent:AIModel`, generating
+  `provagent:ResponseData`; a deterministic agent → `provagent:AgentTool`. Because
+  inputs are now persisted, an AI invocation expresses its real inputs, not an
+  opaque hash. Extended `compost_export` MCP tool.
 
 ## v0.1.2 — 2026-06-06
 

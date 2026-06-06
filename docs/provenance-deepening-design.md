@@ -107,15 +107,18 @@ Resolve an event → `input_id` → `ai_inputs`, re-run, emit a new event with
 - Events whose `input_id` is NULL (pre-migration, or hash-only host creates) cannot
   be rerun; the command says so explicitly.
 
-### PROV-O export stub
+### PROV-O / PROV-AGENT export
 
-`compost export --format prov` serializes the event log to W3C PROV-O (JSON-LD):
+`compost export --format prov` serializes the event log to W3C PROV (JSON-LD)
+using the PROV-AGENT vocabulary (arXiv:2508.02866) for the AI/agent specifics:
 `artifact → prov:Entity`, `event/action → prov:Activity`, `actor → prov:Agent`
-(researcher = `prov:Person`; agent/ai = `prov:SoftwareAgent`, ai also typed
-`provagent:AIAgent`), `parent_event → prov:wasDerivedFrom`, `endorse →` a qualified
-approval Activity. With §1 landed, an AI Activity lists its real `prov:used` input
-entities instead of an opaque hash. Shipped as a stub: valid JSON-LD with a
-`@context`, covering the core relations; not a full PROV-AGENT vocabulary yet.
+(researcher = `prov:Person`; agent/ai = `prov:SoftwareAgent`), `parent_event →
+prov:wasInformedBy`. PROV-AGENT classes: an `ai` actor → `provagent:AIAgent`; an
+`ai` event → `provagent:AIModelInvocation` that `prov:used` a `provagent:Prompt`
+(the captured input bundle) and a `provagent:AIModel` (the model), generating
+`provagent:ResponseData` (the artifact); a deterministic agent's `name@version` →
+`provagent:AgentTool`. With §1 landed, an AI invocation expresses its real
+`prov:used` Prompt + AIModel instead of an opaque hash.
 
 ## Sequencing
 
