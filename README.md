@@ -44,10 +44,13 @@ Every change to every artifact is an append-only event in `.compost/events.sqlit
 
 ## Status
 
-**v0.1 (shareable harness)** is feature-complete: ingest, transcription (native Parakeet/Whisper + pyannote on Metal, Docker fallback), legacy document ingest, local embeddings (Ollama + LanceDB), hybrid retrieval, three-actor provenance, the Claude Code plugin, and the `compost setup` doctor.
+**v0.1 (shareable harness)** is feature-complete: ingest, transcription (native Parakeet/Whisper + pyannote on Metal, Docker fallback), legacy document ingest, local embeddings (Ollama + LanceDB), hybrid retrieval (BM25 + dense vectors fused via Reciprocal Rank Fusion), grounded chat with enforced citations, three-actor provenance, the Claude Code plugin, and the `compost setup` doctor.
 
-Known limitations, tracked as issues:
-- Retrieval is BM25 today; the embeddings index is built but dense ranking isn't wired into the query path yet ([#151](https://github.com/they-juanreina/compost/issues/151)).
+Retrieval is hybrid end to end: `compost watch` builds the LanceDB index by default, and both `compost search` and `compost chat` fuse BM25 with dense LanceDB results via RRF when the index and an embeddings provider are present — reporting `retrieval: "hybrid"` — and fall back cleanly to BM25 (`retrieval: "bm25"`) when they're not. `compost chat` answers only from retrieved passages and validates every citation (utterance must be in the retrieval set, quote must match verbatim) before returning.
+
+Known limitations:
+- The cross-encoder rerank stage (`retrieval/src/rerank.ts`) is implemented and unit-tested but has no CLI caller yet, so the final `hybrid → rerank → top-N` step is effectively off — `search` and `chat` return RRF-fused results directly.
+- `compost reindex --vectors` is a recognized flag but isn't wired yet: it reports a "not yet wired" status instead of rebuilding the LanceDB index. (The index is rebuilt automatically by `compost watch`; only the manual flag is the gap.)
 - The web UI is the [v0.2 milestone](https://github.com/they-juanreina/compost/milestone/4).
 - `compost serve`, `query`, and `synthesize` are stubs.
 
