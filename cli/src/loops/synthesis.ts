@@ -33,6 +33,8 @@ export function suggestThemesOnce(
     ...(opts.minSize !== undefined ? { minSize: opts.minSize } : {}),
   }).slice(0, MAX_SUGGESTIONS)
 
+  const allIds = highlights.map((h) => h.id)
+  const threshold = opts.threshold ?? 0.75
   const events = openSeedEvents(seedPath)
   const out: ThemeSuggestion[] = []
   try {
@@ -43,11 +45,24 @@ export function suggestThemesOnce(
         cohesion: cluster.cohesion,
         status: 'draft',
       }
+      // Capture the deterministic inputs so this code draft is rerun-able: the
+      // clustering is a pure function of the highlight set + params, so recording
+      // them lets `compost rerun` re-derive and diff (exactly, if embeddings are
+      // unchanged). One bundle per cluster — context carries this cluster's members.
       const event = emitAgentCreate(events, {
         artifactKind: 'code',
         initialState,
         agentName: SCANNER,
         agentVersion: VERSION,
+        inputs: {
+          model: opts.model ?? `${SCANNER}@${VERSION}`,
+          params: {
+            threshold,
+            ...(opts.minSize !== undefined ? { minSize: opts.minSize } : {}),
+          },
+          prompt: `cosine-cluster ${allIds.length} highlights; emit cohesive code clusters`,
+          context: { highlight_ids: allIds, members: cluster.members },
+        },
       })
       out.push({
         artifact_id: event.artifact_id,
