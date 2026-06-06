@@ -1,6 +1,6 @@
 {
   "name": "compost",
-  "version": "0.1.1",
+  "version": "0.1.2-rc.0",
   "description": "Local-first, AI-first research analysis harness. Ingest, transcribe, highlight, code, theme, and chat with your research corpus.",
   "registry": "cowork",
   "commands": "./commands",

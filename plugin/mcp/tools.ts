@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 const execFileAsync = promisify(execFile)
 
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
-export const PLUGIN_VERSION = '0.1.1'
+export const PLUGIN_VERSION = '0.1.2-rc.0'
 
 export interface ToolDef {
   name: string
