@@ -1,0 +1,14 @@
+# Dependabot tracks SHA-pinned third-party Actions so an upstream tag move
+# becomes a PR instead of silently shipping. See #210 for why we pin SHAs.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns:
+          - "*"
+    commit-message:
+      prefix: "chore(actions)"
