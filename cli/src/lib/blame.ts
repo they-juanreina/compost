@@ -116,8 +116,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
 
   const latestMatch = LATEST_REF_RE.exec(query)
   if (latestMatch !== null) {
-    const kind = latestMatch[1]!
-    const target = latestMatch[2]!
+    const [, kind, target] = latestMatch
     if (target !== seed) {
       throw new CompostError(
         'INVALID_INPUT',
@@ -159,6 +158,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
       `Prefix "${query}" is ambiguous (${matches.length} matches). Use more characters.`,
     )
   }
+  // biome-ignore lint/style/noNonNullAssertion: length checked === 0 and > 1 above, so exactly one match remains
   return matches[0]!.artifact_id
 }
 
@@ -227,6 +227,7 @@ function findSingletonSeed(cwd: string): string {
       `Multiple seeds under ${root} (${entries.join(', ')}). Pass --seed <name>.`,
     )
   }
+  // biome-ignore lint/style/noNonNullAssertion: length checked === 0 and > 1 above, so exactly one entry remains
   return entries[0]!
 }
 

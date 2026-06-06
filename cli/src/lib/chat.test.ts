@@ -109,6 +109,7 @@ describe('chat', () => {
       .trim()
       .split('\n')
     assert.equal(lines.length, 2)
+    // biome-ignore lint/style/noNonNullAssertion: lines.length asserted === 2 on the line above, so lines[0] is in-bounds
     assert.equal(JSON.parse(lines[0]!).question, 'q1')
   })
 })

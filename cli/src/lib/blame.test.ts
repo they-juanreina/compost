@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -51,7 +51,7 @@ interface SeededEvent {
 let counter = 0
 function ulid(): string {
   counter += 1
-  return ('01JM9NPC' + counter.toString(36).toUpperCase().padStart(18, '0')).slice(0, 26)
+  return `01JM9NPC${counter.toString(36).toUpperCase().padStart(18, '0')}`.slice(0, 26)
 }
 
 function sha(input: string): string {
@@ -152,8 +152,8 @@ describe('blame', () => {
   it('rejects ambiguous prefixes', () => {
     const { path } = initSeed('demo', { cwd: work })
     // Both IDs start with the same first 8 hex chars.
-    const idA = 'cafebabe' + sha('a').slice(8)
-    const idB = 'cafebabe' + sha('b').slice(8)
+    const idA = `cafebabe${sha('a').slice(8)}`
+    const idB = `cafebabe${sha('b').slice(8)}`
     seedEvents(join(path, '.compost', 'events.sqlite'), [
       { artifact_id: idA, action: 'create' },
       { artifact_id: idB, action: 'create' },

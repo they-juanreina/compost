@@ -1,13 +1,5 @@
 import assert from 'node:assert/strict'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -68,7 +60,8 @@ describe('JobQueue', () => {
     const claimed = q.claim()
     assert.equal(claimed?.source_path, '/x/a.mp3')
     assert.equal(claimed?.status, 'running')
-    q.complete(claimed!.id)
+    assert.ok(claimed)
+    q.complete(claimed.id)
     assert.equal(q.list('done').length, 1)
     q.close()
   })

@@ -71,6 +71,7 @@ export class Embedder {
     let cacheHits = 0
 
     for (let i = 0; i < texts.length; i++) {
+      // biome-ignore lint/style/noNonNullAssertion: shas has one entry per text (shas = texts.map), i < texts.length
       const cached = this.cache.get(shas[i]!)
       if (cached !== undefined) {
         vectors[i] = cached
@@ -82,11 +83,14 @@ export class Embedder {
 
     for (let b = 0; b < missIdx.length; b += this.batchSize) {
       const batchIdx = missIdx.slice(b, b + this.batchSize)
+      // biome-ignore lint/style/noNonNullAssertion: missIdx only holds indices collected from the i < texts.length loop above
       const batchTexts = batchIdx.map((i) => texts[i]!)
       const batchVecs = await this.embedWithRetry(batchTexts)
       batchIdx.forEach((i, j) => {
+        // biome-ignore lint/style/noNonNullAssertion: embedFn returns one vector per input text, so batchVecs[j] exists for every batchIdx entry
         const v = batchVecs[j]!
         vectors[i] = v
+        // biome-ignore lint/style/noNonNullAssertion: shas has one entry per text (shas = texts.map), i is a valid texts index from missIdx
         this.cache.set(shas[i]!, v)
       })
     }
@@ -118,8 +122,11 @@ export function cosineSimilarity(a: number[], b: number[]): number {
   let na = 0
   let nb = 0
   for (let i = 0; i < a.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: i < a.length and cosine similarity expects equal-length vectors, so both indices are in bounds
     dot += a[i]! * b[i]!
+    // biome-ignore lint/style/noNonNullAssertion: i < a.length, so a[i] is in bounds
     na += a[i]! * a[i]!
+    // biome-ignore lint/style/noNonNullAssertion: i < a.length and b matches a's length, so b[i] is in bounds
     nb += b[i]! * b[i]!
   }
   if (na === 0 || nb === 0) return 0

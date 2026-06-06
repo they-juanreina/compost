@@ -27,8 +27,8 @@ describe('processInbox', () => {
     writeFileSync(join(path, 'sessions/_inbox/interview.mp4'), 'x')
     const result = processInbox(path)
     assert.equal(result.moved.length, 1)
-    const m = result.moved[0]!
-    assert.equal(m.session_id, 'S001')
+    const m = result.moved[0]
+    assert.equal(m?.session_id, 'S001')
     assert.ok(existsSync(join(path, 'sessions/S001/source.mp4')))
     assert.ok(!existsSync(join(path, 'sessions/_inbox/interview.mp4')))
     const q = new JobQueue(stateDbPath(path))

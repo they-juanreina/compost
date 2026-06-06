@@ -90,6 +90,7 @@ export function chunkTranscript(transcript: ChunkerTranscript, opts: ChunkerOpti
   }
 
   for (let i = 0; i < utts.length; i++) {
+    // biome-ignore lint/style/noNonNullAssertion: i is provably in-bounds (0 <= i < utts.length) inside the for-loop
     const u = utts[i]!
     // primary per-utterance chunk
     push(u.text, 'utterance', u)
@@ -97,6 +98,7 @@ export function chunkTranscript(transcript: ChunkerTranscript, opts: ChunkerOpti
     // 2-neighbor window, not crossing a >5s silence
     const windowParts: string[] = []
     for (let j = Math.max(0, i - radius); j <= Math.min(utts.length - 1, i + radius); j++) {
+      // biome-ignore lint/style/noNonNullAssertion: j is bounded by Math.min(utts.length - 1, ...) so the index is in-bounds
       const nb = utts[j]!
       if (j !== i && bigSilenceBetween(silences, u.start_ms, nb.start_ms)) continue
       windowParts.push(nb.text)

@@ -99,7 +99,7 @@ describe('LLMAdapter routing', () => {
   it('routes synthesis to Anthropic with system/messages split', async () => {
     process.env.TEST_ANTHROPIC_KEY = 'sk-test' // satisfy the missing-key guard
     const bodies: string[] = []
-    const fetchImpl: FetchLike = async (url, init) => {
+    const fetchImpl: FetchLike = async (_url, init) => {
       bodies.push(init?.body ?? '')
       return {
         ok: true,
@@ -115,7 +115,9 @@ describe('LLMAdapter routing', () => {
       { role: 'user', content: 'summarize' },
     ])
     assert.equal(res.text, 'synthesized')
-    const body = JSON.parse(bodies[0]!)
+    const [rawBody] = bodies
+    assert.ok(rawBody)
+    const body = JSON.parse(rawBody)
     assert.equal(body.system, 'be terse')
     assert.equal(body.messages.length, 1)
     assert.equal(body.messages[0].role, 'user')

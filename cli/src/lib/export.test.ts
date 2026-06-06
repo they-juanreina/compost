@@ -56,7 +56,7 @@ describe('exportTranscript csv', () => {
     const lines = content.trim().split('\n')
     assert.equal(lines.length, 3) // header + 2 utterances
     // U-0002 row
-    const row = lines[2]!
+    const row = lines[2] ?? ''
     assert.match(row, /^U-0002,S023,S2,P07,participant,2,/)
     assert.match(row, /2026-06-02$/)
   })
@@ -71,7 +71,7 @@ describe('exportTranscript csv', () => {
     const { content } = exportTranscript(SAMPLE, { format: 'csv' })
     const lines = content.trim().split('\n')
     // U-0001: "¿Cómo te sientes con las alertas?" => 6 words
-    const fields = lines[1]!.split(',')
+    const fields = lines[1]?.split(',') ?? []
     const wc = Number(fields[7])
     assert.equal(wc, 6)
   })

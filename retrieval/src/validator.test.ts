@@ -23,27 +23,30 @@ const GOOD: Answer = {
   ],
 }
 
+const [GOOD_CLAIM] = GOOD.claims
+assert.ok(GOOD_CLAIM, 'GOOD fixture must have a claim')
+
 describe('validateAnswer', () => {
   it('accepts an answer whose quotes substring-match cited utterances', () => {
     assert.ok(validateAnswer(GOOD, evidence()).ok)
   })
 
   it('rejects a citation not in the retrieval set', () => {
-    const bad: Answer = { ...GOOD, claims: [{ ...GOOD.claims[0]!, utterance_id: 'U-0099' }] }
+    const bad: Answer = { ...GOOD, claims: [{ ...GOOD_CLAIM, utterance_id: 'U-0099' }] }
     const r = validateAnswer(bad, evidence())
     assert.equal(r.ok, false)
     assert.ok(r.errors.some((e) => e.includes('not in the retrieval set')))
   })
 
   it('rejects a quote that does not substring-match', () => {
-    const bad: Answer = { ...GOOD, claims: [{ ...GOOD.claims[0]!, quote: 'I love alerts' }] }
+    const bad: Answer = { ...GOOD, claims: [{ ...GOOD_CLAIM, quote: 'I love alerts' }] }
     const r = validateAnswer(bad, evidence())
     assert.equal(r.ok, false)
     assert.ok(r.errors.some((e) => e.includes('does not substring-match')))
   })
 
   it('rejects a session mismatch', () => {
-    const bad: Answer = { ...GOOD, claims: [{ ...GOOD.claims[0]!, session_id: 'S999' }] }
+    const bad: Answer = { ...GOOD, claims: [{ ...GOOD_CLAIM, session_id: 'S999' }] }
     assert.equal(validateAnswer(bad, evidence()).ok, false)
   })
 
@@ -68,7 +71,7 @@ describe('validateWithRetry', () => {
   })
 
   it('retries with the diff and accepts a corrected answer', async () => {
-    const bad: Answer = { ...GOOD, claims: [{ ...GOOD.claims[0]!, quote: 'wrong quote' }] }
+    const bad: Answer = { ...GOOD, claims: [{ ...GOOD_CLAIM, quote: 'wrong quote' }] }
     let corrections = 0
     const res = await validateWithRetry(bad, evidence(), {
       regenerate: async (correction) => {
@@ -82,7 +85,7 @@ describe('validateWithRetry', () => {
   })
 
   it('gives up with insufficient_evidence after maxRetries', async () => {
-    const bad: Answer = { ...GOOD, claims: [{ ...GOOD.claims[0]!, utterance_id: 'U-0099' }] }
+    const bad: Answer = { ...GOOD, claims: [{ ...GOOD_CLAIM, utterance_id: 'U-0099' }] }
     const res = await validateWithRetry(bad, evidence(), {
       regenerate: async () => bad, // never improves
       maxRetries: 3,

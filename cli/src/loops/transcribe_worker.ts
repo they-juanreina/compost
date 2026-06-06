@@ -1,5 +1,4 @@
 import { existsSync } from 'node:fs'
-import { dirname } from 'node:path'
 
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { JobQueue, stateDbPath } from '../lib/queue.js'
