@@ -71,6 +71,24 @@ describe('runDoctor', () => {
     assert.ok(report.tasks.every((t) => t.status === 'provider_down'))
   })
 
+  it('reconciles the other way: reports pulled-but-unconfigured models (#175)', async () => {
+    const adapter = new LLMAdapter(parseConfig(CONFIG), {
+      // both configured models present, plus an extra pulled model nothing routes to
+      fetchImpl: fetchWithModels(['llama3.1:8b', 'bge-m3', 'qwen2.5:14b']),
+    })
+    const report = await runDoctor(adapter, parseConfig(CONFIG))
+    assert.ok(report.ok)
+    assert.deepEqual(report.unused_models.ollama, ['qwen2.5:14b'])
+  })
+
+  it('no unused_models entry when every pulled model is configured', async () => {
+    const adapter = new LLMAdapter(parseConfig(CONFIG), {
+      fetchImpl: fetchWithModels(['llama3.1:8b', 'bge-m3']),
+    })
+    const report = await runDoctor(adapter, parseConfig(CONFIG))
+    assert.deepEqual(report.unused_models, {})
+  })
+
   it('flags unroutable for a malformed route', async () => {
     const cfg = parseConfig(`
 [providers.ollama]

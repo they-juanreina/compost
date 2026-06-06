@@ -1,18 +1,54 @@
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
+import { resolveSeedPath } from '../lib/seedResolve.js'
 import {
   validateCues,
   validateEventsExport,
   validateFrames,
+  validateSeed,
   validateTranscript,
 } from '../lib/validate.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+
+interface SeedFlags {
+  seed?: string
+}
 
 export function registerValidate(program: Command): void {
   const validate = program
     .command('validate')
     .description('Validate JSON artifacts against compost schemas')
+
+  validate
+    .command('seed')
+    .description(
+      'Validate a whole seed: every transcript.json + normalized legacy + the event log (#174)',
+    )
+    .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
+    .action((flags: SeedFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        const result = validateSeed(seedPath)
+        emit(
+          {
+            status: result.ok ? 'ok' : 'invalid',
+            command: 'validate seed',
+            seed: result.seed,
+            transcripts_checked: result.transcripts.length,
+            transcripts_invalid: result.transcripts.filter((t) => !t.ok).length,
+            events: result.events,
+            invalid: result.transcripts.filter((t) => !t.ok),
+          },
+          out,
+        )
+        if (!result.ok) process.exit(1)
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
 
   validate
     .command('transcript')

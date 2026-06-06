@@ -3,6 +3,7 @@ import type { Command } from 'commander'
 import { isCompostError } from '../errors.js'
 import { gatherStatus } from '../lib/status.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+import { renderStatus } from '../render/human.js'
 
 interface StatusFlags {
   seed?: string
@@ -24,7 +25,7 @@ export function registerStatus(program: Command): void {
         const opts: { seed?: string } = {}
         if (flags.seed !== undefined) opts.seed = flags.seed
         const snapshot = gatherStatus(opts)
-        emit(snapshot, out)
+        emit(snapshot, out, renderStatus)
       } catch (err) {
         if (isCompostError(err)) {
           emitError(err, out)

@@ -1,7 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import addFormatsImport from 'ajv-formats'
+import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import {
@@ -155,6 +157,80 @@ export function validateCues(path: string): ValidateResult {
     schema: 'cues.taxonomy.json',
     errors: errors.length === 0 ? null : errors,
   }
+}
+
+export interface SeedEventsResult {
+  ok: boolean
+  checked: number
+  errors: unknown
+}
+
+export interface SeedValidateResult {
+  ok: boolean
+  seed: string
+  transcripts: ValidateResult[]
+  events: SeedEventsResult | null
+}
+
+/** Validate every event row in a seed's .compost/events.sqlite against the
+ * events schema. Null columns are stripped (the schema's optional fields are
+ * typed strings, and rows carry NULLs for absent ones); payload is parsed and
+ * always kept (it is required). Returns null when there is no event log. */
+function validateSeedEvents(dbPath: string): SeedEventsResult | null {
+  if (!existsSync(dbPath)) return null
+  const db = new Database(dbPath, { readonly: true, fileMustExist: true })
+  try {
+    const rows = db.prepare('SELECT * FROM events').all() as Array<Record<string, unknown>>
+    const v = getEventsValidator()
+    const errors: unknown[] = []
+    for (const [i, row] of rows.entries()) {
+      const clean: Record<string, unknown> = {}
+      for (const [k, val] of Object.entries(row)) {
+        if (k === 'payload') continue
+        if (val !== null) clean[k] = val
+      }
+      clean.payload =
+        typeof row.payload === 'string' ? JSON.parse(row.payload) : (row.payload ?? null)
+      if (!v.fn(clean)) errors.push({ index: i, id: row.id, errors: v.errors() })
+    }
+    return {
+      ok: errors.length === 0,
+      checked: rows.length,
+      errors: errors.length === 0 ? null : errors,
+    }
+  } finally {
+    db.close()
+  }
+}
+
+/**
+ * Whole-seed validation (#174): validate every session transcript.json and every
+ * normalized legacy/*.json against the transcript schema (which already enforces
+ * cue kinds and frame triggers via its enums), plus every provenance event in
+ * .compost/events.sqlite. Aggregates to a single ok.
+ */
+export function validateSeed(seedPath: string): SeedValidateResult {
+  if (!existsSync(seedPath)) {
+    throw new CompostError('FILE_NOT_FOUND', `No such seed directory: ${seedPath}`)
+  }
+  const transcripts: ValidateResult[] = []
+  const sessionsDir = join(seedPath, 'sessions')
+  if (existsSync(sessionsDir)) {
+    for (const entry of readdirSync(sessionsDir)) {
+      if (entry === '_inbox' || entry.startsWith('.')) continue
+      const tp = join(sessionsDir, entry, 'transcript.json')
+      if (existsSync(tp)) transcripts.push(validateTranscript(tp))
+    }
+  }
+  const legacyDir = join(seedPath, 'legacy')
+  if (existsSync(legacyDir)) {
+    for (const f of readdirSync(legacyDir)) {
+      if (f.endsWith('.json')) transcripts.push(validateTranscript(join(legacyDir, f)))
+    }
+  }
+  const events = validateSeedEvents(join(seedPath, '.compost', 'events.sqlite'))
+  const ok = transcripts.every((t) => t.ok) && (events === null || events.ok)
+  return { ok, seed: seedPath, transcripts, events }
 }
 
 export function validateFrames(path: string): ValidateResult {
