@@ -1,6 +1,6 @@
 {
   "name": "@they-juanreina/compost-provenance",
-  "version": "0.1.2-rc.0",
+  "version": "0.1.2",
   "description": "Append-only event log: ULID generation, three-actor schema validation, SQLite writer + snapshot reducer.",
   "type": "module",
   "license": "MIT",
