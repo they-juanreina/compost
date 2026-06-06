@@ -137,4 +137,32 @@ describe('retrieve', () => {
       'the dense-only semantic hit should appear in the fused results',
     )
   })
+
+  it('dedupes same-region near-duplicates by default; dedupe:false opts out (#170)', async () => {
+    const path = seedWithSession()
+    const { retrieved } = await retrieveChunks(path, 'verificar manualmente confiar alerta', {
+      topK: 8,
+    })
+    const ranges = retrieved
+      .map((c) => ({ s: c.metadata.start_ms, e: c.metadata.end_ms, sess: c.metadata.session }))
+      .filter((r): r is { s: number; e: number; sess: string } => r.s !== null && r.e !== null)
+    for (let i = 0; i < ranges.length; i++) {
+      for (let j = i + 1; j < ranges.length; j++) {
+        const a = ranges[i] as { s: number; e: number; sess: string }
+        const b = ranges[j] as { s: number; e: number; sess: string }
+        if (a.sess !== b.sess) continue
+        const overlap = Math.min(a.e, b.e) - Math.max(a.s, b.s)
+        const minSpan = Math.min(a.e - a.s, b.e - b.s)
+        assert.ok(
+          !(overlap > 0 && minSpan > 0 && overlap / minSpan >= 0.5),
+          'no two top-k chunks should cover the same region',
+        )
+      }
+    }
+    const raw = await retrieveChunks(path, 'verificar manualmente confiar alerta', {
+      topK: 8,
+      dedupe: false,
+    })
+    assert.ok(raw.retrieved.length >= retrieved.length)
+  })
 })

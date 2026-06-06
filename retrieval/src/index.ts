@@ -15,6 +15,7 @@ export {
   saturationPulse,
   suggestCodeClusters,
 } from './clustering.js'
+export { type DedupeOptions, dedupeByRegion } from './dedupe.js'
 export {
   cosineSimilarity,
   DEFAULT_BATCH_SIZE,
