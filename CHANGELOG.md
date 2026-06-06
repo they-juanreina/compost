@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+Deepens provenance from an audit trail into a reproducibility + agreement layer.
+See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
+
+### Added
+
+- **Content-addressed input persistence.** Migration `0003` adds an `ai_inputs`
+  table and a nullable `events.input_id` FK. AI/agent generations now persist the
+  reconstructable bundle (model, params, system prompt, prompt, context) that
+  produced them — not just the one-way `prompt_hash`. Captured automatically for
+  internal calls (the similarity-scanner) and best-effort for host-agent creates
+  via `compost create --inputs-file`. Backfill is impossible (pre-migration events
+  carry `input_id = NULL`).
+- **`compost rerun <ref>`.** Verify (default) confirms a generation's captured
+  inputs are intact and reconstructable; `--apply` regenerates the output, emits a
+  chained `update` event, and diffs the payloads. Deterministic agent artifacts
+  re-cluster provider-free; LLM regeneration is deferred. Plus a `compost_rerun`
+  MCP tool.
+- **`compost agreement` — human↔machine intercoder agreement.** Cohen's κ +
+  Krippendorff's nominal α over highlights coded by BOTH a blind researcher and the
+  machine, with per-code and pooled scores and a Landis–Koch band. Reports
+  `insufficient` below `--min-units` (κ on a few items is noise). The blind
+  researcher codings come from **`compost recode`** (intentionally CLI/human-only —
+  not an agent tool, so an agent can't fabricate the comparison side). Read-only
+  `compost_agreement` MCP tool.
+- **`compost export --format prov`.** W3C PROV-O JSON-LD serialization of the event
+  log (artifact→Entity, event→Activity, actor→Agent with `ai`→`provagent:AIAgent`,
+  `parent_event`→`wasInformedBy`, input bundle→`prov:used` Entity). Because inputs
+  are now persisted, an AI Activity expresses its real inputs, not an opaque hash.
+  Extended `compost_export` MCP tool.
+
 ## v0.1.2 — 2026-06-06
 
 Native transcription now works on a plain global install, the release pipeline
