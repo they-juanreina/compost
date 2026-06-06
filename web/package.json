@@ -1,6 +1,6 @@
 {
   "name": "compost-web",
-  "version": "0.1.2-rc.0",
+  "version": "0.1.2-rc.1",
   "description": "Compost local Next.js web UI. Annotation surface, chat-with-seed, provenance badges.",
   "private": true,
   "type": "module",

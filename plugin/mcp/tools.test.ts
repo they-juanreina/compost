@@ -125,7 +125,7 @@ describe('MCP tool definitions', () => {
     const idIdx = argv.indexOf('--actor-id')
     assert.ok(idIdx > 0)
     assert.equal(argv[idIdx + 1], aiActorId(args))
-    assert.match(argv[idIdx + 1] as string, /^claude-code:0\.1\.2-rc\.0:[a-f0-9]{8}$/)
+    assert.match(argv[idIdx + 1] as string, /^claude-code:0\.1\.2-rc\.1:[a-f0-9]{8}$/)
 
     // endorse is NOT ai-authored — no --ai injected (researcher's act).
     const endorse = TOOLS.find((t) => t.name === 'compost_endorse')!
@@ -157,7 +157,7 @@ describe('MCP tool definitions', () => {
     const a = aiActorId({ name: 'x', definition: 'y' })
     const b = aiActorId({ name: 'x', definition: 'y' })
     assert.equal(a, b)
-    assert.match(a, /^claude-code:0\.1\.2-rc\.0:[a-f0-9]{8}$/)
+    assert.match(a, /^claude-code:0\.1\.2-rc\.1:[a-f0-9]{8}$/)
   })
 })
 

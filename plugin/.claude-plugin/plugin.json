@@ -1,6 +1,6 @@
 {
   "name": "compost",
-  "version": "0.1.2-rc.0",
+  "version": "0.1.2-rc.1",
   "description": "Local-first, AI-first research analysis harness. Ingest, transcribe, highlight, code, theme, and chat with your research corpus.",
   "author": "they-juanreina",
   "license": "MIT",
@@ -8,7 +8,9 @@
   "mcpServers": {
     "compost": {
       "command": "node",
-      "args": ["${CLAUDE_PLUGIN_ROOT}/dist/mcp/server.js"]
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/dist/mcp/server.js"
+      ]
     }
   },
   "skills": [
