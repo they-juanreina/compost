@@ -66,6 +66,11 @@
       "type": "string",
       "description": "Required when actor_type=ai. The model that produced the suggestion (e.g. anthropic:claude-opus-4-7, ollama:llama3.1:8b)."
     },
+    "input_id": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "description": "Content-address (sha256) of the persisted input bundle in the ai_inputs table that produced this event's output. Set on AI/agent generations whose inputs were captured; absent for researcher events and hash-only host-agent creates. Unlike prompt_hash (a one-way digest), the referenced bundle is reconstructable — it backs `compost rerun` and a PROV-O export's prov:used relations."
+    },
     "payload": {
       "description": "Action-specific JSON payload. The structure varies by (artifact_kind, action) pair and is validated separately by the CLI when serializing/deserializing.",
       "oneOf": [{ "type": "object" }, { "type": "array" }, { "type": "null" }]

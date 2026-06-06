@@ -12,6 +12,10 @@ export interface EventBase {
   agent_version?: string
   prompt_hash?: string
   model?: string
+  /** Content-address (sha256) of the persisted input bundle in `ai_inputs` that
+   * produced this event's output. Set on AI/agent generations whose inputs were
+   * captured; absent for researcher events and for hash-only host-agent creates. */
+  input_id?: string
   payload: unknown
   parent_event?: string | null
   batch_id?: string | null

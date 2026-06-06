@@ -30,6 +30,7 @@ export const EVENT_SCHEMA = {
     agent_version: { type: 'string' },
     prompt_hash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
     model: { type: 'string' },
+    input_id: { type: 'string', pattern: '^[a-f0-9]{64}$' },
     payload: { oneOf: [{ type: 'object' }, { type: 'array' }, { type: 'null' }] },
     parent_event: {
       type: ['string', 'null'],
