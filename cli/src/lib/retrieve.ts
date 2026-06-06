@@ -7,6 +7,7 @@ import {
   type ChunkerTranscript,
   chunkTranscript,
   type DenseRetriever,
+  dedupeByRegion,
   type EvidenceSet,
   HybridRetriever,
   openLanceDBForRead,
@@ -68,6 +69,9 @@ export interface RetrieveOptions {
   /** Dense retriever (LanceDB). When provided, retrieval is BM25 ∪ dense fused
    * via RRF. When null/omitted, BM25-only. Inject via buildDenseRetriever. */
   dense?: DenseRetriever | null
+  /** Collapse near-duplicate chunks covering the same region before the topK cut
+   * (#170). Default true; set false for the raw fused ranking. */
+  dedupe?: boolean
 }
 
 export interface RetrieveResult {
@@ -93,10 +97,21 @@ export async function retrieveChunks(
   const mode: RetrievalMode = dense ? 'hybrid' : 'bm25'
   if (corpus.chunks.length === 0) return { retrieved: [], corpus, mode }
 
+  const topK = opts.topK ?? 8
   const bm25 = new BM25Index()
   bm25.addAll(corpus.chunks)
   const retriever = new HybridRetriever(bm25, dense)
-  const retrieved = await retriever.retrieve(query, { topK: opts.topK ?? 8 })
+
+  if (opts.dedupe === false) {
+    const retrieved = await retriever.retrieve(query, { topK })
+    return { retrieved, corpus, mode }
+  }
+  // Over-fetch a pool, collapse same-region near-duplicates (#170), then cut to
+  // topK — so top-k holds topK *distinct* regions, not the same phrase repeated
+  // as a solo utterance + several overlapping windows.
+  const pool = Math.max(topK * 5, 50)
+  const fused = await retriever.retrieve(query, { topK: pool })
+  const retrieved = dedupeByRegion(fused).slice(0, topK)
   return { retrieved, corpus, mode }
 }
 
