@@ -6,6 +6,7 @@ import type { Command } from 'commander'
 import { CompostError, isCompostError } from '../errors.js'
 import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
+import { applySidecar } from '../lib/speakers.js'
 import { transcribeNative } from '../lib/transcribeNative.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
@@ -97,7 +98,10 @@ export function registerTranscribe(program: Command): void {
             ...(flags.model !== undefined ? { model: flags.model } : {}),
             ...(flags.language !== undefined ? { language: flags.language } : {}),
           })
-          if (existsSync(resp.transcript_path)) writeTranscriptMd(resp.transcript_path)
+          if (existsSync(resp.transcript_path)) {
+            applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)
+            writeTranscriptMd(resp.transcript_path)
+          }
           emit(
             {
               status: resp.status,
@@ -124,7 +128,10 @@ export function registerTranscribe(program: Command): void {
           flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {},
         )
         const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
-        if (existsSync(resp.transcript_path)) writeTranscriptMd(resp.transcript_path)
+        if (existsSync(resp.transcript_path)) {
+          applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)
+          writeTranscriptMd(resp.transcript_path)
+        }
         emit(
           {
             status: resp.status,
