@@ -9,6 +9,7 @@ import {
   buildArgv,
   type CliRunner,
   MUTATION_TOOLS,
+  PLUGIN_VERSION,
   READ_ONLY_TOOLS,
   resolveCompostInvocation,
   runTool,
@@ -17,6 +18,10 @@ import {
 } from './tools.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
+
+// AI actor id format: claude-code:<plugin version>:<8-hex args hash>. Derived
+// from PLUGIN_VERSION so a version bump doesn't break the assertion.
+const AI_ACTOR_RE = new RegExp(`^claude-code:${PLUGIN_VERSION.replace(/\./g, '\\.')}:[a-f0-9]{8}$`)
 
 // Looks up a tool by name and asserts it exists, narrowing away `undefined`
 // so callers read the known-present fixture without a non-null assertion.
@@ -134,7 +139,7 @@ describe('MCP tool definitions', () => {
     const idIdx = argv.indexOf('--actor-id')
     assert.ok(idIdx > 0)
     assert.equal(argv[idIdx + 1], aiActorId(args))
-    assert.match(argv[idIdx + 1] as string, /^claude-code:0\.1\.2-rc\.0:[a-f0-9]{8}$/)
+    assert.match(argv[idIdx + 1] as string, AI_ACTOR_RE)
 
     // endorse is NOT ai-authored — no --ai injected (researcher's act).
     const endorse = tool('compost_endorse')
@@ -166,7 +171,7 @@ describe('MCP tool definitions', () => {
     const a = aiActorId({ name: 'x', definition: 'y' })
     const b = aiActorId({ name: 'x', definition: 'y' })
     assert.equal(a, b)
-    assert.match(a, /^claude-code:0\.1\.2-rc\.0:[a-f0-9]{8}$/)
+    assert.match(a, AI_ACTOR_RE)
   })
 })
 

@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.1.2 — 2026-06-06
+
+Native transcription now works on a plain global install, the release pipeline
+moved to npm Trusted Publishing (OIDC), and the biome lint debt is cleared.
+
+### Fixed
+
+- **Global installs transcribe natively — no `COMPOST_TRANSCRIBER_DIR` needed
+  (#206).** `npm i -g @they-juanreina/compost-cli` shipped no Python transcriber
+  source, so native ASR couldn't resolve the package and fell back to Docker
+  (which surfaced as `transcriber service unreachable at :7862`). The cli tarball
+  now bundles `transcriber/app` + `pyproject.toml` via a `prepack` step (mirroring
+  the schema-bundling precedent); the existing resolver finds it one level up from
+  `dist/`. The copy is generated only at pack time so it never shadows the repo
+  source in dev, and is filtered to exclude `.venv` / `__pycache__` / caches — a
+  release-job assertion fails the build if the source ever stops shipping or cruft
+  sneaks in. The `compost setup` doctor no longer reports the old #206 limitation
+  or tells you to set `COMPOST_TRANSCRIBER_DIR` (still honored as an override).
+
+### Changed
+
+- **npm publishing moved to Trusted Publishing (OIDC) (#208).** The release job
+  no longer carries a long-lived `NPM_TOKEN`; GitHub Actions exchanges a
+  short-lived OIDC token for publish credentials at runtime and attaches a
+  verifiable provenance attestation to each tarball (`npm audit signatures`).
+  Closes the remaining accepted risk from the v0.1.0 security audit.
+
+### Internal
+
+- Cleared the biome lint debt (85 warnings → 0): safe narrowing or a justified
+  `// biome-ignore` for genuine non-null-assertion invariants (DP-table indices,
+  equal-length-vector loops), plus dead-code removal. No behavior change (#225).
+
 ## v0.1.1 — 2026-06-05
 
 Security + UX patch. Five fixes landed since v0.1.0; bundle them into one
