@@ -1,9 +1,11 @@
 {
-  "name": "compost-cli",
-  "version": "0.0.0",
+  "name": "@they-juanreina/compost-cli",
+  "version": "0.1.0-rc.1",
   "description": "Compost CLI engine. Subcommand router, JSON-out, harness loop runner.",
-  "private": true,
   "type": "module",
+  "publishConfig": {
+    "access": "public"
+  },
   "license": "MIT",
   "bin": {
     "compost": "./bin/compost.js"

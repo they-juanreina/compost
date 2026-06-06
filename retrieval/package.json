@@ -1,6 +1,6 @@
 {
   "name": "compost-retrieval",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.1",
   "description": "Retrieval: chunker, BM25 + dense hybrid with RRF, schema-bound citation validator.",
   "private": true,
   "type": "module",
