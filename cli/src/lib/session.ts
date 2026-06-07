@@ -11,6 +11,65 @@ export interface SessionView {
   frames: Array<{ id: string; at_ms: number; trigger: string; path: string }>
 }
 
+export interface SessionSummary {
+  session_id: string
+  has_transcript: boolean
+  utterance_count: number
+  frame_count: number
+  duration_ms: number | null
+}
+
+/**
+ * List a seed's sessions with lightweight counts for the seed home page and the
+ * sessions API. Cheap: parses each transcript.json only for top-level counts,
+ * tolerates sessions still queued/transcribing (has_transcript=false). Sorted
+ * by session id so the listing is stable.
+ */
+export function listSessions(seedPath: string): SessionSummary[] {
+  const dir = join(seedPath, 'sessions')
+  if (!existsSync(dir)) return []
+  const ids = readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith('_') && !e.name.startsWith('.'))
+    .map((e) => e.name)
+    .sort()
+
+  return ids.map((session_id) => {
+    const transcriptPath = join(dir, session_id, 'transcript.json')
+    if (!existsSync(transcriptPath)) {
+      return {
+        session_id,
+        has_transcript: false,
+        utterance_count: 0,
+        frame_count: 0,
+        duration_ms: null,
+      }
+    }
+    try {
+      const t = JSON.parse(readFileSync(transcriptPath, 'utf8')) as {
+        utterances?: unknown[]
+        frames?: unknown[]
+        duration_ms?: number
+      }
+      return {
+        session_id,
+        has_transcript: true,
+        utterance_count: Array.isArray(t.utterances) ? t.utterances.length : 0,
+        frame_count: Array.isArray(t.frames) ? t.frames.length : 0,
+        duration_ms: typeof t.duration_ms === 'number' ? t.duration_ms : null,
+      }
+    } catch {
+      // Malformed transcript: list the session but mark it as not-yet-readable.
+      return {
+        session_id,
+        has_transcript: false,
+        utterance_count: 0,
+        frame_count: 0,
+        duration_ms: null,
+      }
+    }
+  })
+}
+
 /**
  * Read a session's transcript.json plus a derived frame index. Used by the
  * `compost session` command and the `compost_get_session` MCP tool so the host
