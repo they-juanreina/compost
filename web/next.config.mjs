@@ -14,6 +14,17 @@ const nextConfig = {
     '@they-juanreina/compost-provenance',
     '@they-juanreina/compost-retrieval',
   ],
+  // The codebase uses NodeNext-style explicit `.js` import specifiers that point
+  // at `.ts` sources (so the same files resolve under tsc/tsx and Next). Teach
+  // webpack to try the TS extensions for a `.js` request.
+  webpack: (config) => {
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      '.js': ['.ts', '.tsx', '.js'],
+      '.jsx': ['.tsx', '.jsx'],
+    }
+    return config
+  },
 }
 
 export default nextConfig
