@@ -13,11 +13,16 @@
     "test": "node --import tsx --test 'lib/**/*.test.ts'"
   },
   "dependencies": {
+    "@they-juanreina/compost-cli": "workspace:*",
+    "@they-juanreina/compost-provenance": "workspace:*",
+    "@they-juanreina/compost-retrieval": "workspace:*",
+    "better-sqlite3": "^11.5.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "tsx": "^4.19.0"

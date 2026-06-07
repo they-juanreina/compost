@@ -5,6 +5,8 @@
     "jsx": "preserve",
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] },
     "noEmit": true,
     "allowJs": true,
     "verbatimModuleSyntax": false,
