@@ -3,9 +3,12 @@ import { existsSync, readFileSync } from 'node:fs'
 import {
   LegacyIngestClient,
   type LegacyIngestRequest,
+  type LegacyIngestResponse,
   LegacyServiceError,
 } from '../legacy_client.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
+import { legacyIngestNative } from '../lib/legacyNative.js'
+import { resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { JobQueue, stateDbPath } from '../lib/queue.js'
 
 const AGENT_NAME = 'legacy-ingest-worker'
@@ -59,8 +62,26 @@ export interface LegacyWorkerResult {
   }>
 }
 
+/** Ingests one legacy asset and returns the normalized result. The default
+ * runner prefers the native path (#184) when a Python venv + transcriber dir
+ * resolve, falling back to the Docker /legacy-ingest route otherwise. */
+export type LegacyRunner = (req: LegacyIngestRequest) => Promise<LegacyIngestResponse>
+
 export interface LegacyWorkerDeps {
   client?: LegacyIngestClient
+  /** Override the ingest runner (tests). */
+  runner?: LegacyRunner
+}
+
+/** Native-first runner: shell out to `app.legacy_cli` when a native runtime
+ * resolves; else POST to the Docker fallback via the client. */
+function defaultLegacyRunner(client: LegacyIngestClient): LegacyRunner {
+  const native = resolveNativeRuntime()
+  if (native !== null) {
+    return async (req) =>
+      legacyIngestNative(req, { python: native.python, transcriberDir: native.transcriberDir })
+  }
+  return (req) => client.ingest(req)
 }
 
 /**
@@ -76,7 +97,13 @@ export async function runLegacyWorkerOnce(
   seedPath: string,
   deps: LegacyWorkerDeps = {},
 ): Promise<LegacyWorkerResult> {
-  const client = deps.client ?? new LegacyIngestClient()
+  // An injected client (tests / explicit Docker) wins. Otherwise, in production,
+  // prefer the native path and fall back to the Docker route.
+  const runner =
+    deps.runner ??
+    (deps.client !== undefined
+      ? (req: LegacyIngestRequest) => (deps.client as LegacyIngestClient).ingest(req)
+      : defaultLegacyRunner(new LegacyIngestClient()))
   const queue = new JobQueue(stateDbPath(seedPath))
   const events = openSeedEvents(seedPath)
   const out: LegacyWorkerResult = { processed: 0, results: [] }
@@ -96,7 +123,7 @@ export async function runLegacyWorkerOnce(
           ...(sidecar?.speaker_col !== undefined ? { speaker_col: sidecar.speaker_col } : {}),
           ...(sidecar?.sheet !== undefined ? { sheet: sidecar.sheet } : {}),
         }
-        const resp = await client.ingest(ingestReq)
+        const resp = await runner(ingestReq)
         queue.complete(job.id)
         emitAgentCreate(events, {
           artifactKind: 'legacy_chunk',

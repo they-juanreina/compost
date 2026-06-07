@@ -86,6 +86,34 @@ describe('runLegacyWorkerOnce', () => {
     q2.close()
   })
 
+  it('uses an injected runner (the native path) instead of the Docker client (#184)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const src = join(path, 'legacy/doc.pdf')
+    writeFileSync(src, '%PDF-1.4 stub')
+    const q = new JobQueue(stateDbPath(path))
+    q.enqueue('legacy-ingest', src, { category: 'document', ext: '.pdf' })
+    q.close()
+
+    const calls: LegacyIngestRequest[] = []
+    const result = await runLegacyWorkerOnce(path, {
+      runner: async (req) => {
+        calls.push(req)
+        return {
+          source_path: req.source_path,
+          normalized_path: `${req.seed_path}/legacy/doc.json`,
+          utterance_count: 2,
+          status: 'ok',
+        }
+      },
+    })
+    assert.equal(result.processed, 1)
+    assert.equal(calls.length, 1)
+    assert.equal(result.results[0]?.status, 'ok')
+    const q2 = new JobQueue(stateDbPath(path))
+    assert.equal(q2.list('done').length, 1)
+    q2.close()
+  })
+
   it('does not process transcribe jobs', async () => {
     const { path } = initSeed('demo', { cwd: work })
     mkdirSync(join(path, 'sessions/S001'), { recursive: true })

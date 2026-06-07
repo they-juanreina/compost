@@ -9,6 +9,7 @@ import { registerCreate } from './commands/create.js'
 import { registerEndorse } from './commands/endorse.js'
 import { registerEvals } from './commands/evals.js'
 import { registerExport } from './commands/export.js'
+import { registerImport } from './commands/import.js'
 import { registerIngest } from './commands/ingest.js'
 import { registerInit } from './commands/init.js'
 import { registerLabel } from './commands/label.js'
@@ -51,6 +52,7 @@ export function buildProgram(): Command {
 
   registerInit(program)
   registerIngest(program)
+  registerImport(program)
   registerTranscribe(program)
   registerLabel(program)
   registerWatch(program)
