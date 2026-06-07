@@ -34,6 +34,29 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
   `provagent:ResponseData`; a deterministic agent → `provagent:AgentTool`. Because
   inputs are now persisted, an AI invocation expresses its real inputs, not an
   opaque hash. Extended `compost_export` MCP tool.
+- **`compost secrets set|get|rm|list` — secure-by-default token storage.** A
+  documented resolution precedence for the HuggingFace token and LLM provider
+  keys: environment variable > OS keychain (macOS `security` / Linux
+  `secret-tool` — shelled out, **zero new dependencies**) > `~/.compost/secrets.env`
+  (a `0600`-enforced dotenv). `set` reads the value from stdin (kept out of shell
+  history); `list` shows where each secret lives but never the value. The dotenv
+  is auto-loaded into the environment at startup so file-stored secrets resolve
+  everywhere an env var would, without editing a shell profile — and an insecure
+  (group/world-readable) `secrets.env` is *refused, not read*.
+
+### Security
+
+- **`compost setup` now audits secret-file permissions.** Warns (non-blocking,
+  with the exact `chmod`) when a group/world-readable secret file is found under
+  `~/.compost` — including hand-rolled files like a `644 ~/.compost/hf_token/…`.
+  `compost secrets set` always writes `0600` files in a `0700` `~/.compost`.
+- **HF token resolution mirrors the LLM-key model.** `setup`, native
+  transcription, and every command now resolve `HUGGINGFACE_TOKEN`/`HF_TOKEN` by
+  the env > keychain > `0600`-dotenv precedence instead of env-only — so users no
+  longer hand-roll insecure token files. New SECURITY.md "Storing your tokens"
+  section documents the hierarchy, the hard rule (secrets never in `Seeds/` or
+  `config.toml`; only the env-var *name* in `api_key_env`), and multi-user
+  guidance.
 
 ## v0.1.2 — 2026-06-06
 

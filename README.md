@@ -8,7 +8,7 @@ Runs on your machine. **No API key required** — the filesystem is canonical, e
 
 ## Quick start
 
-Prerequisites (one-time — `compost setup` checks all of them): [Node 22+](https://nodejs.org), [Ollama](https://ollama.com) with the `bge-m3` embedding model, and — only if you want to transcribe audio — a HuggingFace token (for pyannote). On Apple Silicon, transcription runs **natively** (Metal, ~16× realtime); Docker is the cross-platform fallback. See [docs/install.md](docs/install.md) and [docs/transcription.md](docs/transcription.md).
+Prerequisites (one-time — `compost setup` checks all of them): [Node 22+](https://nodejs.org), [Ollama](https://ollama.com) with the `bge-m3` embedding model, and — only if you want to transcribe audio — a HuggingFace token (for pyannote), stored securely with `compost secrets set HUGGINGFACE_TOKEN` (env var > OS keychain > `0600` dotenv; see [SECURITY.md](SECURITY.md#storing-your-tokens)). On Apple Silicon, transcription runs **natively** (Metal, ~16× realtime); Docker is the cross-platform fallback. See [docs/install.md](docs/install.md) and [docs/transcription.md](docs/transcription.md).
 
 ```sh
 # 1. Build the CLI (from a clone of this repo)
@@ -34,7 +34,7 @@ Or try the bundled sample corpus without recording anything: `compost init sampl
 
 Three surfaces over one engine:
 
-- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `ingest`, `transcribe`, `watch`, `snap`, `status`, `blame`, `export`, `validate`, `reindex`, `config`, `search`, `session`, `create`, `endorse`, `setup`, `tag`, `code`, `rescan`, `saturate`.
+- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `ingest`, `transcribe`, `watch`, `snap`, `status`, `blame`, `export`, `validate`, `reindex`, `config`, `search`, `session`, `create`, `endorse`, `setup`, `secrets`, `tag`, `code`, `rescan`, `saturate`.
 - **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-status`, …) and 14 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
 - **Web UI** — coming in v0.2 (transcript player, drag-to-highlight, theme board). Today the surfaces are the CLI and the plugin.
 
