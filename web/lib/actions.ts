@@ -41,7 +41,7 @@ export function kindFromSegment(segment: string): ArtifactKind {
 }
 
 /** Root that contains `Seeds/`. Overridable for tests / `compost serve --root`. */
-function seedRoot(): string {
+export function seedRoot(): string {
   return process.env.COMPOST_ROOT ?? process.cwd()
 }
 
