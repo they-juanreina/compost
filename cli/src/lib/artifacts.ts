@@ -10,6 +10,8 @@ import {
   artifactId,
   emitCreate,
   emitEndorse,
+  emitReject,
+  emitUpdate,
   openSeedEvents,
 } from './events.js'
 
@@ -255,6 +257,59 @@ export function tryResolveHumanRef(
 
 /**
  * Resolve an artifact ref (human id, full/prefix SHA, or `latest:<kind>=<seed>`)
+ * to its create event row. Shared by endorse/reject/update so every mutation
+ * path accepts the same refs `compost create`/blame print (#168). Throws
+ * INVALID_INPUT only when the ref is neither human-, SHA-, nor latest-shaped;
+ * returns undefined when it's well-shaped but matches no create event (callers
+ * raise a clearer FILE_NOT_FOUND).
+ */
+function findCreateEvent(
+  db: Database.Database,
+  artifactRef: string,
+): (CreateEventRow & { artifact_id: string }) | undefined {
+  const human = tryResolveHumanRef(db, artifactRef)
+  if (human !== undefined) return human
+  const latest = /^latest:(\w+)=(.+)$/.exec(artifactRef)
+  if (latest) {
+    const kind = latest[1] as string
+    return db
+      .prepare(
+        "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
+      )
+      .get(kind) as (CreateEventRow & { artifact_id: string }) | undefined
+  }
+  if (/^[a-f0-9]{8,64}$/i.test(artifactRef)) {
+    return db
+      .prepare(
+        "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
+      )
+      .get(`${artifactRef.toLowerCase()}%`) as
+      | (CreateEventRow & { artifact_id: string })
+      | undefined
+  }
+  if (!HUMAN_REF_RE.test(artifactRef)) {
+    // Not human-shaped, not SHA-shaped, not latest: → user typed something
+    // unparseable. (Human-shaped refs that didn't resolve return undefined so
+    // callers raise FILE_NOT_FOUND with a clearer message.)
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Invalid artifact ref "${artifactRef}". Use the id from \`compost create\` (e.g. C-slug, H-001), a SHA256 prefix, or latest:<kind>=<seed>.`,
+    )
+  }
+  return undefined
+}
+
+/** Latest event id on an artifact's timeline — the parent a new reject/update
+ * event chains to (vs endorse, which chains to create for #168 round-tripping). */
+function latestEventId(db: Database.Database, artifactId: string): string | undefined {
+  const row = db
+    .prepare('SELECT id FROM events WHERE artifact_id = ? ORDER BY ts DESC, rowid DESC LIMIT 1')
+    .get(artifactId) as { id: string } | undefined
+  return row?.id
+}
+
+/**
+ * Resolve an artifact ref (human id, full/prefix SHA, or `latest:<kind>=<seed>`)
  * to its create event, then emit a researcher endorse chaining it. Mirrors
  * blame's ref resolution so `compost endorse <id-from-create>` works (#168).
  */
@@ -279,34 +334,7 @@ export function endorseArtifact(
   // connection once and avoid a stat/open dance.
   let existingEndorse: { id: string; parent_event: string | null } | undefined
   try {
-    createRow = tryResolveHumanRef(db, artifactRef)
-    if (createRow === undefined) {
-      const latest = /^latest:(\w+)=(.+)$/.exec(artifactRef)
-      if (latest) {
-        const kind = latest[1] as string
-        createRow = db
-          .prepare(
-            "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
-          )
-          .get(kind) as (CreateEventRow & { artifact_id: string }) | undefined
-      } else if (/^[a-f0-9]{8,64}$/i.test(artifactRef)) {
-        createRow = db
-          .prepare(
-            "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
-          )
-          .get(`${artifactRef.toLowerCase()}%`) as
-          | (CreateEventRow & { artifact_id: string })
-          | undefined
-      } else if (!HUMAN_REF_RE.test(artifactRef)) {
-        // Not human-shaped, not SHA-shaped, not latest: → user typed something
-        // unparseable. (Human-shaped refs that didn't resolve fall through to
-        // the FILE_NOT_FOUND below with a clearer message.)
-        throw new CompostError(
-          'INVALID_INPUT',
-          `Invalid artifact ref "${artifactRef}". Use the id from \`compost create\` (e.g. C-slug, H-001), a SHA256 prefix, or latest:<kind>=<seed>.`,
-        )
-      }
-    }
+    createRow = findCreateEvent(db, artifactRef)
 
     if (createRow !== undefined) {
       existingEndorse = db
@@ -346,6 +374,141 @@ export function endorseArtifact(
       artifact_id: createRow.artifact_id,
       endorse_event_id: endorse.id,
       parent_event_id: createRow.id,
+    }
+  } finally {
+    events.close()
+  }
+}
+
+/**
+ * Resolve an artifact ref to its create event, then emit a researcher reject
+ * chaining the artifact's latest event. Reject archives (current_state is
+ * preserved for audit) — the three-actor model's "delete", where nothing is
+ * ever truly removed. Idempotent: a second reject by the same researcher is a
+ * no-op returning the existing reject.
+ */
+export function rejectArtifact(
+  seedPath: string,
+  artifactRef: string,
+  researcherId: string,
+  note?: string,
+): {
+  artifact_id: string
+  reject_event_id: string
+  parent_event_id: string
+  already_rejected?: true
+} {
+  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+  if (!existsSync(eventsDb)) {
+    throw new CompostError('FILE_NOT_FOUND', `No events.sqlite in seed; nothing to reject.`)
+  }
+  const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  let resolved:
+    | { createRow: CreateEventRow & { artifact_id: string }; parentEventId: string }
+    | undefined
+  let existingReject: { id: string; parent_event: string | null } | undefined
+  try {
+    const createRow = findCreateEvent(db, artifactRef)
+    if (createRow !== undefined) {
+      existingReject = db
+        .prepare(
+          "SELECT id, parent_event FROM events WHERE artifact_id = ? AND action = 'reject' AND actor_id = ? ORDER BY ts, rowid LIMIT 1",
+        )
+        .get(createRow.artifact_id, researcherId) as
+        | { id: string; parent_event: string | null }
+        | undefined
+      resolved = {
+        createRow,
+        parentEventId: latestEventId(db, createRow.artifact_id) ?? createRow.id,
+      }
+    }
+  } finally {
+    db.close()
+  }
+
+  if (resolved === undefined) {
+    throw new CompostError('FILE_NOT_FOUND', `No create event found for ref "${artifactRef}".`)
+  }
+  const { createRow, parentEventId } = resolved
+  if (existingReject !== undefined) {
+    return {
+      artifact_id: createRow.artifact_id,
+      reject_event_id: existingReject.id,
+      parent_event_id: existingReject.parent_event ?? createRow.id,
+      already_rejected: true,
+    }
+  }
+
+  const events = openSeedEvents(seedPath)
+  try {
+    const reject = emitReject(events, {
+      artifactKind: createRow.artifact_kind,
+      artifactId: createRow.artifact_id,
+      parentEventId,
+      researcherId,
+      ...(note !== undefined ? { note } : {}),
+    })
+    return {
+      artifact_id: createRow.artifact_id,
+      reject_event_id: reject.id,
+      parent_event_id: parentEventId,
+    }
+  } finally {
+    events.close()
+  }
+}
+
+/**
+ * Resolve an artifact ref, then emit a field-level update chaining the latest
+ * event. The event log records `{ field, before, after }` so blame shows what
+ * changed. `before` is best-effort context for the audit trail; the reducer
+ * applies only `after`.
+ */
+export function updateArtifact(
+  seedPath: string,
+  artifactRef: string,
+  patch: { field: string; before?: unknown; after: unknown },
+  author: Author,
+): { artifact_id: string; update_event_id: string; parent_event_id: string } {
+  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+  if (!existsSync(eventsDb)) {
+    throw new CompostError('FILE_NOT_FOUND', `No events.sqlite in seed; nothing to update.`)
+  }
+  const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  let resolved:
+    | { createRow: CreateEventRow & { artifact_id: string }; parentEventId: string }
+    | undefined
+  try {
+    const createRow = findCreateEvent(db, artifactRef)
+    if (createRow !== undefined) {
+      resolved = {
+        createRow,
+        parentEventId: latestEventId(db, createRow.artifact_id) ?? createRow.id,
+      }
+    }
+  } finally {
+    db.close()
+  }
+  if (resolved === undefined) {
+    throw new CompostError('FILE_NOT_FOUND', `No create event found for ref "${artifactRef}".`)
+  }
+  const { createRow, parentEventId } = resolved
+
+  const events = openSeedEvents(seedPath)
+  try {
+    const update = emitUpdate(events, {
+      artifactKind: createRow.artifact_kind,
+      artifactId: createRow.artifact_id,
+      parentEventId,
+      author,
+      field: patch.field,
+      before: patch.before,
+      after: patch.after,
+    })
+    return {
+      artifact_id: createRow.artifact_id,
+      update_event_id: update.id,
+      parent_event_id: parentEventId,
     }
   } finally {
     events.close()

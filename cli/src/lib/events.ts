@@ -118,3 +118,55 @@ export function emitEndorse(
     payload: { endorsed: true },
   })
 }
+
+/** Emit a researcher `reject` event chaining the artifact's latest event.
+ * Archives the artifact (current_state preserved for audit) — the "delete" of
+ * the three-actor model, where nothing is ever truly deleted. */
+export function emitReject(
+  writer: EventWriter,
+  params: {
+    artifactKind: string
+    artifactId: string
+    parentEventId: string
+    researcherId: string
+    note?: string
+  },
+): Event {
+  return writer.appendEvent({
+    artifact_kind: params.artifactKind,
+    artifact_id: params.artifactId,
+    action: 'reject',
+    actor_type: 'researcher',
+    actor_id: params.researcherId,
+    parent_event: params.parentEventId,
+    payload: params.note !== undefined ? { note: params.note } : { rejected: true },
+  })
+}
+
+/** Emit a researcher `update` event chaining the artifact's latest event. The
+ * payload is a field-level patch `{ field, before, after }` (the reducer applies
+ * only `after`) so the event log records what changed, not just the new state. */
+export function emitUpdate(
+  writer: EventWriter,
+  params: {
+    artifactKind: string
+    artifactId: string
+    parentEventId: string
+    author: Author
+    field: string
+    before: unknown
+    after: unknown
+  },
+): Event {
+  return writer.appendEvent({
+    artifact_kind: params.artifactKind,
+    artifact_id: params.artifactId,
+    action: 'update',
+    actor_type: params.author.actorType,
+    actor_id: params.author.actorId,
+    parent_event: params.parentEventId,
+    payload: { field: params.field, before: params.before, after: params.after },
+    ...(params.author.model !== undefined ? { model: params.author.model } : {}),
+    ...(params.author.promptHash !== undefined ? { prompt_hash: params.author.promptHash } : {}),
+  })
+}
