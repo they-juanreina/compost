@@ -8,6 +8,7 @@ and gating low-confidence sessions — is pure and fully unit-tested.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Protocol
@@ -129,6 +130,23 @@ def _load_pyannote(token_present: bool) -> DiarizationBackend:  # pragma: no cov
     return PyannoteBackend()
 
 
+_PYANNOTE_LABEL_RE = re.compile(r"^SPEAKER_(\d+)$")
+
+
+def normalize_speaker_label(label: str) -> str:
+    """Canonicalize a diarization speaker label to the schema's ``^S[0-9]+$`` form.
+
+    pyannote emits cluster labels like ``SPEAKER_00`` / ``SPEAKER_01``; the
+    transcript schema (schema/transcript.schema.json $defs.speaker.id and
+    $defs.utterance.speaker_id) requires ``S{n}`` — e.g. ``S0``, ``S1``. Leading
+    zeros are dropped (``SPEAKER_00`` → ``S0``). Already-canonical labels
+    (``S1``) and the ``S?`` orphan sentinel pass through unchanged, so this is
+    idempotent and safe to apply at the single write point in ``align()``.
+    """
+    m = _PYANNOTE_LABEL_RE.match(label)
+    return f"S{int(m.group(1))}" if m else label
+
+
 def _overlap_ms(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     return max(0, min(a_end, b_end) - max(a_start, b_start))
 
@@ -220,11 +238,20 @@ def assign_speaker(utterance: dict[str, Any], turns: list[Turn]) -> tuple[str, f
     return winner[0], min(winner[1] / u_dur, 1.0)
 
 
-def detect_overlaps(turns: list[Turn], min_overlap_ms: int = 200) -> list[dict[str, Any]]:
-    """Find regions where two turns overlap; emit `overlap` cues."""
+def detect_overlaps(
+    turns: list[Turn], min_overlap_ms: int = 200, start_index: int = 1
+) -> list[dict[str, Any]]:
+    """Find regions where two turns overlap; emit `overlap` cues.
+
+    Cue ids use the schema's uniform ``CUE-[0-9]{3,}`` space (the cue ``kind``
+    already distinguishes overlap cues from ASR-tag cues, so a typed ``CUE-OV-``
+    prefix would both duplicate that and violate the id pattern). ``start_index``
+    lets the caller continue numbering past any cues already in cues[] so the
+    overlap and tag-derived cues share one collision-free id sequence.
+    """
     cues: list[dict[str, Any]] = []
     ordered = sorted(turns, key=lambda t: t.start_ms)
-    idx = 1
+    idx = start_index
     for i in range(len(ordered)):
         for j in range(i + 1, len(ordered)):
             a, b = ordered[i], ordered[j]
@@ -237,7 +264,7 @@ def detect_overlaps(turns: list[Turn], min_overlap_ms: int = 200) -> list[dict[s
             if ov_end - ov_start >= min_overlap_ms:
                 cues.append(
                     {
-                        "id": f"CUE-OV-{idx:03d}",
+                        "id": f"CUE-{idx:03d}",
                         "kind": "overlap",
                         "start_ms": ov_start,
                         "end_ms": ov_end,
@@ -267,12 +294,15 @@ def align(transcript: dict[str, Any], turns: list[Turn]) -> dict[str, Any]:
             rescued = _nearest_turn_speaker(utt["start_ms"], utt["end_ms"], turns)
             if rescued is not None:
                 speaker = rescued  # confidence stays 0.0 (fallback marker)
-        utt["speaker_id"] = speaker
+        # Canonicalize pyannote's SPEAKER_NN labels to the schema's S{n} form at
+        # the single write point so speakers[].id (derived from these) and every
+        # utterances[].speaker_id agree with ^S[0-9]+$.
+        utt["speaker_id"] = normalize_speaker_label(speaker)
         utt.setdefault("diarization", {})["confidence"] = round(conf, 3)
         confidences.append(conf)
 
     cues = transcript.setdefault("cues", [])
-    cues.extend(detect_overlaps(turns))
+    cues.extend(detect_overlaps(turns, start_index=len(cues) + 1))
 
     mean_conf = sum(confidences) / len(confidences) if confidences else 0.0
     if mean_conf < DIARIZATION_CONFIDENCE_FLOOR:

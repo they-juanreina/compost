@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from app.diarization import (
     DIARIZATION_CONFIDENCE_FLOOR,
     Diarizer,
@@ -10,6 +12,7 @@ from app.diarization import (
     assign_speaker,
     detect_overlaps,
     merge_subthreshold_speakers,
+    normalize_speaker_label,
 )
 
 
@@ -165,3 +168,49 @@ def test_diarizer_with_injected_backend():
 
     turns = Diarizer(backend=FakeDia()).diarize("/fake.wav")
     assert turns == [Turn(0, 5000, "S1")]
+
+
+# ---------- schema conformance: speaker-id normalization + uniform cue ids ----------
+
+
+def test_normalize_speaker_label_maps_pyannote_labels():
+    # pyannote's SPEAKER_NN → schema's S{n}, dropping leading zeros.
+    assert normalize_speaker_label("SPEAKER_00") == "S0"
+    assert normalize_speaker_label("SPEAKER_01") == "S1"
+    assert normalize_speaker_label("SPEAKER_07") == "S7"
+    assert normalize_speaker_label("SPEAKER_10") == "S10"
+
+
+def test_normalize_speaker_label_is_idempotent_and_passes_through_sentinels():
+    # Already-canonical ids and the S? orphan marker are returned unchanged, so
+    # applying the function twice (or to non-pyannote input) is safe.
+    assert normalize_speaker_label("S0") == "S0"
+    assert normalize_speaker_label("S12") == "S12"
+    assert normalize_speaker_label("S?") == "S?"
+
+
+def test_align_normalizes_raw_pyannote_speaker_labels():
+    # align() is the single write point for speaker_id; raw SPEAKER_NN labels
+    # from pyannote must land as schema-valid S{n} on every utterance.
+    turns = [Turn(0, 5000, "SPEAKER_00"), Turn(5000, 10000, "SPEAKER_01")]
+    transcript = {"utterances": [_utt("U1", 1000, 4000), _utt("U2", 6000, 9000)]}
+    align(transcript, turns)
+    ids = [u["speaker_id"] for u in transcript["utterances"]]
+    assert ids == ["S0", "S1"]
+
+
+def test_detect_overlaps_emits_uniform_cue_ids():
+    # Overlap cue ids must match the schema's ^CUE-[0-9]{3,}$ (no typed CUE-OV-
+    # prefix); kind already marks them as overlaps.
+    turns = [Turn(0, 5000, "SPEAKER_00"), Turn(4000, 8000, "SPEAKER_01")]
+    cues = detect_overlaps(turns)
+    assert cues[0]["id"] == "CUE-001"
+    assert re.fullmatch(r"CUE-[0-9]{3,}", cues[0]["id"])
+
+
+def test_detect_overlaps_start_index_continues_cue_numbering():
+    # The caller passes start_index = len(cues)+1 so overlap and tag-derived cues
+    # share one collision-free id sequence.
+    turns = [Turn(0, 5000, "S0"), Turn(4000, 8000, "S1")]
+    cues = detect_overlaps(turns, start_index=3)
+    assert cues[0]["id"] == "CUE-003"

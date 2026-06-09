@@ -26,6 +26,10 @@
       "default": "session",
       "description": "session = recorded interview; document = legacy PDF/DOCX/PPTX/CSV normalized into a transcript-shaped doc."
     },
+    "status": {
+      "enum": ["ok", "needs_speaker_labels"],
+      "description": "Optional pipeline status. Absent ⇒ ok. The diarizer sets \"needs_speaker_labels\" when mean speaker-assignment confidence falls below its floor, queueing the session for human speaker labelling. Job-level failure (failed_transcription) is never written here — a failed run produces no transcript."
+    },
     "session_id": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]+$",
@@ -120,6 +124,7 @@
           "items": { "$ref": "#/$defs/word" }
         },
         "prosody": { "$ref": "#/$defs/prosody" },
+        "diarization": { "$ref": "#/$defs/utteranceDiarization" },
         "annotation": {
           "type": "string",
           "description": "Free-text editorial layer. May be human-authored, agent-authored, or AI-suggested. Provenance lives in .compost/events.sqlite — this field is a snapshot of current text only."
@@ -149,6 +154,19 @@
         "volume": { "enum": ["low", "normal", "high"] },
         "pace": { "enum": ["slow", "normal", "fast"] },
         "hesitations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "utteranceDiarization": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Per-utterance diarization metadata from the pyannote alignment. Distinct from prosody (acoustic hints); this records how the speaker_id was assigned.",
+      "properties": {
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of this utterance's span overlapped by the winning speaker turn (0..1). 0.0 marks a nearest-turn fallback assignment (no verified overlap), which counts against the session's mean-confidence gate."
+        }
       }
     },
     "silence": {

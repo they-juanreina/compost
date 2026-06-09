@@ -5,8 +5,9 @@ import { CompostError } from '../errors.js'
 import type { Transcript, TranscriptSpeaker } from './transcript.js'
 
 /**
- * Speaker labeling (#177). Diarization emits cluster ids (SPEAKER_00, …) with
- * name == id; this maps them to real names. The map is applied to transcript.json
+ * Speaker labeling (#177). Diarization emits cluster ids (S0, S1, … — pyannote's
+ * SPEAKER_NN canonicalized to the schema's S{n} form) with name == id; this maps
+ * them to real names. The map is applied to transcript.json
  * AND persisted to a `speakers.json` sidecar next to it, so re-transcription
  * re-applies the names (diarization cluster ids are stable per session).
  */
