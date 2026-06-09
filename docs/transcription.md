@@ -24,8 +24,10 @@ provisioned**, and falls back to Docker otherwise.
   Parakeet's 25 (Whisper covers ~99), or as a long-audio cross-check.
 
 Diarization is **pyannote** on **MPS (Metal)** for the native path — ~18–25×
-faster than CPU with identical results. Speaker labels come back as
-`SPEAKER_00/01/...` (rename is a separate step, #177).
+faster than CPU with identical results. pyannote's raw `SPEAKER_00/01/...`
+cluster labels are normalized to the schema's `S0/S1/...` ids in the transcript;
+renaming them to real names (`compost label --map S0=Juan,S1=P07`) is a separate
+step (#177).
 
 ## Native setup (Apple Silicon)
 
@@ -41,14 +43,20 @@ compost setup --provision-native      # downloads ~GB of ML wheels — a few min
 
 You also need a **HuggingFace token** for pyannote (a gated model). Accept the
 license on **both** gated repos first (the 3.1 pipeline pulls segmentation-3.0
-at runtime), then export the token:
+at runtime), then store the token:
 
 - <https://huggingface.co/pyannote/speaker-diarization-3.1>
 - <https://huggingface.co/pyannote/segmentation-3.0>
 
 ```sh
+compost secrets set HUGGINGFACE_TOKEN     # OS keychain (most secure); reads from stdin
+# …or just export it for this shell:
 export HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
 ```
+
+Compost resolves the token by precedence — env var > OS keychain >
+`~/.compost/secrets.env` (0600). See
+[SECURITY.md → Storing your tokens](../SECURITY.md#storing-your-tokens).
 
 <details><summary>Manual alternative (build the venv yourself)</summary>
 

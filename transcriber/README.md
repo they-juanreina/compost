@@ -11,7 +11,7 @@ First-time prerequisites (one-time):
 1. **HuggingFace token** for pyannote diarization:
    - Create a token at <https://huggingface.co/settings/tokens>
    - Accept the license at <https://huggingface.co/pyannote/speaker-diarization-3.1>
-   - Export it: `export HUGGINGFACE_TOKEN=hf_...` (or put it in `.env.local` at the repo root)
+   - Store it: `compost secrets set HUGGINGFACE_TOKEN` (OS keychain), `export HUGGINGFACE_TOKEN=hf_...`, or `.env.local` at the repo root. See [SECURITY.md → Storing your tokens](../SECURITY.md#storing-your-tokens).
 
 2. **Start the container**:
    ```sh

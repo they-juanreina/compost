@@ -5,6 +5,7 @@ import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
 import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
+import { HF_ALIASES, resolveSecret } from '../lib/secrets.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { applySidecar } from '../lib/speakers.js'
 import { transcribeNative } from '../lib/transcribeNative.js'
@@ -91,12 +92,17 @@ export function registerTranscribe(program: Command): void {
                 'or run `compost setup` to provision the native venv.',
             )
           }
+          // Resolve the HF token by the documented precedence (env > keychain >
+          // secrets.env) and pass it explicitly to the python subprocess, so a
+          // keychain-stored token works even though it isn't in process.env.
+          const hf = resolveSecret('HUGGINGFACE_TOKEN', { aliases: HF_ALIASES })
           const resp = transcribeNative(seedPath, sessionId, source, {
             python: native.python,
             transcriberDir: native.transcriberDir,
             engine: flags.engine ?? 'parakeet',
             ...(flags.model !== undefined ? { model: flags.model } : {}),
             ...(flags.language !== undefined ? { language: flags.language } : {}),
+            ...(hf ? { env: { HUGGINGFACE_TOKEN: hf.value } } : {}),
           })
           if (existsSync(resp.transcript_path)) {
             applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)

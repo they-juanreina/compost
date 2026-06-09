@@ -30,11 +30,19 @@ exactly what's missing and how to fix it.
   2. Accept the license on **both** gated repos, logged in as the token's account:
      - <https://huggingface.co/pyannote/speaker-diarization-3.1>
      - <https://huggingface.co/pyannote/segmentation-3.0>
-  3. Put the token where compost can read it — either export it or drop it in
-     `.env.local` at the repo root (gitignored):
+  3. Store the token where compost can read it. The most secure option is the
+     OS keychain:
+     ```sh
+     compost secrets set HUGGINGFACE_TOKEN     # reads the value from stdin
+     ```
+     Or export it / drop it in `.env.local` at the repo root (gitignored):
      ```
      HUGGINGFACE_TOKEN=hf_xxxxxxxxxxxxxxxxxxxx
      ```
+     Compost resolves the token by precedence — env var > OS keychain >
+     `~/.compost/secrets.env` (0600). See
+     [SECURITY.md → Storing your tokens](../SECURITY.md#storing-your-tokens) for
+     the full hierarchy and multi-user guidance.
 
 > The license check in `compost setup` fetches the gated model *file*, not the
 > repo metadata — the metadata endpoint returns 200 even when you haven't

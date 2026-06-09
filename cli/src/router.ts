@@ -22,6 +22,7 @@ import { registerRerun } from './commands/rerun.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
 import { registerSearch } from './commands/search.js'
+import { registerSecrets } from './commands/secrets.js'
 import { registerServe } from './commands/serve.js'
 import { registerSession } from './commands/session.js'
 import { registerSetup } from './commands/setup.js'
@@ -72,6 +73,7 @@ export function buildProgram(): Command {
   registerRerun(program)
   registerSynthesize(program)
   registerSearch(program)
+  registerSecrets(program)
   registerSession(program)
   registerCreate(program)
   registerEndorse(program)
