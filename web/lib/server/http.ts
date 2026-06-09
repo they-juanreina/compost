@@ -12,6 +12,7 @@ export type ApiErrorCode =
   | 'INVALID_INPUT'
   | 'SCHEMA_ERROR'
   | 'CONFLICT'
+  | 'NO_INDEX'
   | 'NOT_IMPLEMENTED'
   | 'INTERNAL'
 
@@ -20,6 +21,9 @@ const STATUS: Record<ApiErrorCode, number> = {
   INVALID_INPUT: 400,
   SCHEMA_ERROR: 422,
   CONFLICT: 409,
+  // 409: chat needs a corpus/index that isn't built yet — a precondition the
+  // caller can fix (`compost reindex --vectors`), not a server fault.
+  NO_INDEX: 409,
   NOT_IMPLEMENTED: 501,
   INTERNAL: 500,
 }

@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 // Prompt-journal version/diff logic (#62). The seed's .compost/AGENTS.md is
 // the prompt journal loops read. When git is initialized the web UI commits on
@@ -108,4 +109,63 @@ export function saveJournalVersion(seedPath: string, ts: string): void {
   const p = agentsPath(seedPath)
   if (!existsSync(p)) return
   writeFileSync(p, appendVersion(readFileSync(p, 'utf8'), ts), 'utf8')
+}
+
+/** Compose an AGENTS.md from a working draft + recorded inline versions. The
+ * inverse of parseVersions, so save → load round-trips. */
+function composeJournal(draft: string, versions: JournalVersion[]): string {
+  const head = `${draft.trimEnd()}\n`
+  if (versions.length === 0) return head
+  const body = versions
+    .map((v) => `\n<!-- compost:version ${v.ts} -->\n${v.body.trimEnd()}\n`)
+    .join('')
+  return `${head}${body}`
+}
+
+function isGitWorkTree(dir: string): boolean {
+  const r = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], {
+    encoding: 'utf8',
+  })
+  return r.status === 0 && r.stdout.trim() === 'true'
+}
+
+function gitCommitFile(dir: string, file: string, message: string): void {
+  spawnSync('git', ['-C', dir, 'add', '--', file], { encoding: 'utf8' })
+  spawnSync('git', ['-C', dir, 'commit', '-m', message, '--', file], { encoding: 'utf8' })
+}
+
+export type JournalSaveMode = 'git' | 'append'
+
+export interface JournalSaveResult {
+  mode: JournalSaveMode
+  versions: number
+}
+
+/**
+ * Save a new working draft of the seed's AGENTS.md and snapshot the prior one.
+ * When the seed lives inside a git work tree the snapshot is a commit; otherwise
+ * the prior draft is recorded as a timestamped inline version so history is
+ * never lost. The new draft always becomes the top section either way, so the
+ * version/diff UI keeps working. `ts` is supplied by the caller (no clock here).
+ */
+export function saveJournal(seedPath: string, newDraft: string, ts: string): JournalSaveResult {
+  const p = agentsPath(seedPath)
+  mkdirSync(dirname(p), { recursive: true })
+  const prior = existsSync(p) ? readFileSync(p, 'utf8') : ''
+  const { draft: priorDraft, versions } = parseVersions(prior)
+
+  if (isGitWorkTree(seedPath)) {
+    // Git is the history store: write the new draft (preserving any pre-existing
+    // inline versions for back-compat) and commit.
+    writeFileSync(p, composeJournal(newDraft, versions), 'utf8')
+    gitCommitFile(seedPath, p, `journal: update AGENTS.md @ ${ts}`)
+    return { mode: 'git', versions: versions.length }
+  }
+
+  // Gitless: snapshot the prior draft as a timestamped inline version (newest
+  // first), then set the new draft on top.
+  const nextVersions =
+    priorDraft.trim().length > 0 ? [{ ts, body: priorDraft }, ...versions] : versions
+  writeFileSync(p, composeJournal(newDraft, nextVersions), 'utf8')
+  return { mode: 'append', versions: nextVersions.length }
 }
