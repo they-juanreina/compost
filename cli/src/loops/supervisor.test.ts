@@ -84,4 +84,35 @@ describe('runSupervisorOnce failure accounting (#164)', () => {
     )
     assert.equal(r.transcribe.failed, 0)
   })
+
+  it('a later pass over a dead queue is NOT reported as clean (#239)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    new JobQueue(stateDbPath(path)).enqueue('legacy-ingest', join(path, 'x.txt'), {
+      category: 'markdown',
+    })
+    const failingClient = {
+      ingest: async () => {
+        throw new LegacyServiceError('boom', 'failed')
+      },
+    } as unknown as LegacyIngestClient
+
+    // pass 1 burns all attempts in-pass → the job lands in permanent `failed`
+    const first = await runSupervisorOnce(path, {
+      skipEmbed: true,
+      legacy: { client: failingClient },
+    })
+    assert.equal(first.dead_jobs, 1)
+
+    // pass 2 drains nothing — before #239 this reported ok/failures:[]
+    const second = await runSupervisorOnce(path, {
+      skipEmbed: true,
+      legacy: { client: failingClient },
+    })
+    assert.equal(second.legacy.processed, 0)
+    assert.equal(second.dead_jobs, 1)
+    assert.ok(
+      second.failures.some((f) => f.includes('permanently failed') && f.includes('jobs requeue')),
+      `failures should surface the dead job with the recovery command; got ${JSON.stringify(second.failures)}`,
+    )
+  })
 })

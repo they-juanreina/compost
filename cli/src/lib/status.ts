@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
 import { isCanonicalSession } from './canonicalSessions.js'
+import { JobQueue, stateDbPath } from './queue.js'
 
 export interface SessionCounts {
   total: number
@@ -83,6 +84,15 @@ export function gatherStatus(opts: StatusOptions = {}): StatusSnapshot {
 function readSeed(name: string, path: string): SeedStatus {
   const frontmatter = readFrontmatter(join(path, 'seed.md'))
   const warnings: string[] = []
+  // A session without transcript.json counts as "queued" below, but if its job
+  // burned all attempts nothing will ever process it — surface that here so
+  // "queued" isn't read as "in progress" (#239).
+  const deadJobs = countDeadJobs(path)
+  if (deadJobs > 0) {
+    warnings.push(
+      `${deadJobs} permanently failed job(s) in the queue — run \`compost jobs requeue\``,
+    )
+  }
   return {
     name,
     path,
@@ -99,6 +109,18 @@ function readSeed(name: string, path: string): SeedStatus {
       legacy_assets: countFiles(join(path, 'legacy')),
     },
     warnings,
+  }
+}
+
+function countDeadJobs(seedPath: string): number {
+  // Guard on existence: status is read-only and must not scaffold .compost/
+  // state into a seed that never ran the watcher.
+  if (!existsSync(stateDbPath(seedPath))) return 0
+  const queue = new JobQueue(stateDbPath(seedPath))
+  try {
+    return queue.counts().failed
+  } finally {
+    queue.close()
   }
 }
 

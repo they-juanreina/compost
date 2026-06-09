@@ -7,6 +7,20 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
 
 ### Added
 
+- **`compost jobs` + `compost jobs requeue` — dead-letter queue visibility
+  (#239).** A job that burns its 3 attempts parks as permanently `failed` and
+  the watcher skips it; previously nothing listed it, nothing could revive it,
+  `watch --once` reported `ok` over the dead queue, and `status` showed the
+  session as `queued` forever. Now `compost jobs` lists the queue with last
+  errors, `compost jobs requeue [--id N]` resets failed jobs with a fresh
+  attempt budget (warning when a job's source file no longer exists on disk —
+  #240), `watch` surfaces given-up jobs as a failure (non-zero exit, with the
+  recovery command), and `status` warns per seed.
+- **`compost init` warns when run inside a folder named `Seeds` (#241).** Init
+  always scaffolds `<cwd>/Seeds/<name>`, so running it from inside a Seeds
+  folder silently nests `Seeds/Seeds/` — a first-run foot-gun that, combined
+  with hand-moving the seed afterwards, strands the job queue. Behavior is
+  unchanged; the output now carries a `warnings[]` entry naming both paths.
 - **Content-addressed input persistence.** Migration `0003` adds an `ai_inputs`
   table and a nullable `events.input_id` FK. AI/agent generations now persist the
   reconstructable bundle (model, params, system prompt, prompt, context) that

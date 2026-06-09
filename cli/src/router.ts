@@ -12,6 +12,7 @@ import { registerExport } from './commands/export.js'
 import { registerImport } from './commands/import.js'
 import { registerIngest } from './commands/ingest.js'
 import { registerInit } from './commands/init.js'
+import { registerJobs } from './commands/jobs.js'
 import { registerLabel } from './commands/label.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
@@ -57,6 +58,7 @@ export function buildProgram(): Command {
   registerTranscribe(program)
   registerLabel(program)
   registerWatch(program)
+  registerJobs(program)
   registerSnap(program)
   registerStatus(program)
   registerBlame(program)

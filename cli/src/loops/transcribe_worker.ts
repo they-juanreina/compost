@@ -1,13 +1,12 @@
 import { existsSync } from 'node:fs'
 
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
-import { JobQueue, stateDbPath } from '../lib/queue.js'
+import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
 import { TranscriberClient } from '../transcriber_client.js'
 
 const AGENT_NAME = 'transcribe-worker'
 const AGENT_VERSION = '0.1.0'
-const MAX_ATTEMPTS = 3
 
 export interface WorkerStepResult {
   processed: number
