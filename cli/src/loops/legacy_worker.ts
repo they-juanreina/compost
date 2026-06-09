@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { basename, extname, join } from 'node:path'
 
 import {
   LegacyIngestClient,
@@ -10,6 +11,7 @@ import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { legacyIngestNative } from '../lib/legacyNative.js'
 import { resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
+import { writeTranscriptMd } from '../render/transcript_md.js'
 
 const AGENT_NAME = 'legacy-ingest-worker'
 const AGENT_VERSION = '0.1.0'
@@ -56,9 +58,78 @@ export interface LegacyWorkerResult {
     source_path: string
     status: string
     normalized_path?: string
+    transcript_path?: string
     utterance_count?: number
     warnings?: string[]
   }>
+}
+
+export interface LinkedDoc {
+  /** Final location of the normalized copy under legacy/. */
+  normalized_path: string
+  /** sessions/<sid>/transcript.json when the doc was linked into its session. */
+  transcript_path?: string
+  warnings: string[]
+}
+
+/**
+ * Place a freshly-normalized document where the rest of the pipeline expects
+ * it (#246): rename the `legacy/` copy after the researcher's original
+ * filename (the inbox move renamed the source to `source.<ext>`, so the
+ * service output otherwise collides at `legacy/source.json` for every
+ * session), and link it into its session as `transcript.json` so search and
+ * embeddings pick it up without the manual `cp` step the wiki used to ask
+ * for. Non-inbox jobs (no `S\d+` session id) only get the rename.
+ */
+export function linkNormalizedDoc(
+  seedPath: string,
+  payload: { session_id?: unknown; original_name?: unknown },
+  normalizedPath: string,
+): LinkedDoc {
+  const warnings: string[] = []
+  let finalNormalized = normalizedPath
+
+  const sid = typeof payload.session_id === 'string' ? payload.session_id : undefined
+  const original = typeof payload.original_name === 'string' ? payload.original_name : undefined
+
+  if (original !== undefined && existsSync(normalizedPath)) {
+    const stem = basename(original, extname(original)).replace(/[^\w.-]+/g, '_')
+    const target = join(
+      seedPath,
+      'legacy',
+      sid !== undefined ? `${sid}-${stem}.json` : `${stem}.json`,
+    )
+    if (target !== normalizedPath) {
+      renameSync(normalizedPath, target)
+      finalNormalized = target
+    }
+  }
+
+  if (sid !== undefined && /^S\d+$/.test(sid) && existsSync(finalNormalized)) {
+    const sessionDir = join(seedPath, 'sessions', sid)
+    const transcriptPath = join(sessionDir, 'transcript.json')
+    if (!existsSync(sessionDir)) {
+      warnings.push(`session ${sid} has no directory — normalized doc left in legacy/ only`)
+      return { normalized_path: finalNormalized, warnings }
+    }
+    if (existsSync(transcriptPath)) {
+      warnings.push(`session ${sid} already has transcript.json — not overwritten`)
+      return { normalized_path: finalNormalized, warnings }
+    }
+    const doc = JSON.parse(readFileSync(finalNormalized, 'utf8')) as Record<string, unknown>
+    // The service derives session_id from the file basename ("DOC-source");
+    // the session's real id is what search/status/exports key on.
+    doc.session_id = sid
+    writeFileSync(transcriptPath, `${JSON.stringify(doc, null, 2)}\n`, 'utf8')
+    try {
+      writeTranscriptMd(transcriptPath)
+    } catch (err) {
+      warnings.push(`transcript.md render failed: ${err instanceof Error ? err.message : err}`)
+    }
+    return { normalized_path: finalNormalized, transcript_path: transcriptPath, warnings }
+  }
+
+  return { normalized_path: finalNormalized, warnings }
 }
 
 /** Ingests one legacy asset and returns the normalized result. The default
@@ -123,12 +194,14 @@ export async function runLegacyWorkerOnce(
           ...(sidecar?.sheet !== undefined ? { sheet: sidecar.sheet } : {}),
         }
         const resp = await runner(ingestReq)
+        const linked = linkNormalizedDoc(seedPath, job.payload, resp.normalized_path)
         queue.complete(job.id)
         emitAgentCreate(events, {
           artifactKind: 'legacy_chunk',
           initialState: {
             source_path: resp.source_path,
-            normalized_path: resp.normalized_path,
+            normalized_path: linked.normalized_path,
+            transcript_path: linked.transcript_path ?? null,
             utterance_count: resp.utterance_count,
             status: resp.status,
             text_col_resolved: resp.text_col_resolved ?? null,
@@ -137,13 +210,17 @@ export async function runLegacyWorkerOnce(
           agentName: AGENT_NAME,
           agentVersion: AGENT_VERSION,
         })
+        const warnings = [...(resp.warnings ?? []), ...linked.warnings]
         out.results.push({
           job_id: job.id,
           source_path: sourcePath,
           status: resp.status,
-          normalized_path: resp.normalized_path,
+          normalized_path: linked.normalized_path,
+          ...(linked.transcript_path !== undefined
+            ? { transcript_path: linked.transcript_path }
+            : {}),
           utterance_count: resp.utterance_count,
-          ...(resp.warnings && resp.warnings.length > 0 ? { warnings: resp.warnings } : {}),
+          ...(warnings.length > 0 ? { warnings } : {}),
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)

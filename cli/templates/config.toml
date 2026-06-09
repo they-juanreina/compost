@@ -45,6 +45,7 @@ storage = "sqlite"
 # SECURITY.md → "Storing your tokens".
 [providers.ollama]
 base_url = "http://localhost:11434"
+# timeout_ms = 300000  # uncomment for very large local models (slow first load)
 
 [providers.lmstudio]
 base_url = "http://localhost:1234/v1"

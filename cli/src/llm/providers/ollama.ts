@@ -23,6 +23,16 @@ import type {
  */
 function translateOllamaError(err: unknown, model: string): Error {
   if (!(err instanceof Error)) return new Error(String(err))
+  // A timed-out request surfaces as a bare AbortError ("This operation was
+  // aborted") — unactionable. Big local models routinely need >120s just to
+  // load into memory on first use, so name the model and the two ways out.
+  if (err.name === 'AbortError' || /operation was aborted/i.test(err.message)) {
+    return new CompostError(
+      'PROVIDER_ERROR',
+      `Ollama model '${model}' did not answer within the timeout — large models can take minutes to load on first use. Route the task to a smaller model (\`compost setup\` configures one), or raise providers.ollama.timeout_ms in config.toml.`,
+      { cause: err },
+    )
+  }
   // postJson formats: `POST <url> → <status> <statusText>: <bodyPrefix>`
   if (!/→ 404 /.test(err.message)) return err
   if (!/model .* not found/i.test(err.message)) return err

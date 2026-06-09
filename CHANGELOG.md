@@ -7,6 +7,27 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
 
 ### Added
 
+- **`compost setup` is now a guided wizard at a terminal.** Each missing
+  prerequisite becomes a per-step confirmed fix — install/start Ollama, pull
+  `bge-m3`, provision the native transcription engine (or start the Docker
+  fallback with the correct bundled path), paste the HuggingFace token (hidden
+  input, stored in the OS keychain, both pyannote licenses verified on the
+  spot), and choose how `compost chat` runs: a local Ollama model (pulled for
+  you) or an Anthropic API key. Choices are saved to a user-level
+  `~/.compost/config.toml` that `compost init` overlays onto every new seed's
+  routing, and the wizard offers to update existing seeds. Piped/`--json`/
+  `--check` invocations keep the read-only diagnostic exactly as before.
+- **Documents auto-link into their sessions (#246).** The legacy worker now
+  writes the normalized document as `sessions/SXXX/transcript.json` (with the
+  session's real id and a rendered `transcript.md`) and names the `legacy/`
+  copy after the researcher's original filename — no more `legacy/source.json`
+  collisions and no more manual `cp` step in the first-study walkthrough. An
+  existing transcript is never overwritten.
+- **`providers.<name>.timeout_ms` config + a real timeout error.** Large local
+  models can need more than the 120s default just to load; the per-provider
+  timeout is now configurable, and an Ollama timeout reports which model
+  stalled and the two ways out instead of a bare "operation was aborted".
+
 - **`compost jobs` + `compost jobs requeue` — dead-letter queue visibility
   (#239).** A job that burns its 3 attempts parks as permanently `failed` and
   the watcher skips it; previously nothing listed it, nothing could revive it,
@@ -57,6 +78,13 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
   is auto-loaded into the environment at startup so file-stored secrets resolve
   everywhere an env var would, without editing a shell profile — and an insecure
   (group/world-readable) `secrets.env` is *refused, not read*.
+
+### Fixed
+
+- **`compost setup` no longer reports `ready: true` on a machine that cannot
+  ingest anything (#242).** When neither the native runtime nor the Docker
+  transcriber is available, a derived `ingest-engine` check fails (audio AND
+  document ingest both require the engine); either engine alone satisfies it.
 
 ### Security
 
