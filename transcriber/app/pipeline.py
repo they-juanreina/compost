@@ -145,13 +145,16 @@ def run_pipeline(
         "cues": [],
         "frames": [],
         "glossary_refs": [],
+        # frame_capture / frame_annotation are omitted (not null): the schema
+        # types provenance fields as strings and the convention is "absent when
+        # not applicable". run_pipeline does no frame capture/annotation; those
+        # stages (frames.py / frame_annotation.py) add their own provenance when
+        # they run.
         "provenance": {
             "transcriber": config.transcriber_version,
             "asr_model": config.asr_model_tag,
             "diarizer": config.diarizer_tag,
             "audio_cues": f"{config.vad_tag} + whisper-events",
-            "frame_capture": None,
-            "frame_annotation": None,
         },
     }
 
