@@ -26,6 +26,32 @@ async function readStdin(): Promise<string> {
 const READONLY = new Set(['validate'])
 const NEEDS_VALUE = new Set(['renew', 'set'])
 
+/**
+ * Gate a `setup item run` invocation before it mutates anything. Extracted so
+ * the (security-relevant) refusal logic is unit-testable without driving
+ * commander: renew/set need a value (piped, so it stays out of shell history),
+ * and any mutating action run non-interactively (no TTY) requires an explicit
+ * --yes. Throws INVALID_INPUT otherwise; returns void when the call may proceed.
+ */
+export function assertRunAllowed(
+  id: string,
+  action: string,
+  ctx: { human: boolean; yes: boolean; value: string },
+): void {
+  if (NEEDS_VALUE.has(action) && ctx.value === '') {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Pipe the new value: \`printf %s "$TOKEN" | compost setup item run ${id} ${action}\` (keeps it out of shell history).`,
+    )
+  }
+  if (!READONLY.has(action) && !ctx.human && ctx.yes !== true) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Refusing a mutating action non-interactively without --yes.`,
+    )
+  }
+}
+
 function glyph(status: SetupCheck['status']): string {
   return status === 'ok' ? '✓' : status === 'warn' ? '!' : '✗'
 }
@@ -51,6 +77,10 @@ export function registerSetupItem(setup: Command): void {
     .action(async (_flags: unknown, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
+        // Reuse the canonical runSetup probes (single source of truth) and
+        // filter, rather than maintaining a separate per-id probe. It runs the
+        // full check set — acceptable for an on-demand command; a dedicated
+        // single-check probe is a future optimization, not a correctness need.
         const report = await runSetup({ cwd: process.cwd() })
         const items = report.checks.map((c) => ({
           id: c.id,
@@ -141,18 +171,7 @@ export function registerSetupItem(setup: Command): void {
       const out = getOutputOpts(cmd)
       try {
         const value = NEEDS_VALUE.has(action) ? (await readStdin()).trim() : ''
-        if (NEEDS_VALUE.has(action) && value === '') {
-          throw new CompostError(
-            'INVALID_INPUT',
-            `Pipe the new value: \`printf %s "$TOKEN" | compost setup item run ${id} ${action}\` (keeps it out of shell history).`,
-          )
-        }
-        if (!READONLY.has(action) && !out.human && flags.yes !== true) {
-          throw new CompostError(
-            'INVALID_INPUT',
-            `Refusing a mutating action non-interactively without --yes.`,
-          )
-        }
+        assertRunAllowed(id, action, { human: out.human, yes: flags.yes === true, value })
         const result = await runItem(id, action, value ? { value } : {})
         emit(
           { command: 'setup item run', ...result },

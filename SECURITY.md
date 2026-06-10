@@ -184,6 +184,21 @@ multi-user box leaks to every account on it — don't create one. The
 enforced `0600`, so it's safe; a *shared* path pointed at by
 `COMPOST_SECRETS_ENV` is not — never aim multiple users at one file.
 
+### Where your HuggingFace token is sent
+
+The token is sent as a `Bearer` credential **only to `huggingface.co`**, never to
+a third party, and is never written into a seed, `config.toml`, or the event
+ledger. Two call sites:
+
+- **Transcription (diarization):** fetching the gated `pyannote` model files
+  during an audio job.
+- **`compost setup item show hf-token --validate`:** a single `GET
+  https://huggingface.co/api/whoami-v2` to report whether the stored token is
+  still live (revoked/expired tokens otherwise surface as a confusing pyannote
+  403). This is on-demand only — it never runs in the read-only `compost setup`
+  report or the core ingest/search loop, so the "no outbound calls unless you
+  configure them" property of the core loop is preserved.
+
 ## Hardening notes for users
 
 - **Don't run `compost` against a hostile transcript** and then chat with
