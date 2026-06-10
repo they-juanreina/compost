@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { assertSessionId } from './sessionId.js'
 
 export interface SessionView {
   session_id: string
@@ -76,9 +77,7 @@ export function listSessions(seedPath: string): SessionSummary[] {
  * agent can pull a full session into context.
  */
 export function getSession(seedPath: string, sessionId: string): SessionView {
-  if (!/^[A-Za-z0-9_-]+$/.test(sessionId)) {
-    throw new CompostError('INVALID_INPUT', `Invalid session id: ${JSON.stringify(sessionId)}`)
-  }
+  assertSessionId(sessionId)
   const dir = join(seedPath, 'sessions', sessionId)
   if (!existsSync(dir)) {
     throw new CompostError('FILE_NOT_FOUND', `No session "${sessionId}" under ${seedPath}/sessions`)

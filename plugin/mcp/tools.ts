@@ -25,6 +25,15 @@ export interface ToolDef {
 
 const str = (desc: string) => ({ type: 'string', description: desc })
 
+/** A session-id arg constrained at the schema boundary to a bare label, so a
+ * host agent can't pass a path-traversal value (mirrors assertSessionId in the
+ * CLI; the CLI re-validates regardless). */
+const sessionArg = (desc: string) => ({
+  type: 'string',
+  description: desc,
+  pattern: '^[A-Za-z0-9_-]+$',
+})
+
 /**
  * Provenance fingerprint for an AI-authored artifact: sha256 over the tool-call
  * args. It is NOT the upstream LLM prompt (the MCP layer can't observe that),
@@ -110,7 +119,7 @@ export const TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       required: ['session'],
-      properties: { session: str('Session id, e.g. S001'), seed: str('Seed') },
+      properties: { session: sessionArg('Session id, e.g. S001'), seed: str('Seed') },
     },
     toArgv: (a) => ['transcribe', String(a.session), ...(a.seed ? ['--seed', String(a.seed)] : [])],
   },
@@ -172,7 +181,7 @@ export const TOOLS: ToolDef[] = [
     inputSchema: {
       type: 'object',
       required: ['session'],
-      properties: { session: str('Session id, e.g. S001'), seed: str('Seed') },
+      properties: { session: sessionArg('Session id, e.g. S001'), seed: str('Seed') },
     },
     toArgv: (a) => ['session', String(a.session), ...(a.seed ? ['--seed', String(a.seed)] : [])],
   },

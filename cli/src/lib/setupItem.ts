@@ -4,6 +4,7 @@ import { chmodSync } from 'node:fs'
 import { CompostError } from '../errors.js'
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
+import { scrubbedEnv } from './childEnv.js'
 import {
   detectKeychain,
   fileIsSecure,
@@ -186,7 +187,8 @@ function defaultInspect(name: string): SecretSources {
 }
 
 function defaultRun(cmd: string, args: string[]): { ok: boolean } {
-  return { ok: spawnSync(cmd, args, { stdio: 'inherit' }).status === 0 }
+  // `ollama pull` etc. need no compost secrets — spawn with a scrubbed env (#236).
+  return { ok: spawnSync(cmd, args, { stdio: 'inherit', env: scrubbedEnv() }).status === 0 }
 }
 
 export interface RunItemResult {

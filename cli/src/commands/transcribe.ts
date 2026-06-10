@@ -7,6 +7,7 @@ import { CompostError, isCompostError } from '../errors.js'
 import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { HF_ALIASES, resolveSecret } from '../lib/secrets.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
+import { assertSessionId } from '../lib/sessionId.js'
 import { applySidecar } from '../lib/speakers.js'
 import { transcribeNative } from '../lib/transcribeNative.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -57,6 +58,10 @@ export function registerTranscribe(program: Command): void {
     .action(async (sessionId: string, flags: TranscribeFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
+        // Guard both branches: sessionId is passed verbatim to the native Python
+        // entrypoint (--session-id, no regex there) and the Docker route. Validate
+        // before it reaches any path join or subprocess (#211 followup).
+        assertSessionId(sessionId)
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const source = resolveSource(seedPath, sessionId)
 
@@ -96,6 +101,11 @@ export function registerTranscribe(program: Command): void {
           // secrets.env) and pass it explicitly to the python subprocess, so a
           // keychain-stored token works even though it isn't in process.env.
           const hf = resolveSecret('HUGGINGFACE_TOKEN', { aliases: HF_ALIASES })
+          // Native ASR captures the subprocess's stdio, so the terminal is blank
+          // for minutes otherwise. Heartbeat to stderr in human mode at a TTY.
+          if (out.human && process.stderr.isTTY === true) {
+            process.stderr.write(`transcribing ${sessionId} (native; this can take minutes)…\n`)
+          }
           const resp = transcribeNative(seedPath, sessionId, source, {
             python: native.python,
             transcriberDir: native.transcriberDir,
@@ -133,6 +143,9 @@ export function registerTranscribe(program: Command): void {
         const client = new TranscriberClient(
           flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {},
         )
+        if (out.human && process.stderr.isTTY === true) {
+          process.stderr.write(`transcribing ${sessionId} (docker; this can take minutes)…\n`)
+        }
         const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
         if (existsSync(resp.transcript_path)) {
           applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)

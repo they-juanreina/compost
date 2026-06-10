@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { scrubbedEnv } from './childEnv.js'
 import { findRepoTranscriberDir, managedVenvDir } from './nativeRuntime.js'
 
 /**
@@ -68,6 +69,8 @@ export interface ProvisionNativeResult {
 const defaultExec: ProvisionExec = (cmd, args, opts) => {
   const res = spawnSync(cmd, args, {
     encoding: 'utf8',
+    // pip/venv provisioning needs no compost secrets — scrub them (#236).
+    env: scrubbedEnv(),
     // stream → live stdout (download progress) but still capture stderr so a
     // failure has a diagnostic (inheriting stderr would null it out).
     stdio: opts?.stream ? ['ignore', 'inherit', 'pipe'] : 'pipe',

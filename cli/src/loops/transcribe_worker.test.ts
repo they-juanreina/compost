@@ -54,6 +54,26 @@ function downClient() {
   }
 }
 
+// Fails a specific session id with a per-file `failed` error (corrupt media),
+// succeeds for any other session — to prove one poison file doesn't stall the rest.
+function poisonClient(poisonSession: string, seedPath: string) {
+  return {
+    async transcribe(_audio: string, sessionId: string): Promise<TranscribeResponse> {
+      if (sessionId === poisonSession) {
+        throw new TranscriberServiceError('bad media', 'failed')
+      }
+      const dir = join(seedPath, 'sessions', sessionId)
+      mkdirSync(dir, { recursive: true })
+      const tp = join(dir, 'transcript.json')
+      writeFileSync(tp, JSON.stringify({ ...SAMPLE_TRANSCRIPT, session_id: sessionId }))
+      return { session_id: sessionId, transcript_path: tp, status: 'ok' }
+    },
+    async health() {
+      return { ok: true, versions: {} }
+    },
+  }
+}
+
 describe('runTranscribeWorkerOnce', () => {
   let work: string
   beforeEach(() => {
@@ -99,6 +119,27 @@ describe('runTranscribeWorkerOnce', () => {
     const q2 = new JobQueue(stateDbPath(path))
     assert.equal(q2.list('queued').length, 1) // requeued (1st of 3 attempts)
     q2.close()
+  })
+
+  it('keeps draining after a per-file failure (one poison file does not block the rest)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const q = new JobQueue(stateDbPath(path))
+    // S001 (lowest id, claimed first) is the poison file; S002 must still process.
+    q.enqueue('transcribe', join(path, 'sessions/S001/source.mp4'), { session_id: 'S001' })
+    q.enqueue('transcribe', join(path, 'sessions/S002/source.mp4'), { session_id: 'S002' })
+    q.close()
+
+    const res = await runTranscribeWorkerOnce(path, {
+      // biome-ignore lint/suspicious/noExplicitAny: fake client for test
+      client: poisonClient('S001', path) as any,
+    })
+    // The drain did NOT break early on S001's per-file failure: S002 still ran
+    // and produced a transcript in the same pass. (S001 burns its own attempts.)
+    const s002 = res.results.find((r) => r.session_id === 'S002')
+    assert.equal(s002?.status, 'ok')
+    assert.ok(existsSync(join(path, 'sessions/S002/transcript.md')))
+    const s001 = res.results.find((r) => r.session_id === 'S001')
+    assert.equal(s001?.status, 'error')
   })
 
   it('surfaces needs_speaker_labels status', async () => {

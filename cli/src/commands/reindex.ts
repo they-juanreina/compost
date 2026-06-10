@@ -40,11 +40,13 @@ export function registerReindex(program: Command): void {
           const rebuilt = store.rebuildAll()
 
           const result: {
-            status: 'ok'
+            status: 'ok' | 'not_implemented'
             command: 'reindex'
             seed: string
             snapshots_rebuilt: number
             vectors_rebuilt: number | null
+            vectors_status?: 'not_wired'
+            issue?: number
             note?: string
           } = {
             status: 'ok',
@@ -55,15 +57,26 @@ export function registerReindex(program: Command): void {
           }
 
           if (flags.vectors === true) {
-            // The embed-worker already owns the LanceDB write path and rebuilds
-            // the index automatically during `compost watch`. The manual
-            // --vectors rebuild from here isn't wired yet, so it reports a clear
-            // status instead of pretending to succeed.
+            // The embed-worker owns the LanceDB write path and rebuilds the index
+            // automatically during `compost watch`. The manual --vectors rebuild
+            // from here isn't wired yet. Snapshots WERE rebuilt, but the user's
+            // explicit intent (rebuild vectors) was not fulfilled — so report a
+            // distinct status and exit non-zero, otherwise a human (or a
+            // JSON-parsing agent keying on `status`) wrongly concludes the vector
+            // index was rebuilt and stops trying to recover it.
+            result.status = 'not_implemented'
+            result.vectors_status = 'not_wired'
+            result.issue = 137
             result.note =
-              '--vectors is not wired yet; the LanceDB index is rebuilt automatically by `compost watch`'
+              '--vectors is not wired yet; the LanceDB index is rebuilt automatically by `compost watch`. Snapshots were rebuilt.'
           }
 
-          emit(result, out)
+          emit(result, out, (d) =>
+            d.vectors_status === 'not_wired'
+              ? `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s). NOTE: --vectors is not wired yet — the LanceDB index is rebuilt automatically by \`compost watch\`. (#${d.issue})`
+              : `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s).`,
+          )
+          if (flags.vectors === true) process.exitCode = 1
         } finally {
           db.close()
         }

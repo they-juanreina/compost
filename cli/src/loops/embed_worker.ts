@@ -42,6 +42,9 @@ export interface EmbedWorkerDeps {
   embed?: (texts: string[]) => Promise<number[][]>
   /** Override the embedding dimension (must match what the writer expects). */
   vectorDim?: number
+  /** Optional per-batch progress sink (watch wires this to a TTY-gated stderr
+   * line in human mode). Receives a human-readable "embedding N/M chunks" note. */
+  onProgress?: (msg: string) => void
 }
 
 export interface EmbedWorkerResult {
@@ -109,6 +112,7 @@ export async function runEmbedWorkerOnce(
     embed,
     allChunks.map((c) => c.text),
     EMBED_BATCH_CAP,
+    deps.onProgress,
   )
   if (vectors.length !== allChunks.length) {
     throw new CompostError(
@@ -166,11 +170,16 @@ async function embedInBatches(
   embed: (texts: string[]) => Promise<number[][]>,
   texts: string[],
   cap: number,
+  onProgress?: (msg: string) => void,
 ): Promise<number[][]> {
-  if (texts.length <= cap) return embed(texts)
+  if (texts.length <= cap) {
+    onProgress?.(`embedding ${texts.length}/${texts.length} chunks`)
+    return embed(texts)
+  }
   const out: number[][] = []
   for (let i = 0; i < texts.length; i += cap) {
     const slice = texts.slice(i, i + cap)
+    onProgress?.(`embedding ${Math.min(i + slice.length, texts.length)}/${texts.length} chunks`)
     const partial = await embed(slice)
     if (partial.length !== slice.length) {
       throw new CompostError(

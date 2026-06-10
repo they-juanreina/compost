@@ -1,6 +1,7 @@
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process'
 import { CompostError } from '../errors.js'
 import type { LegacyIngestRequest, LegacyIngestResponse } from '../legacy_client.js'
+import { scrubbedEnv } from './childEnv.js'
 
 /** Injectable spawn surface (real `spawnSync` in prod; a fake in tests). */
 export type SpawnImpl = (
@@ -42,7 +43,8 @@ export function legacyIngestNative(
   const spawn: SpawnImpl = opts.spawnImpl ?? (spawnSync as unknown as SpawnImpl)
   const res = spawn(opts.python, args, {
     cwd: opts.transcriberDir,
-    env: { ...process.env },
+    // Legacy document ingest needs no secrets — don't leak tokens to it (#236).
+    env: scrubbedEnv(),
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   })
