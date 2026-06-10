@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -80,6 +80,22 @@ describe('initSeed', () => {
   it('accepts alphanumeric names with dashes and underscores', () => {
     assert.doesNotThrow(() => initSeed('trust-S023', { cwd: work }))
     assert.doesNotThrow(() => initSeed('alpha_beta_2', { cwd: work }))
+  })
+
+  it('reports no warnings from an ordinary working folder', () => {
+    const result = initSeed('demo', { cwd: work })
+    assert.deepEqual(result.warnings, [])
+  })
+
+  it('warns when run from inside a folder named Seeds (nests Seeds/Seeds — #241)', () => {
+    const seedsDir = join(work, 'Seeds')
+    mkdirSync(seedsDir)
+    const result = initSeed('demo', { cwd: seedsDir })
+    // behavior is unchanged — the nested tree is still created…
+    assert.ok(existsSync(join(seedsDir, 'Seeds', 'demo', 'seed.md')))
+    // …but the foot-gun is called out
+    assert.equal(result.warnings.length, 1)
+    assert.ok(result.warnings[0]?.includes('Seeds/Seeds'), result.warnings[0])
   })
 })
 

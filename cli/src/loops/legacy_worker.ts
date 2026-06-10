@@ -9,11 +9,10 @@ import {
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { legacyIngestNative } from '../lib/legacyNative.js'
 import { resolveNativeRuntime } from '../lib/nativeRuntime.js'
-import { JobQueue, stateDbPath } from '../lib/queue.js'
+import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
 
 const AGENT_NAME = 'legacy-ingest-worker'
 const AGENT_VERSION = '0.1.0'
-const MAX_ATTEMPTS = 3
 
 /**
  * Optional per-file sidecar: `<source_path>.compost.json` next to the CSV/XLSX

@@ -6,6 +6,10 @@ import Database from 'better-sqlite3'
 export type JobKind = 'transcribe' | 'legacy-ingest'
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
 
+/** Attempts before a job moves to permanent `failed` status. Shared by the
+ * workers and surfaced in user-facing messages (`compost jobs requeue`). */
+export const MAX_ATTEMPTS = 3
+
 export interface Job {
   id: number
   kind: JobKind
@@ -131,7 +135,7 @@ export class JobQueue {
       .run(this.now().toISOString(), id)
   }
 
-  fail(id: number, error: string, maxAttempts = 3): void {
+  fail(id: number, error: string, maxAttempts = MAX_ATTEMPTS): void {
     const row = this.db.prepare('SELECT attempts FROM jobs WHERE id = ?').get(id) as
       | { attempts: number }
       | undefined
@@ -148,6 +152,37 @@ export class JobQueue {
         : this.db.prepare('SELECT * FROM jobs WHERE status = ? ORDER BY id').all(status)
     ) as JobRow[]
     return rows.map(rowToJob)
+  }
+
+  counts(): Record<JobStatus, number> {
+    const rows = this.db
+      .prepare('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status')
+      .all() as Array<{ status: JobStatus; n: number }>
+    const out: Record<JobStatus, number> = { queued: 0, running: 0, done: 0, failed: 0 }
+    for (const r of rows) out[r.status] = r.n
+    return out
+  }
+
+  /** Reset permanently-failed jobs to `queued` with a fresh attempt budget.
+   * The last error is kept on the row until the retry overwrites it, so
+   * `compost jobs` still shows why the job died. Pass an id to requeue one
+   * job; omit it to requeue every failed job. Returns the requeued jobs. */
+  requeue(id?: number): Job[] {
+    const tx = this.db.transaction(() => {
+      const rows = (
+        id === undefined
+          ? this.db.prepare("SELECT * FROM jobs WHERE status = 'failed' ORDER BY id").all()
+          : this.db.prepare("SELECT * FROM jobs WHERE status = 'failed' AND id = ?").all(id)
+      ) as JobRow[]
+      const ts = this.now().toISOString()
+      for (const row of rows) {
+        this.db
+          .prepare("UPDATE jobs SET status = 'queued', attempts = 0, updated_at = ? WHERE id = ?")
+          .run(ts, row.id)
+      }
+      return rows.map((row) => rowToJob({ ...row, status: 'queued', attempts: 0, updated_at: ts }))
+    })
+    return tx()
   }
 
   close(): void {

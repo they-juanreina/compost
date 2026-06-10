@@ -1,5 +1,5 @@
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { CompostError } from '../errors.js'
@@ -38,6 +38,9 @@ export interface InitResult {
   created_at: string
   files: string[]
   directories: string[]
+  /** Non-fatal foot-gun notices, e.g. running init from inside a Seeds/ folder
+   * (which nests Seeds/Seeds/ — #241). Empty when nothing looks off. */
+  warnings: string[]
 }
 
 export function initSeed(name: string, opts: InitOptions = {}): InitResult {
@@ -86,11 +89,22 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
     cpSync(SAMPLE_SEED_DIR, seedPath, { recursive: true })
   }
 
+  const warnings: string[] = []
+  if (basename(cwd) === 'Seeds') {
+    // Init always scaffolds <cwd>/Seeds/<name>; run from inside a folder named
+    // Seeds that nests Seeds/Seeds/ — almost always a walkthrough mistake, and
+    // hand-moving the seed afterwards strands its job queue (#241, #240).
+    warnings.push(
+      `the current folder is itself named Seeds, so the seed was created at ${seedPath} (note the nested Seeds/Seeds/). If you meant ${resolve(cwd, name)}, remove the new tree and rerun compost init from ${resolve(cwd, '..')}.`,
+    )
+  }
+
   return {
     seed_name: name,
     path: seedPath,
     created_at: createdAt,
     files: files.map((f) => f.path),
     directories: createdDirs,
+    warnings,
   }
 }
