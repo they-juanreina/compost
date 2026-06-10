@@ -5,6 +5,8 @@ import { promisify } from 'node:util'
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
+import { auditSecretsPerms, HF_ALIASES, type KeychainBackend, resolveSecret } from './secrets.js'
+import { checkVersionStatus, UPGRADE_COMMAND } from './version.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -42,6 +44,10 @@ export interface SetupDeps {
   requiredOllamaModels?: string[]
   /** Override Apple-Silicon detection (tests). Defaults to the host arch. */
   appleSilicon?: boolean
+  /** `~/.compost` root override for the secrets perms audit (tests). */
+  home?: string
+  /** Keychain backend for HF-token resolution; `null` forces file-only (tests). */
+  keychain?: KeychainBackend | null
 }
 
 const PYANNOTE_GATED_REPOS = ['pyannote/speaker-diarization-3.1', 'pyannote/segmentation-3.0']
@@ -74,6 +80,33 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
   const requiredModels = deps.requiredOllamaModels ?? DEFAULT_REQUIRED_MODELS
 
   const checks: SetupCheck[] = []
+
+  // 0. Is this install current? An outdated CLI misses bundled components and
+  // produces failures that look like machine problems (#245 — a field user on
+  // an old rc spent a session debugging exactly that). Best-effort: the check
+  // is silently skipped offline or when the registry doesn't answer fast.
+  const version = await checkVersionStatus(
+    deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {},
+  )
+  if (version !== null) {
+    checks.push(
+      version.behind
+        ? {
+            id: 'version',
+            label: 'CLI version',
+            status: 'warn',
+            detail: `${version.current} installed, ${version.latest} available — old versions miss bundled components`,
+            fix: UPGRADE_COMMAND,
+          }
+        : {
+            id: 'version',
+            label: 'CLI version',
+            status: 'ok',
+            detail: `${version.current} (latest)`,
+            fix: null,
+          },
+    )
+  }
 
   // 1. Ollama reachable + 2. required models present (one probe, two checks).
   let ollamaTags: string[] | null = null
@@ -223,24 +256,53 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
     }
   }
 
-  // 5. HuggingFace token present.
-  const hfToken = env.HUGGINGFACE_TOKEN || env.HF_TOKEN
-  if (!hfToken) {
+  // 4c. Derived: is ANY ingest engine available? Document ingest (PDF/DOCX/…)
+  // rides the same engine as transcription, so a machine with neither the
+  // native runtime nor the Docker service cannot process a single inbox file —
+  // that is a FAIL, not an accumulation of warns (#242). The individual checks
+  // above stay warn-level because either one alone is sufficient.
+  const nativeOk = checks.some((c) => c.id === 'native-transcribe' && c.status === 'ok')
+  if (!transcriberOk && !nativeOk) {
+    checks.push({
+      id: 'ingest-engine',
+      label: 'Ingest engine',
+      status: 'fail',
+      detail:
+        'no transcription engine available — audio AND document (PDF/DOCX/…) ingest will fail',
+      fix:
+        (deps.appleSilicon ?? isAppleSilicon())
+          ? 'compost setup  (guided; or compost setup --provision-native)'
+          : 'compost setup  (guided; or start the Docker transcriber)',
+    })
+  }
+
+  // 5. HuggingFace token present. Resolved by the documented precedence:
+  // env > OS keychain > ~/.compost/secrets.env (0600). A keychain- or
+  // file-stored token counts as "set" here just like an exported env var.
+  const secretsDeps = {
+    env,
+    ...(deps.home !== undefined ? { home: deps.home } : {}),
+    ...(deps.keychain !== undefined ? { keychain: deps.keychain } : {}),
+  }
+  const hf = resolveSecret('HUGGINGFACE_TOKEN', { ...secretsDeps, aliases: HF_ALIASES })
+  if (!hf) {
     checks.push({
       id: 'hf-token',
       label: 'HuggingFace token',
       status: 'warn',
-      detail: 'HUGGINGFACE_TOKEN not set (needed for pyannote diarization)',
-      fix: 'Create a token at hf.co/settings/tokens, then export HUGGINGFACE_TOKEN=hf_…',
+      detail:
+        'not set in env, keychain, or ~/.compost/secrets.env (needed for pyannote diarization)',
+      fix: 'compost secrets set HUGGINGFACE_TOKEN   (or export HUGGINGFACE_TOKEN=hf_…)',
     })
   } else {
     checks.push({
       id: 'hf-token',
       label: 'HuggingFace token',
       status: 'ok',
-      detail: 'set',
+      detail: `set (source: ${hf.source})`,
       fix: null,
     })
+    const hfToken = hf.value
     // 6. pyannote license — must be a FILE fetch, not a metadata ping (the
     // /api/models endpoint returns 200 even when the license isn't accepted).
     for (const repo of PYANNOTE_GATED_REPOS) {
@@ -302,6 +364,21 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
             fix: 'compost init <name>  (scaffolds .compost/config.toml)',
           },
     )
+  }
+
+  // 9. Secret-file permissions. A group/world-readable token file is a real
+  // leak, but with a one-line fix — surface it as a warn (the startup
+  // autoloader independently *refuses* to read an insecure secrets.env). Only
+  // emitted when there's something to flag; POSIX-only (Windows uses ACLs).
+  const permIssues = auditSecretsPerms(secretsDeps)
+  for (const issue of permIssues) {
+    checks.push({
+      id: `secret-perms:${issue.path}`,
+      label: 'Secret file permissions',
+      status: 'warn',
+      detail: `${issue.path} is ${issue.mode} — ${issue.detail}`,
+      fix: issue.fix,
+    })
   }
 
   const ready = checks.every((c) => c.status !== 'fail')

@@ -37,7 +37,7 @@ export function registerLabel(program: Command): void {
     .command('label')
     .description(
       'Map diarized speaker cluster ids to real names (#177). Persists to a sidecar ' +
-        'so names survive re-transcription. e.g. --map SPEAKER_00=Juan,SPEAKER_01=P07',
+        'so names survive re-transcription. e.g. --map S0=Juan,S1=P07',
     )
     .argument('<session-id>', 'Session id (e.g. S001)')
     .requiredOption('--map <pairs>', 'Comma-separated clusterId=Name pairs')

@@ -12,6 +12,7 @@ import { registerExport } from './commands/export.js'
 import { registerImport } from './commands/import.js'
 import { registerIngest } from './commands/ingest.js'
 import { registerInit } from './commands/init.js'
+import { registerJobs } from './commands/jobs.js'
 import { registerLabel } from './commands/label.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
@@ -22,6 +23,7 @@ import { registerRerun } from './commands/rerun.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
 import { registerSearch } from './commands/search.js'
+import { registerSecrets } from './commands/secrets.js'
 import { registerServe } from './commands/serve.js'
 import { registerSession } from './commands/session.js'
 import { registerSetup } from './commands/setup.js'
@@ -33,7 +35,7 @@ import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
 import { registerWatch } from './commands/watch.js'
 
-const VERSION = '0.1.2'
+const VERSION = '0.1.3'
 
 export function buildProgram(): Command {
   const program = new Command()
@@ -56,6 +58,7 @@ export function buildProgram(): Command {
   registerTranscribe(program)
   registerLabel(program)
   registerWatch(program)
+  registerJobs(program)
   registerSnap(program)
   registerStatus(program)
   registerBlame(program)
@@ -72,6 +75,7 @@ export function buildProgram(): Command {
   registerRerun(program)
   registerSynthesize(program)
   registerSearch(program)
+  registerSecrets(program)
   registerSession(program)
   registerCreate(program)
   registerEndorse(program)

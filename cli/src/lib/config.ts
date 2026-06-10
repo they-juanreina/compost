@@ -8,6 +8,9 @@ import { CompostError } from '../errors.js'
 export interface ProviderSettings {
   base_url?: string
   api_key_env?: string
+  /** Per-request timeout override (ms). Large local models can need more than
+   * the 120s default just to load into memory. */
+  timeout_ms?: number
 }
 
 export interface CompostConfig {

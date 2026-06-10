@@ -65,4 +65,5 @@ Seeds/
 *.seed
 *.pid.lock
 secrets/
+secrets.env
 .envrc

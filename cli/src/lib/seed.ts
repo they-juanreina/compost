@@ -1,9 +1,10 @@
 import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { CompostError } from '../errors.js'
 import { loadTemplate, render } from './templates.js'
+import { applyUserConfig, loadUserConfig } from './userConfig.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 // templates/ is a sibling of src/ and dist/ (lib/ → ../../templates).
@@ -30,6 +31,8 @@ export interface InitOptions {
   now?: () => Date
   /** Unpack the bundled sample seed (a redacted single-session corpus). */
   fromSample?: boolean
+  /** Env for resolving the user-level config overlay (tests pass COMPOST_HOME). */
+  env?: NodeJS.ProcessEnv
 }
 
 export interface InitResult {
@@ -38,6 +41,9 @@ export interface InitResult {
   created_at: string
   files: string[]
   directories: string[]
+  /** Non-fatal foot-gun notices, e.g. running init from inside a Seeds/ folder
+   * (which nests Seeds/Seeds/ — #241). Empty when nothing looks off. */
+  warnings: string[]
 }
 
 export function initSeed(name: string, opts: InitOptions = {}): InitResult {
@@ -69,10 +75,17 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
   }
 
   const vars: Record<string, string> = { seed_name: name, created_at: createdAt }
+  // The setup wizard's machine-wide answers (model routing, provider tweaks)
+  // overlay the template, so a new seed starts with routes that actually
+  // resolve on this machine instead of the template's guesses.
+  const configToml = applyUserConfig(
+    render(loadTemplate('config.toml'), vars),
+    loadUserConfig(opts.env ?? process.env),
+  )
   const files: Array<{ path: string; content: string }> = [
     { path: 'seed.md', content: render(loadTemplate('seed.md'), vars) },
     { path: '.compost/AGENTS.md', content: render(loadTemplate('AGENTS.md'), vars) },
-    { path: '.compost/config.toml', content: render(loadTemplate('config.toml'), vars) },
+    { path: '.compost/config.toml', content: configToml },
   ]
 
   for (const file of files) {
@@ -86,11 +99,22 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
     cpSync(SAMPLE_SEED_DIR, seedPath, { recursive: true })
   }
 
+  const warnings: string[] = []
+  if (basename(cwd) === 'Seeds') {
+    // Init always scaffolds <cwd>/Seeds/<name>; run from inside a folder named
+    // Seeds that nests Seeds/Seeds/ — almost always a walkthrough mistake, and
+    // hand-moving the seed afterwards strands its job queue (#241, #240).
+    warnings.push(
+      `the current folder is itself named Seeds, so the seed was created at ${seedPath} (note the nested Seeds/Seeds/). If you meant ${resolve(cwd, name)}, remove the new tree and rerun compost init from ${resolve(cwd, '..')}.`,
+    )
+  }
+
   return {
     seed_name: name,
     path: seedPath,
     created_at: createdAt,
     files: files.map((f) => f.path),
     directories: createdDirs,
+    warnings,
   }
 }

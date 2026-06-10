@@ -1,12 +1,50 @@
 # Changelog
 
-## Unreleased
+## v0.1.3 — 2026-06-10
 
-Deepens provenance from an audit trail into a reproducibility + agreement layer.
-See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
+Onboarding becomes a guided path instead of a checklist (`compost setup` wizard,
+auto-linked documents, dead-letter queue recovery — see
+[docs/onboarding-journey.md](docs/onboarding-journey.md)), and provenance
+deepens from an audit trail into a reproducibility + agreement layer
+([docs/provenance-deepening-design.md](docs/provenance-deepening-design.md)).
 
 ### Added
 
+- **`compost setup` is now a guided wizard at a terminal.** Each missing
+  prerequisite becomes a per-step confirmed fix — install/start Ollama, pull
+  `bge-m3`, provision the native transcription engine (or start the Docker
+  fallback with the correct bundled path), paste the HuggingFace token (hidden
+  input, stored in the OS keychain, both pyannote licenses verified on the
+  spot), and choose how `compost chat` runs: a local Ollama model (pulled for
+  you) or an Anthropic API key. Choices are saved to a user-level
+  `~/.compost/config.toml` that `compost init` overlays onto every new seed's
+  routing, and the wizard offers to update existing seeds. Piped/`--json`/
+  `--check` invocations keep the read-only diagnostic exactly as before.
+- **Documents auto-link into their sessions (#246).** The legacy worker now
+  writes the normalized document as `sessions/SXXX/transcript.json` (with the
+  session's real id and a rendered `transcript.md`) and names the `legacy/`
+  copy after the researcher's original filename — no more `legacy/source.json`
+  collisions and no more manual `cp` step in the first-study walkthrough. An
+  existing transcript is never overwritten.
+- **`providers.<name>.timeout_ms` config + a real timeout error.** Large local
+  models can need more than the 120s default just to load; the per-provider
+  timeout is now configurable, and an Ollama timeout reports which model
+  stalled and the two ways out instead of a bare "operation was aborted".
+
+- **`compost jobs` + `compost jobs requeue` — dead-letter queue visibility
+  (#239).** A job that burns its 3 attempts parks as permanently `failed` and
+  the watcher skips it; previously nothing listed it, nothing could revive it,
+  `watch --once` reported `ok` over the dead queue, and `status` showed the
+  session as `queued` forever. Now `compost jobs` lists the queue with last
+  errors, `compost jobs requeue [--id N]` resets failed jobs with a fresh
+  attempt budget (warning when a job's source file no longer exists on disk —
+  #240), `watch` surfaces given-up jobs as a failure (non-zero exit, with the
+  recovery command), and `status` warns per seed.
+- **`compost init` warns when run inside a folder named `Seeds` (#241).** Init
+  always scaffolds `<cwd>/Seeds/<name>`, so running it from inside a Seeds
+  folder silently nests `Seeds/Seeds/` — a first-run foot-gun that, combined
+  with hand-moving the seed afterwards, strands the job queue. Behavior is
+  unchanged; the output now carries a `warnings[]` entry naming both paths.
 - **Content-addressed input persistence.** Migration `0003` adds an `ai_inputs`
   table and a nullable `events.input_id` FK. AI/agent generations now persist the
   reconstructable bundle (model, params, system prompt, prompt, context) that
@@ -34,6 +72,48 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
   `provagent:ResponseData`; a deterministic agent → `provagent:AgentTool`. Because
   inputs are now persisted, an AI invocation expresses its real inputs, not an
   opaque hash. Extended `compost_export` MCP tool.
+- **`compost secrets set|get|rm|list` — secure-by-default token storage.** A
+  documented resolution precedence for the HuggingFace token and LLM provider
+  keys: environment variable > OS keychain (macOS `security` / Linux
+  `secret-tool` — shelled out, **zero new dependencies**) > `~/.compost/secrets.env`
+  (a `0600`-enforced dotenv). `set` reads the value from stdin (kept out of shell
+  history); `list` shows where each secret lives but never the value. The dotenv
+  is auto-loaded into the environment at startup so file-stored secrets resolve
+  everywhere an env var would, without editing a shell profile — and an insecure
+  (group/world-readable) `secrets.env` is *refused, not read*.
+
+### Fixed
+
+- **A moved or renamed study folder keeps a working queue (#240).** Job rows
+  and ingest events now store paths relative to the seed root (in-seed files
+  only — `compost ingest` targets outside the seed stay absolute, and are now
+  resolved against the cwd at enqueue time instead of stored verbatim).
+  Workers resolve rows against the current seed location; legacy absolute
+  rows from before this change are recovered by re-rooting their
+  `sessions/…` tail under the seed.
+- **`compost setup` warns when the install is outdated (#245).** A
+  best-effort npm dist-tag probe (silently skipped offline) compares the
+  running version to `latest`; the wizard offers the upgrade as its first
+  step, and the provision-native locator error now names the usual cause —
+  an install predating the bundled transcriber — with the upgrade command.
+- **`compost setup` no longer reports `ready: true` on a machine that cannot
+  ingest anything (#242).** When neither the native runtime nor the Docker
+  transcriber is available, a derived `ingest-engine` check fails (audio AND
+  document ingest both require the engine); either engine alone satisfies it.
+
+### Security
+
+- **`compost setup` now audits secret-file permissions.** Warns (non-blocking,
+  with the exact `chmod`) when a group/world-readable secret file is found under
+  `~/.compost` — including hand-rolled files like a `644 ~/.compost/hf_token/…`.
+  `compost secrets set` always writes `0600` files in a `0700` `~/.compost`.
+- **HF token resolution mirrors the LLM-key model.** `setup`, native
+  transcription, and every command now resolve `HUGGINGFACE_TOKEN`/`HF_TOKEN` by
+  the env > keychain > `0600`-dotenv precedence instead of env-only — so users no
+  longer hand-roll insecure token files. New SECURITY.md "Storing your tokens"
+  section documents the hierarchy, the hard rule (secrets never in `Seeds/` or
+  `config.toml`; only the env-var *name* in `api_key_env`), and multi-user
+  guidance.
 
 ## v0.1.2 — 2026-06-06
 

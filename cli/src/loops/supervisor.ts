@@ -1,3 +1,4 @@
+import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
 import { getLogPath, Logger } from '../logging.js'
 import { type EmbedWorkerDeps, runEmbedWorkerOnce } from './embed_worker.js'
 import { processInbox } from './ingest_watcher.js'
@@ -9,6 +10,9 @@ export interface SupervisorResult {
   transcribe: { processed: number; failed: number }
   legacy: { processed: number; failed: number }
   embed: { embedded: number; inserted: number; transcripts_scanned: number }
+  /** Jobs that exhausted their attempt budget and sit permanently failed in the
+   * queue — nothing will pick them up until `compost jobs requeue` (#239). */
+  dead_jobs: number
   /** Human-readable failure summaries; empty when the pass was clean. The watch
    * command turns a non-empty list into a non-ok status + non-zero exit (#164). */
   failures: string[]
@@ -91,11 +95,24 @@ export async function runSupervisorOnce(
     }
   }
 
+  // Given-up jobs (status 'failed' after MAX_ATTEMPTS) are skipped by claim(),
+  // so without this a pass over a dead queue reports ok forever (#239).
+  const queue = new JobQueue(stateDbPath(seedPath))
+  const deadJobs = queue.counts().failed
+  queue.close()
+  if (deadJobs > 0) {
+    failures.push(
+      `${deadJobs} job(s) permanently failed after ${MAX_ATTEMPTS} attempts — run \`compost jobs\` to inspect and \`compost jobs requeue\` to retry`,
+    )
+    await logger.warn('dead jobs in queue', { count: deadJobs })
+  }
+
   return {
     inbox: { moved: inbox.moved.length, unsupported: inbox.unsupported.length },
     transcribe: { processed: worker.processed, failed: transcribeFailed },
     legacy,
     embed,
+    dead_jobs: deadJobs,
     failures,
   }
 }

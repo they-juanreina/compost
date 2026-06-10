@@ -54,6 +54,7 @@ export function registerInit(program: Command): void {
             created_at: result.created_at,
             files: result.files,
             directories: result.directories,
+            warnings: result.warnings,
           },
           out,
         )

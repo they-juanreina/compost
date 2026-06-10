@@ -1,0 +1,151 @@
+{
+  "schema_version": "1.0",
+  "kind": "session",
+  "session_id": "S001",
+  "source": "sample/sessions/S001/source.mp3",
+  "language": "es-CO",
+  "duration_ms": 15000,
+  "modality": ["audio"],
+  "speakers": [
+    {
+      "id": "S0",
+      "name": "S0",
+      "type": "moderator"
+    },
+    {
+      "id": "S1",
+      "name": "S1",
+      "type": "participant"
+    }
+  ],
+  "utterances": [
+    {
+      "id": "U-0001",
+      "speaker_id": "S0",
+      "turn": 1,
+      "start_ms": 1000,
+      "end_ms": 5000,
+      "text": "¿Qué haces cuando entra una alerta automática?",
+      "words": [
+        {
+          "w": "¿Qué",
+          "s": 1000,
+          "e": 1300,
+          "conf": 0.99
+        },
+        {
+          "w": "haces",
+          "s": 1300,
+          "e": 1700,
+          "conf": 0.98
+        },
+        {
+          "w": "cuando",
+          "s": 1700,
+          "e": 2100,
+          "conf": 0.97
+        },
+        {
+          "w": "entra",
+          "s": 2100,
+          "e": 2500,
+          "conf": 0.96
+        }
+      ],
+      "diarization": {
+        "confidence": 1.0
+      },
+      "prosody": {
+        "volume": "low",
+        "pace": "slow",
+        "hesitations": 0
+      }
+    },
+    {
+      "id": "U-0002",
+      "speaker_id": "S1",
+      "turn": 2,
+      "start_ms": 9000,
+      "end_ms": 14000,
+      "text": "No sé si confiar; prefiero verificar manualmente.",
+      "words": [
+        {
+          "w": "No",
+          "s": 9300,
+          "e": 9500,
+          "conf": 0.95
+        },
+        {
+          "w": "sé",
+          "s": 9500,
+          "e": 9700,
+          "conf": 0.94
+        },
+        {
+          "w": "si",
+          "s": 9700,
+          "e": 9900,
+          "conf": 0.93
+        },
+        {
+          "w": "confiar",
+          "s": 9900,
+          "e": 10600,
+          "conf": 0.92
+        }
+      ],
+      "diarization": {
+        "confidence": 1.0
+      },
+      "prosody": {
+        "volume": "high",
+        "pace": "slow",
+        "hesitations": 0
+      }
+    }
+  ],
+  "silences": [
+    {
+      "id": "SIL-001",
+      "start_ms": 5000,
+      "end_ms": 9000,
+      "duration_ms": 4000,
+      "context": "interruption"
+    }
+  ],
+  "cues": [
+    {
+      "id": "CUE-001",
+      "kind": "overlap",
+      "start_ms": 4000,
+      "end_ms": 5000,
+      "source": "audio"
+    },
+    {
+      "id": "CUE-002",
+      "kind": "laughter",
+      "start_ms": 1000,
+      "end_ms": 5000,
+      "source": "audio",
+      "confidence": 0.8,
+      "speaker_id": "S0"
+    },
+    {
+      "id": "CUE-003",
+      "kind": "sigh",
+      "start_ms": 9000,
+      "end_ms": 14000,
+      "source": "audio",
+      "confidence": 0.8,
+      "speaker_id": "S1"
+    }
+  ],
+  "frames": [],
+  "glossary_refs": [],
+  "provenance": {
+    "transcriber": "compost-transcriber@0.1.0",
+    "asr_model": "mlx-community/parakeet-tdt-0.6b-v3 (parakeet)",
+    "diarizer": "pyannote-audio@3.3",
+    "audio_cues": "silero-vad@5.0 + whisper-events"
+  }
+}

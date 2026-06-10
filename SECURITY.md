@@ -124,6 +124,66 @@ remove this long-lived secret. Until then: token rotation is on the
 calendar; the GitHub repo secret is the only place it's stored locally;
 it does not exist on any maintainer machine.
 
+## Storing your tokens
+
+Compost needs two kinds of secret: a **HuggingFace token** (for the gated
+pyannote diarization model) and, only if you route to a cloud LLM, a **provider
+API key** (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). Compost never writes a
+raw secret into a seed, `config.toml`, or the event ledger — `config.toml`
+stores only the *name* of an environment variable (`api_key_env = "ANTHROPIC_API_KEY"`),
+never the value.
+
+### Where compost looks (resolution precedence)
+
+A secret is resolved by this order — the first hit wins:
+
+1. **Environment variable** — `HUGGINGFACE_TOKEN` / `HF_TOKEN`, `ANTHROPIC_API_KEY`, … in `process.env`.
+2. **OS keychain** — macOS Keychain (`security`), Linux Secret Service (`secret-tool`/libsecret).
+3. **`~/.compost/secrets.env`** — a `0600` dotenv, **refused if its permissions are loose**.
+
+The env var wins at resolution time because it's the explicit, per-invocation
+override (CI, `direnv`, a one-off `HUGGINGFACE_TOKEN=… compost …`). That's
+independent of *where you should store a secret at rest* (below).
+
+### Where you should store it (recommended hierarchy)
+
+1. **OS keychain (best)** — encrypted at rest, never a plaintext file. Use:
+   ```sh
+   compost secrets set HUGGINGFACE_TOKEN     # prompts via stdin; not in shell history
+   printf %s "$TOKEN" | compost secrets set ANTHROPIC_API_KEY
+   ```
+   `compost secrets get <NAME>` prints the resolved value (for scripting),
+   `compost secrets list` shows which secrets are set and where (never the
+   value), and `compost secrets rm <NAME>` removes it.
+2. **Per-user environment / `direnv`** — export it from your shell profile or a
+   per-user `.envrc`. Good for CI and ephemeral shells.
+3. **`~/.compost/secrets.env` (0600 dotenv)** — the fallback when no keychain is
+   available (Windows, headless Linux without libsecret). `compost secrets set`
+   writes it `0600` automatically; compost loads it into the environment at
+   startup so the secret resolves everywhere an env var would, **without editing
+   your shell profile**. An insecure (group/world-readable) `secrets.env` is
+   *refused, not read* — fix it with `chmod 600 ~/.compost/secrets.env`.
+
+### Hard rules
+
+- **Never put a secret in `Seeds/` or `config.toml`.** Only the env-var *name*
+  belongs in config (`api_key_env`). `Seeds/` holds interview content and is
+  shared/synced; a token there is a leak.
+- **Keep secret files `0600` and `~/.compost` `0700`.** `compost setup` warns
+  (non-blocking) when it finds a group/world-readable secret file under
+  `~/.compost`, with the exact `chmod` to fix it.
+- **Don't commit a `secrets.env`.** `.env`, `.env.local`, and `secrets.env` are
+  gitignored; keep it that way.
+
+### Shared / multi-user machines
+
+There is **no shared secret file**. Each user keeps their own token in their
+own per-user keychain or per-user environment. A world-readable token file on a
+multi-user box leaks to every account on it — don't create one. The
+`~/.compost/secrets.env` fallback is per-user (under each user's home) and
+enforced `0600`, so it's safe; a *shared* path pointed at by
+`COMPOST_SECRETS_ENV` is not — never aim multiple users at one file.
+
 ## Hardening notes for users
 
 - **Don't run `compost` against a hostile transcript** and then chat with
@@ -137,6 +197,8 @@ it does not exist on any maintainer machine.
   you don't, the default falls back to `$USER` then `"researcher"`.
 - **Don't commit `Seeds/`** — it's gitignored by default. Transcripts
   contain interview content.
-- **Keep `.env.local` out of git** — it's gitignored. If you need to
-  rotate `HUGGINGFACE_TOKEN` or `ANTHROPIC_API_KEY`, rotate them via the
-  provider dashboards.
+- **Store tokens with `compost secrets`, not hand-rolled files** — see
+  [Storing your tokens](#storing-your-tokens) for the keychain > per-user env >
+  `0600` dotenv hierarchy. `.env.local`, `.env`, and `secrets.env` are
+  gitignored; keep them that way. If a token leaks, rotate it via the provider
+  dashboard (HuggingFace / Anthropic / OpenAI).

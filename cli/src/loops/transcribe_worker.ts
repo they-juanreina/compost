@@ -1,13 +1,12 @@
 import { existsSync } from 'node:fs'
 
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
-import { JobQueue, stateDbPath } from '../lib/queue.js'
+import { JobQueue, MAX_ATTEMPTS, resolveJobSource, stateDbPath } from '../lib/queue.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
 import { TranscriberClient } from '../transcriber_client.js'
 
 const AGENT_NAME = 'transcribe-worker'
 const AGENT_VERSION = '0.1.0'
-const MAX_ATTEMPTS = 3
 
 export interface WorkerStepResult {
   processed: number
@@ -42,7 +41,12 @@ export async function runTranscribeWorkerOnce(
       const sessionId = String(job.payload.session_id ?? 'S?')
       try {
         const language = typeof job.payload.language === 'string' ? job.payload.language : undefined
-        const resp = await client.transcribe(job.source_path, sessionId, seedPath, language)
+        const resp = await client.transcribe(
+          resolveJobSource(seedPath, job.source_path),
+          sessionId,
+          seedPath,
+          language,
+        )
         if (resp.status === 'failed_transcription') {
           queue.fail(job.id, 'service reported failed_transcription', MAX_ATTEMPTS)
           out.results.push({

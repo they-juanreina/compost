@@ -35,6 +35,21 @@ curl http://localhost:7862/health    # expect {"status":"ok",...}
 
 First build downloads multi-GB model weights; subsequent runs are cached.
 
+## A session is stuck `queued` and `compost watch --once` does nothing
+
+A failed job retries automatically, but only **3 times** — after that it parks
+as permanently failed and the watcher skips it. `compost watch --once` exits
+non-zero and names the count, and the seed's `warnings[]` in `compost status`
+point here.
+
+- Inspect: `compost jobs --seed <name>` (the `error` column says why it died —
+  usually the transcriber service was down, see above).
+- Fix the cause, then retry: `compost jobs requeue --seed <name>` followed by
+  `compost watch --once --seed <name>`.
+- `requeue` warns if a job's source file no longer exists on disk (e.g. the
+  seed folder was moved or renamed by hand) — re-drop the file into
+  `sessions/_inbox/` in that case.
+
 ## pyannote 403 / "license not accepted" even though the model page loads
 
 The model *page* loading is not proof — the gated *file* is what's checked.

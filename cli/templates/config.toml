@@ -38,9 +38,14 @@ include_drafts = "marked"
 [evals]
 storage = "sqlite"
 
-# LLM providers. Add API keys via env vars; compost reads `api_key_env`.
+# LLM providers. `api_key_env` is the NAME of an environment variable, never the
+# key itself — compost reads the value from the environment (or, transparently,
+# from the OS keychain / ~/.compost/secrets.env via `compost secrets set`).
+# NEVER paste a raw key here: this file lives in the (shared) seed. See
+# SECURITY.md → "Storing your tokens".
 [providers.ollama]
 base_url = "http://localhost:11434"
+# timeout_ms = 300000  # uncomment for very large local models (slow first load)
 
 [providers.lmstudio]
 base_url = "http://localhost:1234/v1"

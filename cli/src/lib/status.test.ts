@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import { CompostError } from '../errors.js'
+import { JobQueue, MAX_ATTEMPTS, stateDbPath } from './queue.js'
 import { initSeed } from './seed.js'
 import { gatherStatus } from './status.js'
 
@@ -196,5 +197,23 @@ describe('gatherStatus', () => {
     const seed = gatherStatus({ cwd: work }).seeds[0]
     assert.ok(seed)
     assert.deepEqual(seed.warnings, [])
+  })
+
+  it('warns when the queue holds permanently failed jobs (#239)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const queue = new JobQueue(stateDbPath(path))
+    queue.enqueue('transcribe', join(path, 'sessions/S001/source.mp3'), { session_id: 'S001' })
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      const job = queue.claim('transcribe')
+      assert.ok(job)
+      queue.fail(job.id, 'service unreachable')
+    }
+    queue.close()
+
+    const seed = gatherStatus({ cwd: work }).seeds[0]
+    assert.ok(seed)
+    assert.deepEqual(seed.warnings, [
+      '1 permanently failed job(s) in the queue — run `compost jobs requeue`',
+    ])
   })
 })

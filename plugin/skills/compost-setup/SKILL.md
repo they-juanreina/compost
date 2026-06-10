@@ -52,7 +52,9 @@ Status meanings:
    - `docker compose -f transcriber/compose.yaml up --build -d` ✅ (warn: multi-GB first build)
 5. **Never** do these for the user — print the step and hand it off:
    - Installing Ollama / OrbStack / Docker.
-   - Setting `HUGGINGFACE_TOKEN` (a secret).
+   - Setting `HUGGINGFACE_TOKEN` (a secret). Hand off the secure command for the
+     user to run themselves: `compost secrets set HUGGINGFACE_TOKEN` (stores it
+     in the OS keychain; reads the value from stdin).
    - Accepting a HuggingFace license in the browser (note: **both**
      `pyannote/speaker-diarization-3.1` and `pyannote/segmentation-3.0` need
      accepting, on the account that owns the token).

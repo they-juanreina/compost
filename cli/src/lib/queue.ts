@@ -1,10 +1,14 @@
-import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import Database from 'better-sqlite3'
 
 export type JobKind = 'transcribe' | 'legacy-ingest'
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed'
+
+/** Attempts before a job moves to permanent `failed` status. Shared by the
+ * workers and surfaced in user-facing messages (`compost jobs requeue`). */
+export const MAX_ATTEMPTS = 3
 
 export interface Job {
   id: number
@@ -131,7 +135,7 @@ export class JobQueue {
       .run(this.now().toISOString(), id)
   }
 
-  fail(id: number, error: string, maxAttempts = 3): void {
+  fail(id: number, error: string, maxAttempts = MAX_ATTEMPTS): void {
     const row = this.db.prepare('SELECT attempts FROM jobs WHERE id = ?').get(id) as
       | { attempts: number }
       | undefined
@@ -150,6 +154,37 @@ export class JobQueue {
     return rows.map(rowToJob)
   }
 
+  counts(): Record<JobStatus, number> {
+    const rows = this.db
+      .prepare('SELECT status, COUNT(*) AS n FROM jobs GROUP BY status')
+      .all() as Array<{ status: JobStatus; n: number }>
+    const out: Record<JobStatus, number> = { queued: 0, running: 0, done: 0, failed: 0 }
+    for (const r of rows) out[r.status] = r.n
+    return out
+  }
+
+  /** Reset permanently-failed jobs to `queued` with a fresh attempt budget.
+   * The last error is kept on the row until the retry overwrites it, so
+   * `compost jobs` still shows why the job died. Pass an id to requeue one
+   * job; omit it to requeue every failed job. Returns the requeued jobs. */
+  requeue(id?: number): Job[] {
+    const tx = this.db.transaction(() => {
+      const rows = (
+        id === undefined
+          ? this.db.prepare("SELECT * FROM jobs WHERE status = 'failed' ORDER BY id").all()
+          : this.db.prepare("SELECT * FROM jobs WHERE status = 'failed' AND id = ?").all(id)
+      ) as JobRow[]
+      const ts = this.now().toISOString()
+      for (const row of rows) {
+        this.db
+          .prepare("UPDATE jobs SET status = 'queued', attempts = 0, updated_at = ? WHERE id = ?")
+          .run(ts, row.id)
+      }
+      return rows.map((row) => rowToJob({ ...row, status: 'queued', attempts: 0, updated_at: ts }))
+    })
+    return tx()
+  }
+
   close(): void {
     this.db.close()
   }
@@ -157,4 +192,37 @@ export class JobQueue {
 
 export function stateDbPath(seedPath: string): string {
   return join(seedPath, '.compost', 'state.sqlite')
+}
+
+/**
+ * Paths stored in the queue (and event log) are seed-relative whenever the
+ * file lives inside the seed, so a study folder moved or renamed in Finder
+ * keeps a working queue (#240). Paths outside the seed (`compost ingest
+ * ~/elsewhere/file.mp3`) stay absolute — they're machine-pinned either way.
+ */
+export function toSeedRelative(seedPath: string, p: string): string {
+  if (!isAbsolute(p)) return p
+  const rel = relative(seedPath, p)
+  if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) return p
+  return rel
+}
+
+/**
+ * Resolve a stored source path against the seed root. Relative rows (the
+ * current format) just join. Absolute rows are legacy (pre-#240) — when the
+ * recorded location no longer exists (the seed was moved), recover by
+ * re-rooting the `sessions/…` tail under the current seed; if nothing
+ * resolves, return the original so the worker fails with the real path in
+ * the error.
+ */
+export function resolveJobSource(seedPath: string, p: string): string {
+  if (!isAbsolute(p)) return join(seedPath, p)
+  if (existsSync(p)) return p
+  const marker = `${sep}sessions${sep}`
+  const at = p.indexOf(marker)
+  if (at !== -1) {
+    const rerooted = join(seedPath, p.slice(at + 1))
+    if (existsSync(rerooted)) return rerooted
+  }
+  return p
 }
