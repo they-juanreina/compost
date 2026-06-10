@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## v0.1.3 — 2026-06-10
 
-Deepens provenance from an audit trail into a reproducibility + agreement layer.
-See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
+Onboarding becomes a guided path instead of a checklist (`compost setup` wizard,
+auto-linked documents, dead-letter queue recovery — see
+[docs/onboarding-journey.md](docs/onboarding-journey.md)), and provenance
+deepens from an audit trail into a reproducibility + agreement layer
+([docs/provenance-deepening-design.md](docs/provenance-deepening-design.md)).
 
 ### Added
 
