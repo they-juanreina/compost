@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 
 import { registerAgreement } from './commands/agreement.js'
+import { registerBackup } from './commands/backup.js'
 import { registerBlame } from './commands/blame.js'
 import { registerChat } from './commands/chat.js'
 import { registerCode } from './commands/code.js'
@@ -64,6 +65,7 @@ export function buildProgram(): Command {
   registerBlame(program)
   registerMigrate(program)
   registerExport(program)
+  registerBackup(program)
   registerReindex(program)
   registerRescan(program)
   registerSaturate(program)
