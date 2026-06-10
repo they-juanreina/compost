@@ -240,6 +240,19 @@ describe('endorseArtifact', () => {
     )
   })
 
+  it('refuses a self-endorse — the creator can not endorse their own artifact (#236)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const created = createCode(path, { name: 'self', definition: 'x', author: AI })
+    // Endorsing under the SAME actor_id the AI created with collapses the gate.
+    assert.throws(
+      () => endorseArtifact(path, created.artifact_id, AI.actorId),
+      (e: unknown) =>
+        e instanceof CompostError && e.code === 'INVALID_INPUT' && /self-endorse/.test(e.message),
+    )
+    // A distinct researcher still endorses fine.
+    assert.ok(endorseArtifact(path, created.artifact_id, 'juan@example.com').endorse_event_id)
+  })
+
   // The id `compost create` prints (C-slug / H-NNN / T-slug) must round-trip
   // into endorse — the obvious next command. Before #168, only SHA prefixes
   // and `latest:` refs worked, so users had to copy the artifact_id instead.

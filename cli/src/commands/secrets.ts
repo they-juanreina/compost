@@ -48,9 +48,19 @@ export function registerSecrets(program: Command): void {
     )
     .argument('<name>', 'Env-var-shaped name, e.g. HUGGINGFACE_TOKEN')
     .argument('[value]', 'Secret value; omit to read from stdin')
+    .addHelpText(
+      'after',
+      '\nExamples (pipe via stdin to keep the value out of shell history):\n  $ printf %s "$HF_TOKEN" | compost secrets set HUGGINGFACE_TOKEN\n  $ compost secrets list        # shows names + where each is stored, never values',
+    )
     .action(async (name: string, value: string | undefined, _flags: unknown, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
+        // An inline value lands in shell history — nudge toward the stdin pipe.
+        if (value !== undefined && process.stdin.isTTY === true) {
+          process.stderr.write(
+            'warning: passing the value inline puts it in your shell history. Prefer: printf %s "$TOKEN" | compost secrets set NAME\n',
+          )
+        }
         const raw = value ?? (await readStdin())
         const secret = raw.trim()
         if (secret === '') {
@@ -113,6 +123,13 @@ export function registerSecrets(program: Command): void {
         // any context; the source goes to stderr (human mode only).
         process.stdout.write(`${resolved.value}\n`)
         if (out.human) process.stderr.write(`source: ${resolved.source}\n`)
+        // Footgun guard: at an interactive terminal the value is now in
+        // scrollback. Warn on stderr (never affects the stdout value capture).
+        if (process.stdout.isTTY === true) {
+          process.stderr.write(
+            'warning: the secret value was printed to your terminal (now in scrollback). Pipe/capture it instead of reading it on a shared screen.\n',
+          )
+        }
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err

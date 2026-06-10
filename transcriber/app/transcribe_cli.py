@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 
 from .asr import ASRConfig
 from .pipeline import PipelineBackends, PipelineConfig, run_pipeline, write_transcript
@@ -29,11 +30,24 @@ _DEFAULT_MODEL = {
     "whisper": "large-v3-turbo",
 }
 
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _session_id(value: str) -> str:
+    """Validate --session-id is a bare label (mirrors the CLI assertSessionId and
+    the HTTP route's Field pattern). The id is joined into <seed>/sessions/<id>/,
+    so a path separator or `..` would escape the seed when invoked directly."""
+    if not _SESSION_ID_RE.match(value):
+        raise argparse.ArgumentTypeError(
+            f"invalid session id {value!r}: use letters, digits, '-' or '_' only"
+        )
+    return value
+
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="compost-transcribe-native")
     p.add_argument("--seed-path", required=True)
-    p.add_argument("--session-id", required=True)
+    p.add_argument("--session-id", required=True, type=_session_id)
     p.add_argument("--source-path", required=True)
     p.add_argument("--engine", default="parakeet", choices=["parakeet", "whisper"])
     p.add_argument("--model", default=None, help="ASR model id (engine default if omitted)")

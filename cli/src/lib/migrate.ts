@@ -149,7 +149,13 @@ export function migrate(seedPath: string, opts: MigrateOptions = {}): MigrateRes
   }
   for (const file of plan.scaffold_files) {
     const templateName = file === 'seed.md' ? 'seed.md' : basename(file)
-    writeFileSync(join(seedPath, file), render(loadTemplate(templateName), vars), 'utf8')
+    // Write atomically (temp + rename) so a failure mid-write never leaves a
+    // truncated config.toml/seed.md that re-runs would keep (existsSync guards
+    // the scaffold, so a half-written file would otherwise never be repaired).
+    const finalPath = join(seedPath, file)
+    const tmpPath = `${finalPath}.tmp`
+    writeFileSync(tmpPath, render(loadTemplate(templateName), vars), 'utf8')
+    renameSync(tmpPath, finalPath)
   }
 
   return { ...plan, applied: true }

@@ -1,6 +1,7 @@
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process'
 
 import { CompostError } from '../errors.js'
+import { childEnv } from './childEnv.js'
 
 /** Injectable spawn surface (real `spawnSync` in prod; a fake in tests). */
 export type SpawnImpl = (
@@ -28,7 +29,9 @@ export interface NativeTranscribeOptions {
   model?: string
   /** Optional language hint (recorded; Parakeet v3 auto-detects). */
   language?: string
-  /** Extra env (e.g. HUGGINGFACE_TOKEN for pyannote). Merged over process.env. */
+  /** Extra env (e.g. HUGGINGFACE_TOKEN for pyannote). Layered over a *scrubbed*
+   * process.env — the child gets PATH/locale/etc. and only the secrets passed
+   * here, never the parent's other tokens (LLM API keys). */
   env?: NodeJS.ProcessEnv
   /** Injectable spawn (tests). Defaults to node:child_process spawnSync. */
   spawnImpl?: SpawnImpl
@@ -70,7 +73,9 @@ export function transcribeNative(
   const spawn: SpawnImpl = opts.spawnImpl ?? (spawnSync as unknown as SpawnImpl)
   const res = spawn(opts.python, args, {
     cwd: opts.transcriberDir,
-    env: { ...process.env, ...opts.env },
+    // Scrub LLM/other secrets from the inherited env; re-add only what the
+    // caller passed (the HF token for pyannote) — least privilege (#236).
+    env: childEnv(opts.env),
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
   })

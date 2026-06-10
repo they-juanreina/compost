@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
+import { CompostError } from '../errors.js'
+
 import {
   LegacyIngestClient,
   type LegacyIngestRequest,
@@ -116,7 +118,18 @@ export function linkNormalizedDoc(
       warnings.push(`session ${sid} already has transcript.json — not overwritten`)
       return { normalized_path: finalNormalized, warnings }
     }
-    const doc = JSON.parse(readFileSync(finalNormalized, 'utf8')) as Record<string, unknown>
+    let doc: Record<string, unknown>
+    try {
+      doc = JSON.parse(readFileSync(finalNormalized, 'utf8')) as Record<string, unknown>
+    } catch (cause) {
+      // A truncated/corrupt normalized doc (e.g. disk full, killed mid-write)
+      // otherwise surfaces as a raw SyntaxError. Point at the recovery action.
+      throw new CompostError(
+        'IO_ERROR',
+        `normalized doc at ${finalNormalized} is not valid JSON — requeue to re-ingest (\`compost jobs requeue\`).`,
+        { cause },
+      )
+    }
     // The service derives session_id from the file basename ("DOC-source");
     // the session's real id is what search/status/exports key on.
     doc.session_id = sid

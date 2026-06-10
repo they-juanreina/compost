@@ -6,6 +6,7 @@ export type CompostErrorCode =
   | 'IO_ERROR'
   | 'CONFIG_ERROR'
   | 'PROVIDER_ERROR'
+  | 'PROVIDER_AUTH'
   | 'SCHEMA_VIOLATION'
   | 'INTERNAL'
 

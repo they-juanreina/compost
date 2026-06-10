@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 
 import { isCompostError } from './errors.js'
+import { redactSecrets } from './lib/redact.js'
 
 export interface OutputOptions {
   human: boolean
@@ -39,7 +40,8 @@ export function emit(data: unknown, opts: OutputOptions, render?: (data: never) 
 export function emitError(err: unknown, opts: OutputOptions): never {
   const compost = isCompostError(err)
   const code = compost ? err.code : 'INTERNAL'
-  const message = err instanceof Error ? err.message : String(err)
+  // Mask any secret that reached the error message (defense-in-depth, #236).
+  const message = redactSecrets(err instanceof Error ? err.message : String(err))
 
   if (opts.human) {
     process.stderr.write(`error: ${message}\n`)

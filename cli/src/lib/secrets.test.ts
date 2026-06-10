@@ -219,6 +219,18 @@ describe('secrets', () => {
       assert.equal(res.skipped, 'not-found')
     })
 
+    it('a file value autoloaded into env still resolves with source "file" (#236)', () => {
+      setSecret('AUTOLOADTOK', 'fileval', { keychain: null, home })
+      const env: NodeJS.ProcessEnv = {}
+      loadSecretsEnv({ env, home })
+      assert.equal(env.AUTOLOADTOK, 'fileval') // copied into env by the autoload
+      // …but resolution reports the truthful source, not 'env'.
+      assert.deepEqual(resolveSecret('AUTOLOADTOK', { env, keychain: null, home }), {
+        value: 'fileval',
+        source: 'file',
+      })
+    })
+
     it('refuses an insecure file and warns', { skip: !POSIX }, () => {
       setSecret('A', '1', { keychain: null, home })
       chmodSync(secretsEnvPath({ home }), 0o644)

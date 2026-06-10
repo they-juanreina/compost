@@ -55,7 +55,10 @@ venv/
 .ruff_cache/
 .mypy_cache/
 
-# Compost runtime state (per-seed; never committed)
+# Compost per-seed machine state. Gitignored by design — but NOT all disposable:
+# .compost/events.sqlite is canonical, append-only provenance (not rebuildable)
+# and .compost/AGENTS.md is hand-authored. Preserve/move a seed by copying the
+# whole folder (incl. .compost/) or `compost backup`; don't rely on VCS for it.
 .compost/
 Seeds/
 

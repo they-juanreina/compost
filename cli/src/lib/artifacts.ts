@@ -228,6 +228,8 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
 interface CreateEventRow {
   id: string
   artifact_kind: string
+  /** actor_id of the create event — used to refuse a self-endorse (#236). */
+  actor_id: string
 }
 
 /**
@@ -250,7 +252,7 @@ export function tryResolveHumanRef(
   if (!HUMAN_REF_RE.test(ref)) return undefined
   return db
     .prepare(
-      "SELECT id, artifact_kind, artifact_id FROM events WHERE action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1",
+      "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1",
     )
     .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
 }
@@ -274,14 +276,14 @@ function findCreateEvent(
     const kind = latest[1] as string
     return db
       .prepare(
-        "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
       )
       .get(kind) as (CreateEventRow & { artifact_id: string }) | undefined
   }
   if (/^[a-f0-9]{8,64}$/i.test(artifactRef)) {
     return db
       .prepare(
-        "SELECT id, artifact_kind, artifact_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
       )
       .get(`${artifactRef.toLowerCase()}%`) as
       | (CreateEventRow & { artifact_id: string })
@@ -351,6 +353,18 @@ export function endorseArtifact(
 
   if (createRow === undefined) {
     throw new CompostError('FILE_NOT_FOUND', `No create event found for ref "${artifactRef}".`)
+  }
+
+  // Refuse a self-endorse: the actor who created an artifact can't also be the
+  // one who endorses it (#236, defense-in-depth). The [draft]→endorsed gate is a
+  // human approving an AI/agent suggestion; an agent endorsing under the same
+  // actor_id it created with would collapse the gate. The endorsing identity is
+  // bound to $COMPOST_USER server-side (commands/endorse.ts), not a tool arg.
+  if (researcherId === createRow.actor_id) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Refusing to self-endorse: "${researcherId}" is the actor that created this artifact. Endorsement is a second actor approving it — set COMPOST_USER (or pass --researcher) to a human reviewer distinct from the author.`,
+    )
   }
 
   if (existingEndorse !== undefined) {

@@ -1,4 +1,20 @@
+import { redactSecrets } from '../lib/redact.js'
 import type { FetchLike } from './types.js'
+
+/** A non-OK HTTP response. Carries the status so callers can branch (e.g. map
+ * 401/403 → an auth error) without parsing the message. The message keeps the
+ * existing `<METHOD> <url> → <status> <statusText>: <body>` format that other
+ * code (Ollama 404 translation) still matches on. */
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly url: string,
+  ) {
+    super(message)
+    this.name = 'HttpError'
+  }
+}
 
 export function resolveFetch(injected?: FetchLike): FetchLike {
   if (injected) return injected
@@ -34,7 +50,11 @@ export async function postJson(
     })
     if (!res.ok) {
       const detail = await safeText(res)
-      throw new Error(`POST ${url} → ${res.status} ${res.statusText}: ${detail}`)
+      throw new HttpError(
+        `POST ${url} → ${res.status} ${res.statusText}: ${detail}`,
+        res.status,
+        url,
+      )
     }
     return await res.json()
   } finally {
@@ -56,7 +76,11 @@ export async function getJsonTimed(
     const latency_ms = Math.round(nowMs() - start)
     if (!res.ok) {
       const detail = await safeText(res)
-      throw new Error(`GET ${url} → ${res.status} ${res.statusText}: ${detail}`)
+      throw new HttpError(
+        `GET ${url} → ${res.status} ${res.statusText}: ${detail}`,
+        res.status,
+        url,
+      )
     }
     return { json: await res.json(), latency_ms }
   } finally {
@@ -66,7 +90,9 @@ export async function getJsonTimed(
 
 async function safeText(res: { text: () => Promise<string> }): Promise<string> {
   try {
-    return (await res.text()).slice(0, 200)
+    // Redact: a hostile/self-hosted OpenAI-compatible endpoint could echo the
+    // submitted Authorization header back in its JSON error body (#236).
+    return redactSecrets((await res.text()).slice(0, 200))
   } catch {
     return '<no body>'
   }

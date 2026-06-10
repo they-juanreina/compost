@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 
 import { registerAgreement } from './commands/agreement.js'
+import { registerBackup } from './commands/backup.js'
 import { registerBlame } from './commands/blame.js'
 import { registerChat } from './commands/chat.js'
 import { registerCode } from './commands/code.js'
@@ -34,8 +35,7 @@ import { registerTag } from './commands/tag.js'
 import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
 import { registerWatch } from './commands/watch.js'
-
-const VERSION = '0.1.3'
+import { currentCliVersion } from './lib/version.js'
 
 export function buildProgram(): Command {
   const program = new Command()
@@ -43,7 +43,9 @@ export function buildProgram(): Command {
   program
     .name('compost')
     .description('Local-first, AI-first research analysis harness for coding agents and humans.')
-    .version(VERSION, '-V, --version')
+    // Single source of truth: read from package.json (drops a file from the
+    // version-bump checklist; no more hardcoded literal to drift).
+    .version(currentCliVersion(), '-V, --version')
     .option(
       '--human',
       'Force human-readable output (auto-on at a TTY; JSON when piped or called by an agent).',
@@ -51,6 +53,18 @@ export function buildProgram(): Command {
     .option('--json', 'Force machine-readable JSON output (overrides TTY auto-detection).')
     .showHelpAfterError()
     .configureHelp({ sortSubcommands: true })
+    .addHelpText(
+      'after',
+      `
+Quick start:
+  $ compost init my-study                                   scaffold Seeds/my-study/
+  $ printf %s "$HF_TOKEN" | compost secrets set HUGGINGFACE_TOKEN   store a token (not in shell history)
+  $ compost ingest ./recording.m4a --seed my-study          queue audio for transcription
+  $ compost watch --once --seed my-study                    drain the ingest/transcribe/embed queue
+  $ compost search "trust" --seed my-study                  retrieve grounded passages
+
+Output is human-readable at a TTY and JSON when piped or called by an agent (force with --json / --human).`,
+    )
 
   registerInit(program)
   registerIngest(program)
@@ -64,6 +78,7 @@ export function buildProgram(): Command {
   registerBlame(program)
   registerMigrate(program)
   registerExport(program)
+  registerBackup(program)
   registerReindex(program)
   registerRescan(program)
   registerSaturate(program)

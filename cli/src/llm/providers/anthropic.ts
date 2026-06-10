@@ -1,3 +1,4 @@
+import { CompostError } from '../../errors.js'
 import { getJsonTimed, postJson, resolveFetch } from '../http.js'
 import type {
   ChatRequest,
@@ -65,10 +66,12 @@ export class AnthropicProvider implements Provider {
     return { text, model: req.model, provider: this.name, raw: json }
   }
 
-  // Anthropic has no embeddings endpoint; route embeddings to Ollama/OpenAI instead.
+  // Anthropic has no embeddings endpoint; this is a routing misconfiguration the
+  // user can fix, not an internal bug — surface it as CONFIG_ERROR.
   async embed(_req: EmbedRequest): Promise<EmbedResponse> {
-    throw new Error(
-      'anthropic provider does not support embeddings; route the embeddings task to ollama or openai',
+    throw new CompostError(
+      'CONFIG_ERROR',
+      'anthropic provider does not support embeddings; route the embeddings task to ollama or openai (set defaults.embeddings in .compost/config.toml).',
     )
   }
 

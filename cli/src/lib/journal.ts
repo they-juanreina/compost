@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { scrubbedEnv } from './childEnv.js'
+
 // Prompt-journal version/diff logic (#62). The seed's .compost/AGENTS.md is
 // the prompt journal loops read. When git is initialized the web UI commits on
 // save; otherwise we append a timestamped version section so history is never
@@ -125,13 +127,18 @@ function composeJournal(draft: string, versions: JournalVersion[]): string {
 function isGitWorkTree(dir: string): boolean {
   const r = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], {
     encoding: 'utf8',
+    env: scrubbedEnv(),
   })
   return r.status === 0 && r.stdout.trim() === 'true'
 }
 
 function gitCommitFile(dir: string, file: string, message: string): void {
-  spawnSync('git', ['-C', dir, 'add', '--', file], { encoding: 'utf8' })
-  spawnSync('git', ['-C', dir, 'commit', '-m', message, '--', file], { encoding: 'utf8' })
+  // git needs no compost secrets — don't expose tokens to hooks/credential helpers.
+  spawnSync('git', ['-C', dir, 'add', '--', file], { encoding: 'utf8', env: scrubbedEnv() })
+  spawnSync('git', ['-C', dir, 'commit', '-m', message, '--', file], {
+    encoding: 'utf8',
+    env: scrubbedEnv(),
+  })
 }
 
 export type JournalSaveMode = 'git' | 'append'

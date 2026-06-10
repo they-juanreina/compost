@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
+import { scrubbedEnv } from './childEnv.js'
 import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
 import { auditSecretsPerms, HF_ALIASES, type KeychainBackend, resolveSecret } from './secrets.js'
 import { checkVersionStatus, UPGRADE_COMMAND } from './version.js'
@@ -56,7 +57,8 @@ const DEFAULT_REQUIRED_MODELS = ['bge-m3']
 
 const defaultExec = async (cmd: string, args: string[]) => {
   try {
-    const { stdout } = await execFileAsync(cmd, args, { timeout: 5000 })
+    // Probes (docker info, python import checks) need no compost secrets (#236).
+    const { stdout } = await execFileAsync(cmd, args, { timeout: 5000, env: scrubbedEnv() })
     return { stdout, ok: true }
   } catch (err) {
     const e = err as { stdout?: string }

@@ -17,6 +17,10 @@ export function registerIngest(program: Command): void {
     )
     .argument('<path>', 'File or folder to ingest')
     .option('--seed <name>', 'Target seed (defaults to the only seed under ./Seeds)')
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost ingest ./recording.m4a\n  $ compost ingest ./interviews/ --seed my-study   # a folder, recursively',
+    )
     .action((target: string, flags: IngestFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {

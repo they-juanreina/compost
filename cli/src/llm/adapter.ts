@@ -1,5 +1,6 @@
 import { CompostError } from '../errors.js'
 import { type CompostConfig, parseRoute, providerApiKey, providerBaseUrl } from '../lib/config.js'
+import { HttpError } from './http.js'
 import { AnthropicProvider } from './providers/anthropic.js'
 import { LMStudioProvider } from './providers/lmstudio.js'
 import { OllamaProvider } from './providers/ollama.js'
@@ -78,13 +79,35 @@ export class LLMAdapter {
   ): Promise<ChatResponse> {
     const { provider, model } = this.resolveTask(task)
     this.assertProviderHasKey(task, provider)
-    return this.getProvider(provider).chat({ model, messages, ...extra })
+    try {
+      return await this.getProvider(provider).chat({ model, messages, ...extra })
+    } catch (err) {
+      throw this.tagAuthError(err, provider)
+    }
   }
 
   async embed(task: string, input: string[]): Promise<EmbedResponse> {
     const { provider, model } = this.resolveTask(task)
     this.assertProviderHasKey(task, provider)
-    return this.getProvider(provider).embed({ model, input })
+    try {
+      return await this.getProvider(provider).embed({ model, input })
+    } catch (err) {
+      throw this.tagAuthError(err, provider)
+    }
+  }
+
+  /** Turn a 401/403 from a key-requiring provider into an actionable
+   * PROVIDER_AUTH error (the key is present but rejected — revoked/expired/wrong
+   * scope), instead of a raw `POST … → 401` string surfacing as code INTERNAL.
+   * Mirrors the HF-token UX. Non-auth errors pass through unchanged. */
+  private tagAuthError(err: unknown, provider: string): unknown {
+    if (!(err instanceof HttpError) || (err.status !== 401 && err.status !== 403)) return err
+    const envName = this.config.providers[provider]?.api_key_env
+    const renew = envName ? `renew it and update ${envName}` : `renew the ${provider} API key`
+    return new CompostError(
+      'PROVIDER_AUTH',
+      `${provider} rejected the API key (HTTP ${err.status}) — it is revoked, expired, or lacks the required scope. ${renew}, or route to a local model (e.g. \`compost chat --task quick_chat\`).`,
+    )
   }
 
   /** Fail fast with an actionable message when a task routes to a key-requiring
