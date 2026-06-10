@@ -45,6 +45,8 @@ export interface WizardDeps {
   saveDefaults?: typeof saveUserConfig
   /** Existing seed dirs whose config.toml the wizard offers to update. */
   listSeeds?: () => string[]
+  /** Ollama base URL for the installed-models probe (default localhost:11434). */
+  ollamaUrl?: string
 }
 
 export interface WizardResult {
@@ -54,6 +56,29 @@ export interface WizardResult {
 
 function checkById(report: SetupReport, id: string): SetupCheck | undefined {
   return report.checks.find((c) => c.id === id)
+}
+
+/** True for embedding models — not usable for chat, so they're filtered out of
+ * the chat-model picker (compost pulls bge-m3 for search; it would be a
+ * confusing pick here). */
+function isEmbeddingModel(name: string): boolean {
+  return /(^bge|embed)/i.test(name)
+}
+
+/** Names of the chat-capable models already installed in Ollama, best-effort.
+ * Returns [] on any error (offline, Ollama down) so the wizard falls back to
+ * offering a pull — never throws. Mirrors the /api/tags probe in setup.ts. */
+async function listInstalledChatModels(fetchImpl: FetchLike, ollamaUrl: string): Promise<string[]> {
+  try {
+    const res = await fetchImpl(`${ollamaUrl}/api/tags`, { method: 'GET' })
+    if (!res.ok) return []
+    const json = (await res.json()) as { models?: Array<{ name?: string }> }
+    return (json.models ?? [])
+      .map((m) => m.name ?? '')
+      .filter((n) => n !== '' && !isEmbeddingModel(n))
+  } catch {
+    return []
+  }
 }
 
 function notOk(report: SetupReport, id: string): boolean {
@@ -89,6 +114,7 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
   const storeSecret = deps.storeSecret ?? setSecret
   const saveDefaults = deps.saveDefaults ?? saveUserConfig
   const fetchImpl = resolveFetch(deps.fetchImpl)
+  const ollamaUrl = (deps.ollamaUrl ?? 'http://localhost:11434').replace(/\/$/, '')
   const actions: string[] = []
 
   io.say('compost setup — guided')
@@ -234,15 +260,35 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
   // ── Chat model: how should `compost chat` answer on this machine? ────────
   io.say('')
   io.say('`compost chat` answers questions from your transcripts. Pick how it should run:')
-  io.say(`  [1] local — pull ${LOCAL_CHAT_MODEL} (~5 GB) and run offline via Ollama`)
+  io.say('  [1] local — run offline via Ollama (reuse a model you have, or pull one)')
   io.say('  [2] cloud — use an Anthropic API key (best quality; sends excerpts to the API)')
   io.say('  [3] skip for now')
   const choice = (await io.ask('Choice', '1')).trim()
   let routes: Record<string, string> | null = null
   if (choice === '1') {
-    const model = (await io.ask('Local model to pull', LOCAL_CHAT_MODEL)).trim() || LOCAL_CHAT_MODEL
-    const ok = run('ollama', ['pull', model]).ok
-    if (ok) {
+    // Offer the chat models already installed first — no reason to force a
+    // multi-GB pull when a capable model is sitting in Ollama's store.
+    const installed = await listInstalledChatModels(fetchImpl, ollamaUrl)
+    let model = ''
+    let needsPull = true
+    if (installed.length > 0) {
+      io.say('  Use a model you already have (no download), or pull a new one:')
+      for (const [i, m] of installed.entries()) io.say(`    [${i + 1}] ${m}  (installed)`)
+      io.say(`    [${installed.length + 1}] pull a different model (default ${LOCAL_CHAT_MODEL})`)
+      const pick = Number.parseInt((await io.ask('Model number', '1')).trim(), 10) - 1
+      if (pick >= 0 && pick < installed.length) {
+        model = installed[pick] as string
+        needsPull = false
+      }
+    }
+    if (needsPull) {
+      model = (await io.ask('Model to pull', LOCAL_CHAT_MODEL)).trim() || LOCAL_CHAT_MODEL
+      if (!run('ollama', ['pull', model]).ok) {
+        io.say('  pull failed — is Ollama running? Rerun `compost setup` to retry.')
+        model = ''
+      }
+    }
+    if (model !== '') {
       routes = {
         quick_chat: `ollama:${model}`,
         verification: `ollama:${model}`,
@@ -252,8 +298,6 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
       io.say(
         '  (cloud-quality synthesis can be added any time: rerun `compost setup` and pick cloud.)',
       )
-    } else {
-      io.say(`  pull failed — is Ollama running? Rerun \`compost setup\` to retry.`)
     }
   } else if (choice === '2') {
     const key = (await io.askHidden('Anthropic API key (hidden): ')).trim()
