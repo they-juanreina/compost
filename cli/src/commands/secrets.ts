@@ -48,6 +48,10 @@ export function registerSecrets(program: Command): void {
     )
     .argument('<name>', 'Env-var-shaped name, e.g. HUGGINGFACE_TOKEN')
     .argument('[value]', 'Secret value; omit to read from stdin')
+    .addHelpText(
+      'after',
+      '\nExamples (pipe via stdin to keep the value out of shell history):\n  $ printf %s "$HF_TOKEN" | compost secrets set HUGGINGFACE_TOKEN\n  $ compost secrets list        # shows names + where each is stored, never values',
+    )
     .action(async (name: string, value: string | undefined, _flags: unknown, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {

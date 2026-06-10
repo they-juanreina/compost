@@ -52,6 +52,18 @@ export function buildProgram(): Command {
     .option('--json', 'Force machine-readable JSON output (overrides TTY auto-detection).')
     .showHelpAfterError()
     .configureHelp({ sortSubcommands: true })
+    .addHelpText(
+      'after',
+      `
+Quick start:
+  $ compost init my-study                                   scaffold Seeds/my-study/
+  $ printf %s "$HF_TOKEN" | compost secrets set HUGGINGFACE_TOKEN   store a token (not in shell history)
+  $ compost ingest ./recording.m4a --seed my-study          queue audio for transcription
+  $ compost watch --once --seed my-study                    drain the ingest/transcribe/embed queue
+  $ compost search "trust" --seed my-study                  retrieve grounded passages
+
+Output is human-readable at a TTY and JSON when piped or called by an agent (force with --json / --human).`,
+    )
 
   registerInit(program)
   registerIngest(program)

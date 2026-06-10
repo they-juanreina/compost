@@ -45,8 +45,8 @@ hardening notes below still apply, but expect additional gaps.
   system-prompt's "answer ONLY from context" constraint.
 - AI-via-MCP performing mutations the user didn't approve.
 - Secret leakage from CI logs or error messages.
-- Integrity of the event ledger (`events.sqlite`) under concurrent or
-  adversarial writes.
+- Integrity of the event ledger (`events.sqlite`) under *concurrent* writes
+  (corruption-freedom — SQLite's job, not tamper-resistance; see out of scope).
 
 ### Out of scope
 
@@ -58,6 +58,14 @@ hardening notes below still apply, but expect additional gaps.
 - Cryptographic confidentiality of corpus content at rest. `events.sqlite`
   is not encrypted; transcripts are plain JSON. Use OS-level disk
   encryption (FileVault / LUKS / BitLocker).
+- Tamper-resistance of the event ledger under adversarial *local* writes.
+  `events.sqlite` is append-only by convention (no hash chain, no append-only
+  trigger), and `actor_id` (plus `$COMPOST_USER`) is **self-asserted identity
+  with no authentication** — anyone who can write a seed's `.compost/` can edit
+  history or author an event as any actor. Under the single-user threat model
+  that writer is the trusted local user; rely on OS account separation + disk
+  encryption. (Provenance is for honest attribution and reproducibility, not for
+  defending against a local adversary who already owns your account.)
 
 ## Supported versions
 
@@ -81,10 +89,15 @@ filing. 5 confirmed findings, surfaced as GitHub issues:
 
 | Severity | Issue | Status |
 |---|---|---|
-| HIGH | [#210](https://github.com/they-juanreina/compost/issues/210) — Pin third-party Actions to SHAs (NPM_TOKEN co-residency) | open, v0.1.2 |
-| MEDIUM | [#211](https://github.com/they-juanreina/compost/issues/211) — Validate `--seed` name + assert Seeds/ containment | open, v0.1.2 |
-| LOW | [#212](https://github.com/they-juanreina/compost/issues/212) — Ingest walk follows symlinks via statSync | open, v0.1.2 |
+| HIGH | [#210](https://github.com/they-juanreina/compost/issues/210) — Pin third-party Actions to SHAs (NPM_TOKEN co-residency) | **resolved** — all `uses:` SHA-pinned |
+| MEDIUM | [#211](https://github.com/they-juanreina/compost/issues/211) — Validate `--seed` name + assert Seeds/ containment | **resolved** — extended to session-id write/exec paths (`assertSessionId`) |
+| LOW | [#212](https://github.com/they-juanreina/compost/issues/212) — Ingest walk follows symlinks via statSync | resolved — walks skip symlinks |
 | LOW | Accepted risk — see "Known accepted risks" below | n/a |
+
+A follow-up hardening pass (least-privilege child-process env, a secret-redaction
+backstop over logs/errors, truthful secret-source reporting, a `PROVIDER_AUTH`
+error class, and `compost backup` for the canonical ledger) shipped after this
+audit.
 
 Dependency surface at the time: **0 critical, 0 high** npm vulns; 1
 moderate, 1 low. No accidentally-committed secrets confirmed (2 pattern
@@ -113,16 +126,13 @@ widespread. Compiling from source on install would close the gap at the
 cost of substantially worse install UX (`build-essential` / Xcode CLI
 tools required), so we're not doing it today.
 
-### NPM_TOKEN long-lived secret in CI
+### NPM_TOKEN long-lived secret in CI — RESOLVED
 
-The release workflow uses a 90-day granular access token
-(`NPM_TOKEN`, expires 2026-09-03). The token is scoped to
-`@they-juanreina` with Bypass-2FA enabled (required for unattended
-CI publish). Migration to npm Trusted Publishing (OIDC) is tracked at
-[#208](https://github.com/they-juanreina/compost/issues/208) and will
-remove this long-lived secret. Until then: token rotation is on the
-calendar; the GitHub repo secret is the only place it's stored locally;
-it does not exist on any maintainer machine.
+[#208](https://github.com/they-juanreina/compost/issues/208) is resolved: the
+release workflow now publishes via **npm Trusted Publishing (OIDC)** with
+`permissions: id-token: write` and `npm publish --provenance`, so no long-lived
+`NPM_TOKEN` is used for the publish. The package carries a provenance
+attestation. (Documented here for history; this is no longer an accepted risk.)
 
 ## Storing your tokens
 
@@ -155,6 +165,17 @@ independent of *where you should store a secret at rest* (below).
    `compost secrets get <NAME>` prints the resolved value (for scripting),
    `compost secrets list` shows which secrets are set and where (never the
    value), and `compost secrets rm <NAME>` removes it.
+
+   Two small caveats, acceptable under the single-user model:
+   - **macOS keychain write transits argv.** `compost secrets set` shells out to
+     `security add-generic-password -w <value>`, so the token is briefly visible
+     to `ps` (from another local account/process) for the lifetime of that one
+     `security` process. The Linux backend (`secret-tool`) reads the value on
+     stdin and has no such window. Run `secrets set` on a trusted session.
+   - **`secrets get` writes the value to stdout.** That's intended for
+     `$(compost secrets get NAME)` capture, but at an interactive terminal the
+     token lands in scrollback. The CLI prints a one-line stderr caution when
+     stdout is a TTY; prefer piping/capturing over reading it on screen.
 2. **Per-user environment / `direnv`** — export it from your shell profile or a
    per-user `.envrc`. Good for CI and ephemeral shells.
 3. **`~/.compost/secrets.env` (0600 dotenv)** — the fallback when no keychain is
@@ -210,6 +231,14 @@ ledger. Two call sites:
 - **Set `COMPOST_USER` to your real identity** when working in a team —
   it ends up in `events.sqlite` as `actor_id` for researcher events. If
   you don't, the default falls back to `$USER` then `"researcher"`.
+- **Run compost under a host that confirms mutations.** The `[draft]`→endorse
+  gate is enforced by the MCP *host* showing you the mutation before it runs —
+  it is not server-enforced. `compost_endorse` is itself a callable mutation;
+  defense-in-depth, the CLI refuses a self-endorse (the same actor can't endorse
+  what it created) and binds the endorsing identity to `$COMPOST_USER` rather
+  than a model-supplied argument. Still, if you auto-approve every tool call in a
+  non-gating host, an autonomous agent could create-then-endorse its own drafts.
+  Keep mutation confirmation on, and read the args.
 - **Don't commit `Seeds/`** — it's gitignored by default. Transcripts
   contain interview content.
 - **Store tokens with `compost secrets`, not hand-rolled files** — see

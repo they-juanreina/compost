@@ -20,6 +20,10 @@ export function registerSearch(program: Command): void {
     .argument('<query>', 'Free-text query')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--top-k <n>', 'Number of passages to return', '8')
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost search "what frustrated users"\n  $ compost search "onboarding" --top-k 15 --seed my-study',
+    )
     .action(async (query: string, flags: SearchFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {

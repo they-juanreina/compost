@@ -18,6 +18,10 @@ export function registerWatch(program: Command): void {
     .option('--once', 'Drain the queues once and exit instead of looping')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--interval-ms <ms>', 'Poll interval for live mode', '2000')
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost watch --once          # process the queue once, then exit (CI-friendly)\n  $ compost watch                 # live: keep draining every 2s until Ctrl-C',
+    )
     .action(async (flags: WatchFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {

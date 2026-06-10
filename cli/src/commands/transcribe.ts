@@ -55,6 +55,10 @@ export function registerTranscribe(program: Command): void {
       '--transcriber-dir <path>',
       'transcriber/ package dir for the native runtime (or env COMPOST_TRANSCRIBER_DIR)',
     )
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost transcribe S001\n  $ compost transcribe S001 --language es-CO --runtime native',
+    )
     .action(async (sessionId: string, flags: TranscribeFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
