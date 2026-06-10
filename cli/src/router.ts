@@ -35,8 +35,7 @@ import { registerTag } from './commands/tag.js'
 import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
 import { registerWatch } from './commands/watch.js'
-
-const VERSION = '0.1.3'
+import { currentCliVersion } from './lib/version.js'
 
 export function buildProgram(): Command {
   const program = new Command()
@@ -44,7 +43,9 @@ export function buildProgram(): Command {
   program
     .name('compost')
     .description('Local-first, AI-first research analysis harness for coding agents and humans.')
-    .version(VERSION, '-V, --version')
+    // Single source of truth: read from package.json (drops a file from the
+    // version-bump checklist; no more hardcoded literal to drift).
+    .version(currentCliVersion(), '-V, --version')
     .option(
       '--human',
       'Force human-readable output (auto-on at a TTY; JSON when piped or called by an agent).',
