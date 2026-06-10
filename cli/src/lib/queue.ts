@@ -1,5 +1,5 @@
-import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, mkdirSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 
 import Database from 'better-sqlite3'
 
@@ -192,4 +192,37 @@ export class JobQueue {
 
 export function stateDbPath(seedPath: string): string {
   return join(seedPath, '.compost', 'state.sqlite')
+}
+
+/**
+ * Paths stored in the queue (and event log) are seed-relative whenever the
+ * file lives inside the seed, so a study folder moved or renamed in Finder
+ * keeps a working queue (#240). Paths outside the seed (`compost ingest
+ * ~/elsewhere/file.mp3`) stay absolute — they're machine-pinned either way.
+ */
+export function toSeedRelative(seedPath: string, p: string): string {
+  if (!isAbsolute(p)) return p
+  const rel = relative(seedPath, p)
+  if (rel.startsWith(`..${sep}`) || rel === '..' || isAbsolute(rel)) return p
+  return rel
+}
+
+/**
+ * Resolve a stored source path against the seed root. Relative rows (the
+ * current format) just join. Absolute rows are legacy (pre-#240) — when the
+ * recorded location no longer exists (the seed was moved), recover by
+ * re-rooting the `sessions/…` tail under the current seed; if nothing
+ * resolves, return the original so the worker fails with the real path in
+ * the error.
+ */
+export function resolveJobSource(seedPath: string, p: string): string {
+  if (!isAbsolute(p)) return join(seedPath, p)
+  if (existsSync(p)) return p
+  const marker = `${sep}sessions${sep}`
+  const at = p.indexOf(marker)
+  if (at !== -1) {
+    const rerooted = join(seedPath, p.slice(at + 1))
+    if (existsSync(rerooted)) return rerooted
+  }
+  return p
 }

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
-import { describe, it } from 'node:test'
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, beforeEach, describe, it } from 'node:test'
 
-import { JobQueue, MAX_ATTEMPTS } from './queue.js'
+import { JobQueue, MAX_ATTEMPTS, resolveJobSource, toSeedRelative } from './queue.js'
 
 function burnAllAttempts(queue: JobQueue): void {
   for (let i = 0; i < MAX_ATTEMPTS; i++) {
@@ -74,5 +77,48 @@ describe('JobQueue requeue (#239)', () => {
     queue.enqueue('transcribe', '/seed/a.mp3')
     assert.deepEqual(queue.requeue(), [])
     assert.equal(queue.counts().queued, 1)
+  })
+})
+
+describe('seed-relative job paths (#240)', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-relpaths-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('toSeedRelative strips the seed prefix for in-seed paths only', () => {
+    const seed = join(work, 'Seeds/demo')
+    assert.equal(
+      toSeedRelative(seed, join(seed, 'sessions/S001/source.mp3')),
+      'sessions/S001/source.mp3',
+    )
+    assert.equal(toSeedRelative(seed, '/elsewhere/file.mp3'), '/elsewhere/file.mp3')
+    assert.equal(toSeedRelative(seed, 'sessions/S001/source.mp3'), 'sessions/S001/source.mp3')
+  })
+
+  it('resolveJobSource joins relative rows — a moved seed keeps a working queue', () => {
+    const original = join(work, 'Seeds/demo')
+    mkdirSync(join(original, 'sessions/S001'), { recursive: true })
+    writeFileSync(join(original, 'sessions/S001/source.mp3'), 'x')
+    const stored = toSeedRelative(original, join(original, 'sessions/S001/source.mp3'))
+
+    const moved = join(work, 'Seeds/demo-renamed')
+    renameSync(original, moved)
+    assert.equal(resolveJobSource(moved, stored), join(moved, 'sessions/S001/source.mp3'))
+  })
+
+  it('resolveJobSource recovers legacy absolute rows by re-rooting the sessions/ tail', () => {
+    const seed = join(work, 'Seeds/demo')
+    mkdirSync(join(seed, 'sessions/S001'), { recursive: true })
+    writeFileSync(join(seed, 'sessions/S001/source.mp3'), 'x')
+    // a pre-#240 row recorded at a location that no longer exists
+    const stale = '/Users/someone/old-place/Seeds/Seeds/demo/sessions/S001/source.mp3'
+    assert.equal(resolveJobSource(seed, stale), join(seed, 'sessions/S001/source.mp3'))
+    // an absolute row that still exists is used as-is
+    const live = join(seed, 'sessions/S001/source.mp3')
+    assert.equal(resolveJobSource(seed, live), live)
+    // unrecoverable rows come back unchanged so errors show the real path
+    assert.equal(resolveJobSource(seed, '/gone/file.mp3'), '/gone/file.mp3')
   })
 })

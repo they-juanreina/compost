@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { type Job, JobQueue, type JobStatus, stateDbPath } from '../lib/queue.js'
+import { type Job, JobQueue, type JobStatus, resolveJobSource, stateDbPath } from '../lib/queue.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -102,7 +102,7 @@ export function registerJobs(program: Command): void {
           // A requeued job whose source vanished (seed moved/renamed by hand)
           // will only burn its fresh attempts — say so up front (#240).
           const warnings = requeued
-            .filter((j) => !existsSync(j.source_path))
+            .filter((j) => !existsSync(resolveJobSource(seedPath, j.source_path)))
             .map((j) => `job ${j.id}: source no longer exists on disk: ${j.source_path}`)
           emit(
             {

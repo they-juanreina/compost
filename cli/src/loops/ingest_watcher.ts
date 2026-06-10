@@ -3,7 +3,7 @@ import { basename, extname, join } from 'node:path'
 
 import { classify } from '../lib/dispatch.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
-import { JobQueue, stateDbPath } from '../lib/queue.js'
+import { JobQueue, stateDbPath, toSeedRelative } from '../lib/queue.js'
 
 const AGENT_NAME = 'ingest-watcher'
 const AGENT_VERSION = '0.1.0'
@@ -50,14 +50,17 @@ export function processInbox(seedPath: string): WatcherProcessResult {
       mkdirSync(sessionDir, { recursive: true })
       const to = join(sessionDir, `source${extname(entry).toLowerCase()}`)
       renameSync(from, to) // atomic within the same filesystem
-      const { id } = queue.enqueue(d.kind, to, {
+      // Stored seed-relative so the queue and event log survive the study
+      // folder being moved or renamed in Finder (#240).
+      const relTo = toSeedRelative(seedPath, to)
+      const { id } = queue.enqueue(d.kind, relTo, {
         category: d.category,
         session_id: sid,
         original_name: basename(entry),
       })
       emitAgentCreate(events, {
         artifactKind: 'session',
-        initialState: { session_id: sid, source: to, kind: d.kind },
+        initialState: { session_id: sid, source: relTo, kind: d.kind },
         agentName: AGENT_NAME,
         agentVersion: AGENT_VERSION,
       })

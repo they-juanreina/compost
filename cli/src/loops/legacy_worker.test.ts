@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
@@ -330,6 +338,35 @@ describe('runLegacyWorkerOnce auto-link', () => {
     work = mkdtempSync(join(tmpdir(), 'compost-legacy-autolink-'))
   })
   afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('a seed moved after enqueueing still processes (seed-relative rows, #240)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    writeFileSync(join(path, 'sessions/_inbox/report.pdf'), '%PDF-fake')
+    const { processInbox } = await import('./ingest_watcher.js')
+    processInbox(path)
+
+    // the researcher renames the study folder in Finder
+    const moved = join(work, 'Seeds', 'demo-renamed')
+    renameSync(path, moved)
+
+    const client = new FakeClient((req) => {
+      // the worker must hand the service a live path under the NEW location
+      assert.ok(req.source_path.startsWith(moved), req.source_path)
+      const normalized = join(req.seed_path, 'legacy/source.json')
+      writeFileSync(normalized, JSON.stringify(normalizedDocFixture()))
+      return {
+        source_path: req.source_path,
+        normalized_path: normalized,
+        utterance_count: 1,
+        status: 'ok',
+      }
+    })
+    // biome-ignore lint/suspicious/noExplicitAny: fake client
+    const result = await runLegacyWorkerOnce(moved, { client: client as any })
+    assert.equal(result.processed, 1)
+    assert.equal(result.results[0]?.status, 'ok')
+    assert.ok(existsSync(join(moved, 'sessions/S001/transcript.json')))
+  })
 
   it('an inbox document round-trips into its session in one pass', async () => {
     const { path } = initSeed('demo', { cwd: work })

@@ -81,6 +81,18 @@ See [docs/provenance-deepening-design.md](docs/provenance-deepening-design.md).
 
 ### Fixed
 
+- **A moved or renamed study folder keeps a working queue (#240).** Job rows
+  and ingest events now store paths relative to the seed root (in-seed files
+  only — `compost ingest` targets outside the seed stay absolute, and are now
+  resolved against the cwd at enqueue time instead of stored verbatim).
+  Workers resolve rows against the current seed location; legacy absolute
+  rows from before this change are recovered by re-rooting their
+  `sessions/…` tail under the seed.
+- **`compost setup` warns when the install is outdated (#245).** A
+  best-effort npm dist-tag probe (silently skipped offline) compares the
+  running version to `latest`; the wizard offers the upgrade as its first
+  step, and the provision-native locator error now names the usual cause —
+  an install predating the bundled transcriber — with the upgrade command.
 - **`compost setup` no longer reports `ready: true` on a machine that cannot
   ingest anything (#242).** When neither the native runtime nor the Docker
   transcriber is available, a derived `ingest-engine` check fails (audio AND
