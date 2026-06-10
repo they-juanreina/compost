@@ -39,6 +39,8 @@ interface SearchView {
     score: number
     text: string
   }>
+  /** Optional guidance when 0 results — points at the real upstream cause. */
+  hint?: string
 }
 
 export function renderSearch(v: SearchView): string {
@@ -53,6 +55,10 @@ export function renderSearch(v: SearchView): string {
       `  ${i + 1}. [${r.session ?? '?'} ${fmtMs(r.start_ms)}–${fmtMs(r.end_ms)}] score ${r.score}`,
     )
     lines.push(`     ${clipped}`)
+  }
+  if (v.hint !== undefined) {
+    lines.push('')
+    lines.push(`  ↳ ${v.hint}`)
   }
   return lines.join('\n')
 }

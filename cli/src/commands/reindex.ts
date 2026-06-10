@@ -71,10 +71,13 @@ export function registerReindex(program: Command): void {
               '--vectors is not wired yet; the LanceDB index is rebuilt automatically by `compost watch`. Snapshots were rebuilt.'
           }
 
-          emit(result, out, (d) =>
-            d.vectors_status === 'not_wired'
-              ? `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s). NOTE: --vectors is not wired yet — the LanceDB index is rebuilt automatically by \`compost watch\`. (#${d.issue})`
-              : `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s).`,
+          emit(
+            result,
+            out,
+            (d: { snapshots_rebuilt: number; vectors_status?: string; issue?: number }) =>
+              d.vectors_status === 'not_wired'
+                ? `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s). NOTE: --vectors is not wired yet — the LanceDB index is rebuilt automatically by \`compost watch\`. (#${d.issue})`
+                : `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s).`,
           )
           if (flags.vectors === true) process.exitCode = 1
         } finally {

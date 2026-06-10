@@ -46,6 +46,21 @@ export interface ResolvedSecret {
 }
 
 /**
+ * Names that `loadSecretsEnv` copied from the 0600 file into `process.env` this
+ * run. Because the autoload makes a file-stored secret resolve via `process.env`
+ * first, resolution would otherwise mislabel its source as `env`. Tracking the
+ * autoloaded names lets `resolveSecret`/`listSecrets` report the truthful
+ * `file` source (the value is the file's, not a shell export). Empty until
+ * `loadSecretsEnv` runs (so direct unit tests are unaffected).
+ */
+const autoloadedNames = new Set<string>()
+
+/** True when `name` was injected into the env by the startup autoload. */
+export function wasAutoloaded(name: string): boolean {
+  return autoloadedNames.has(name)
+}
+
+/**
  * Well-known secret names. Used by `compost secrets list` (which never reads
  * the value, only reports presence) and to decide what's worth probing in the
  * keychain. Not a hard allow-list — `set`/`get`/`rm` accept any valid env name.
@@ -287,8 +302,11 @@ function runCmd(cmd: string, args: string[], input?: string): CmdResult {
 }
 
 /** macOS Keychain via the `security` CLI. NB: `add-generic-password -w <value>`
- * passes the secret as an argv (briefly visible to `ps`); there's no stdin mode
- * for `security`. Acceptable under the single-user threat model (SECURITY.md). */
+ * passes the secret as an argv element, briefly visible to `ps` for the lifetime
+ * of the spawned `security` process. The interactive `-w` (no value) prompt form
+ * reads the password from the controlling TTY, not stdin, so it can't be fed via
+ * our piped `runCmd` without allocating a pty — not worth it under the single-user
+ * threat model. The exposure is documented in SECURITY.md ("Storing your tokens"). */
 function macKeychain(): KeychainBackend {
   return {
     label: `macOS Keychain (service "${KEYCHAIN_SERVICE}")`,
@@ -397,7 +415,11 @@ export function resolveSecret(name: string, opts: ResolveOpts = {}): ResolvedSec
 
   for (const key of names) {
     const v = env[key]
-    if (v && v.trim() !== '') return { value: v, source: 'env' }
+    if (v && v.trim() !== '') {
+      // If the autoload put this here, its real home is the 0600 file — report
+      // that, not 'env', so the user isn't told a managed file is a shell export.
+      return { value: v, source: autoloadedNames.has(key) ? 'file' : 'env' }
+    }
   }
 
   const kc = detectKeychain(opts)
@@ -486,7 +508,9 @@ export function listSecrets(deps: SecretsDeps = {}): {
   for (const name of candidates) {
     const sources: SecretSource[] = []
     const e = env[name]
-    if (e && e.trim() !== '') sources.push('env')
+    // An autoloaded name is in env only because of the file — count it once, as
+    // 'file' (below), not 'env', so it doesn't masquerade/double-count.
+    if (e && e.trim() !== '' && !autoloadedNames.has(name)) sources.push('env')
     if (kc) {
       const v = kc.get(name)
       if (v && v.trim() !== '') sources.push('keychain')
@@ -533,6 +557,8 @@ export function loadSecretsEnv(
     if (cur === undefined || cur === '') {
       env[k] = v
       loaded.push(k)
+      // Remember the file is the true source, so resolution doesn't mislabel it 'env'.
+      autoloadedNames.add(k)
     }
   }
   return { path: read.path, loaded, skipped: null }
