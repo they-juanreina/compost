@@ -1,10 +1,10 @@
 import { existsSync, lstatSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
 import { classify } from './dispatch.js'
 import { emitAgentCreate, openSeedEvents } from './events.js'
-import { JobQueue, stateDbPath } from './queue.js'
+import { JobQueue, stateDbPath, toSeedRelative } from './queue.js'
 
 const AGENT_NAME = 'ingest'
 const AGENT_VERSION = '0.1.0'
@@ -74,9 +74,12 @@ function walk(path: string): { files: string[]; symlinksSkipped: string[] } {
  * Each newly-queued file emits an agent-authored `create` event.
  */
 export function ingestPath(seedPath: string, target: string): IngestResult {
-  if (!existsSync(target)) throw new CompostError('FILE_NOT_FOUND', `No such path: ${target}`)
+  // Resolve against cwd FIRST: a cwd-relative target stored verbatim would be
+  // re-rooted under the seed by the workers (#240) and never found.
+  const absTarget = resolve(target)
+  if (!existsSync(absTarget)) throw new CompostError('FILE_NOT_FOUND', `No such path: ${target}`)
 
-  const { files, symlinksSkipped } = walk(target)
+  const { files, symlinksSkipped } = walk(absTarget)
   const queue = new JobQueue(stateDbPath(seedPath))
   const events = openSeedEvents(seedPath)
   try {
@@ -91,12 +94,15 @@ export function ingestPath(seedPath: string, target: string): IngestResult {
         unsupported.push(file)
         continue
       }
-      const { id, inserted } = queue.enqueue(d.kind, file, { category: d.category, ext: d.ext })
+      // Seed-relative for in-seed files (survives a seed move, #240); files
+      // outside the seed stay absolute — they're machine-pinned regardless.
+      const stored = toSeedRelative(seedPath, file)
+      const { id, inserted } = queue.enqueue(d.kind, stored, { category: d.category, ext: d.ext })
       if (inserted) {
         queued += 1
         emitAgentCreate(events, {
           artifactKind: 'ingest_job',
-          initialState: { source_path: file, kind: d.kind, category: d.category },
+          initialState: { source_path: stored, kind: d.kind, category: d.category },
           agentName: AGENT_NAME,
           agentVersion: AGENT_VERSION,
         })

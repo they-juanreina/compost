@@ -40,7 +40,10 @@ describe('checkVersionStatus (#245)', () => {
   })
 
   it('returns null (never throws) when offline or the registry misbehaves', async () => {
-    assert.equal(await checkVersionStatus({ fetchImpl: fakeFetch('throw'), current: '1.0.0' }), null)
+    assert.equal(
+      await checkVersionStatus({ fetchImpl: fakeFetch('throw'), current: '1.0.0' }),
+      null,
+    )
     assert.equal(
       await checkVersionStatus({ fetchImpl: fakeFetch({ ok: false }), current: '1.0.0' }),
       null,

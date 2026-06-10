@@ -85,7 +85,9 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
   // produces failures that look like machine problems (#245 — a field user on
   // an old rc spent a session debugging exactly that). Best-effort: the check
   // is silently skipped offline or when the registry doesn't answer fast.
-  const version = await checkVersionStatus({ fetchImpl: deps.fetchImpl })
+  const version = await checkVersionStatus(
+    deps.fetchImpl !== undefined ? { fetchImpl: deps.fetchImpl } : {},
+  )
   if (version !== null) {
     checks.push(
       version.behind

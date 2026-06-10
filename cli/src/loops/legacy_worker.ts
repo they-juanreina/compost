@@ -10,7 +10,7 @@ import {
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { legacyIngestNative } from '../lib/legacyNative.js'
 import { resolveNativeRuntime } from '../lib/nativeRuntime.js'
-import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
+import { JobQueue, MAX_ATTEMPTS, resolveJobSource, stateDbPath } from '../lib/queue.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
 
 const AGENT_NAME = 'legacy-ingest-worker'
@@ -183,7 +183,8 @@ export async function runLegacyWorkerOnce(
       const job = queue.claim('legacy-ingest')
       if (job === null) break
       out.processed += 1
-      const sourcePath = job.source_path
+      // The service needs a real filesystem path; rows are stored seed-relative (#240).
+      const sourcePath = resolveJobSource(seedPath, job.source_path)
       try {
         const sidecar = readSidecar(sourcePath)
         const ingestReq: LegacyIngestRequest = {

@@ -67,10 +67,10 @@ export async function checkVersionStatus(deps: {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? 2500)
   try {
-    const res = await fetchImpl(
-      `https://registry.npmjs.org/-/package/${PACKAGE_NAME}/dist-tags`,
-      { method: 'GET', signal: controller.signal },
-    )
+    const res = await fetchImpl(`https://registry.npmjs.org/-/package/${PACKAGE_NAME}/dist-tags`, {
+      method: 'GET',
+      signal: controller.signal,
+    })
     if (!res.ok) return null
     const tags = (await res.json()) as { latest?: string }
     if (typeof tags.latest !== 'string') return null

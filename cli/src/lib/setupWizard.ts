@@ -103,9 +103,13 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
   if (notOk(report, 'version')) {
     const detail = checkById(report, 'version')?.detail ?? ''
     io.say(`This install is outdated (${detail}).`)
-    if (await io.confirm('Upgrade now (npm install -g @they-juanreina/compost-cli@latest)?', true)) {
+    if (
+      await io.confirm('Upgrade now (npm install -g @they-juanreina/compost-cli@latest)?', true)
+    ) {
       const ok = run('npm', ['install', '-g', '@they-juanreina/compost-cli@latest']).ok
-      actions.push(ok ? 'upgraded CLI — rerun `compost setup` on the new version' : 'upgrade failed')
+      actions.push(
+        ok ? 'upgraded CLI — rerun `compost setup` on the new version' : 'upgrade failed',
+      )
       if (ok) {
         io.say('Upgraded. Rerun `compost setup` so the new version takes it from here.')
         return { report, actions }
