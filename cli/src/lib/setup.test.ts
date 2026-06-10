@@ -126,6 +126,29 @@ describe('runSetup', () => {
     assert.equal(report.ready, false)
   })
 
+  it('warns when the npm registry advertises a newer version (#245)', async () => {
+    initSeed('demo', { cwd: work })
+    const report = await runSetup({
+      cwd: work,
+      keychain: null,
+      home: join(work, 'compost-home'),
+      env: { HUGGINGFACE_TOKEN: 'hf_x' },
+      fetchImpl: fakeFetch({
+        'registry.npmjs.org': { ok: true, json: { latest: '999.0.0' } },
+        '/api/tags': { ok: true, json: { models: [{ name: 'bge-m3' }] } },
+        '/health': { ok: true },
+        'huggingface.co': { ok: true },
+      }),
+      exec: async () => ({ stdout: '', ok: false }),
+    })
+    const v = check(report, 'version')
+    assert.equal(v.status, 'warn')
+    assert.match(v.detail, /999\.0\.0 available/)
+    assert.match(v.fix ?? '', /npm install -g @they-juanreina\/compost-cli@latest/)
+    // warn, not fail — an old version may still work; ready is unaffected
+    assert.equal(report.ready, true)
+  })
+
   it('a healthy transcriber service alone satisfies the engine requirement (#242)', async () => {
     initSeed('demo', { cwd: work })
     const report = await runSetup({

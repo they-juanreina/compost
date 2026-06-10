@@ -6,6 +6,7 @@ import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
 import { auditSecretsPerms, HF_ALIASES, type KeychainBackend, resolveSecret } from './secrets.js'
+import { checkVersionStatus, UPGRADE_COMMAND } from './version.js'
 
 const execFileAsync = promisify(execFile)
 
@@ -79,6 +80,31 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
   const requiredModels = deps.requiredOllamaModels ?? DEFAULT_REQUIRED_MODELS
 
   const checks: SetupCheck[] = []
+
+  // 0. Is this install current? An outdated CLI misses bundled components and
+  // produces failures that look like machine problems (#245 — a field user on
+  // an old rc spent a session debugging exactly that). Best-effort: the check
+  // is silently skipped offline or when the registry doesn't answer fast.
+  const version = await checkVersionStatus({ fetchImpl: deps.fetchImpl })
+  if (version !== null) {
+    checks.push(
+      version.behind
+        ? {
+            id: 'version',
+            label: 'CLI version',
+            status: 'warn',
+            detail: `${version.current} installed, ${version.latest} available — old versions miss bundled components`,
+            fix: UPGRADE_COMMAND,
+          }
+        : {
+            id: 'version',
+            label: 'CLI version',
+            status: 'ok',
+            detail: `${version.current} (latest)`,
+            fix: null,
+          },
+    )
+  }
 
   // 1. Ollama reachable + 2. required models present (one probe, two checks).
   let ollamaTags: string[] | null = null

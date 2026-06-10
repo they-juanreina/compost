@@ -99,6 +99,20 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
   printReport(io, report)
   io.say('')
 
+  // ── Outdated install: fix this first — everything else may be its symptom ─
+  if (notOk(report, 'version')) {
+    const detail = checkById(report, 'version')?.detail ?? ''
+    io.say(`This install is outdated (${detail}).`)
+    if (await io.confirm('Upgrade now (npm install -g @they-juanreina/compost-cli@latest)?', true)) {
+      const ok = run('npm', ['install', '-g', '@they-juanreina/compost-cli@latest']).ok
+      actions.push(ok ? 'upgraded CLI — rerun `compost setup` on the new version' : 'upgrade failed')
+      if (ok) {
+        io.say('Upgraded. Rerun `compost setup` so the new version takes it from here.')
+        return { report, actions }
+      }
+    }
+  }
+
   // ── Ollama: the embeddings (and optionally chat) engine ──────────────────
   if (notOk(report, 'ollama')) {
     io.say('Ollama powers search embeddings and local chat. It is not running.')

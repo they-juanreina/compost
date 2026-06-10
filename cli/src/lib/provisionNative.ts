@@ -108,7 +108,7 @@ export function provisionNativeVenv(opts: ProvisionNativeOptions = {}): Provisio
   if (transcriberDir === undefined || !exists(join(transcriberDir, 'pyproject.toml'))) {
     throw new CompostError(
       'INVALID_INPUT',
-      'could not locate the transcriber/ package. Pass --transcriber-dir or set COMPOST_TRANSCRIBER_DIR.',
+      'could not locate the transcriber/ package — it ships inside the npm package since v0.1.2, so an outdated install is the usual cause. Upgrade with `npm install -g @they-juanreina/compost-cli@latest`, or pass --transcriber-dir / set COMPOST_TRANSCRIBER_DIR.',
     )
   }
 
