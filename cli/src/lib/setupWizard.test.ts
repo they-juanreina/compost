@@ -28,6 +28,17 @@ function scriptedIO(answers: { ask?: string[]; hidden?: string[]; confirm?: bool
   return { io, said }
 }
 
+/** Fake Ollama /api/tags response listing the given installed model names. */
+function tagsFetch(models: string[]): Parameters<typeof runSetupWizard>[0]['fetchImpl'] {
+  return (async () => ({
+    ok: true,
+    status: 200,
+    statusText: '',
+    json: async () => ({ models: models.map((name) => ({ name })) }),
+    text: async () => '',
+  })) as unknown as Parameters<typeof runSetupWizard>[0]['fetchImpl']
+}
+
 describe('runSetupWizard', () => {
   it('runs confirmed fixes for missing Ollama model and skips healthy checks', async () => {
     const ran: string[][] = []
@@ -90,13 +101,14 @@ describe('runSetupWizard', () => {
     assert.ok(said.some((s) => s.includes('! license NOT accepted yet')))
   })
 
-  it('local chat choice pulls the model and saves routing for all three tasks', async () => {
+  it('local chat with no installed model pulls the default and saves routing', async () => {
     let savedDefaults: Record<string, string> | undefined
     const ran: string[][] = []
-    const { io } = scriptedIO({ ask: ['1', ''] }) // choice 1, default model
+    const { io } = scriptedIO({ ask: ['1', ''] }) // choice 1, default model to pull
     await runSetupWizard({
       io,
       appleSilicon: true,
+      fetchImpl: tagsFetch([]), // nothing installed → fall back to a pull
       check: async () =>
         report(
           check('ollama', 'ok'),
@@ -122,6 +134,70 @@ describe('runSetupWizard', () => {
       verification: `ollama:${LOCAL_CHAT_MODEL}`,
       synthesis: `ollama:${LOCAL_CHAT_MODEL}`,
     })
+  })
+
+  it('local chat reuses an already-installed model without pulling', async () => {
+    let savedDefaults: Record<string, string> | undefined
+    const ran: string[][] = []
+    const { io } = scriptedIO({ ask: ['1', '1'] }) // choice 1, then installed model #1
+    await runSetupWizard({
+      io,
+      appleSilicon: true,
+      // bge-m3 is listed first but is an embedding model → filtered out, so the
+      // first *chat* pick is qwen2.5:7b. Proves both reuse-without-pull and the filter.
+      fetchImpl: tagsFetch(['bge-m3', 'qwen2.5:7b']),
+      check: async () =>
+        report(
+          check('ollama', 'ok'),
+          check('model:bge-m3', 'ok'),
+          check('native-transcribe', 'ok'),
+          check('hf-token', 'ok'),
+        ),
+      run: (cmd, args) => {
+        ran.push([cmd, ...args])
+        return { ok: true }
+      },
+      storeSecret: () => {
+        throw new Error('local choice stores no secret')
+      },
+      saveDefaults: (cfg) => {
+        savedDefaults = cfg.defaults
+        return '/fake/.compost/config.toml'
+      },
+    })
+    assert.deepEqual(ran, []) // reused an installed model — nothing pulled
+    assert.equal(savedDefaults?.quick_chat, 'ollama:qwen2.5:7b')
+  })
+
+  it('maintain step renews an already-set token via runItem (returning-user path)', async () => {
+    const stored: Array<[string, string]> = []
+    // chat step: skip (3); then maintain: item 1 (hf-token), action 2 (renew), new value.
+    const { io, said } = scriptedIO({ ask: ['3', '1', '2'], hidden: ['hf_NEW2'] })
+    await runSetupWizard({
+      io,
+      appleSilicon: true,
+      // hf-token already ok → the gap-driven walk never prompts for it; only the
+      // maintain step can touch a set token. No model:* check → hf-token is item 1.
+      check: async () =>
+        report(check('ollama', 'ok'), check('native-transcribe', 'ok'), check('hf-token', 'ok')),
+      run: () => ({ ok: true }),
+      fetchImpl: (async () => ({
+        ok: true,
+        status: 200,
+        statusText: '',
+        json: async () => ({ name: 'tester' }),
+        text: async () => '',
+      })) as unknown as Parameters<typeof runSetupWizard>[0]['fetchImpl'],
+      storeSecret: (name, value) => {
+        stored.push([name, value])
+        return { name, stored_in: 'keychain', location: 'login keychain' }
+      },
+      saveDefaults: () => {
+        throw new Error('chat step skipped')
+      },
+    })
+    assert.deepEqual(stored, [['HUGGINGFACE_TOKEN', 'hf_NEW2']])
+    assert.ok(said.some((s) => s.includes('renew') && s.includes('tester')))
   })
 
   it('cloud chat choice stores the key and routes to anthropic models', async () => {

@@ -173,3 +173,37 @@ compost chat "…"                         # local model, cited answer
 
 Two manual steps survive: dropping files and running `watch`. Everything else
 is either automatic or a confirmed one-keystroke fix inside the wizard.
+
+## After setup: maintaining one item
+
+The wizard above is gap-driven — it only surfaces a prerequisite when it's
+*broken*, which is the wrong shape for a set-up install where a researcher needs
+to **change** something already in place. The field test's sharpest example:
+nothing in the journey let a user change, renew, or revoke their HuggingFace
+token, and a *revoked* token read as `ok: set` while its 403 surfaced
+misattributed to the pyannote license check (Stage 6) — so "renew" had no
+trigger.
+
+The fix is an item-addressable maintenance surface that the wizard and skill
+both wrap:
+
+```
+compost setup item list                       # every check + the actions on it
+compost setup item show hf-token --validate    # presence AND a live hf.co check
+compost setup item run hf-token renew           # paste a new token, re-validated
+compost setup item run hf-token forget           # drop the local copy (see below)
+```
+
+Two principles carried over from the audit:
+
+- **Presence vs. validity are separate signals.** The canonical `compost setup`
+  report stays presence-only and frozen (agents/CI gate on its JSON); the live
+  `whoami` probe lives only on `setup item show --validate`, on demand. That is
+  the trigger renew never had — a present-but-dead token now reads `live: fail`
+  rather than masquerading as a license problem.
+- **Credential lifecycle is two-sided, and named honestly.** `forget` removes
+  only compost's *local* copy and points at `hf.co/settings/tokens` for the
+  server-side delete it cannot do; if the token is a shell export it refuses to
+  imply success. The wizard offers the same maintain step once the install is
+  healthy, and `/compost-setup` hands these verbs to the user rather than
+  touching secrets itself.

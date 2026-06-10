@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Per-item setup maintenance: `compost setup item list | show | run`.** Once
+  an install is set up, the gap-driven wizard could no longer act on a single
+  prerequisite — there was no way to change, renew, or revoke a stored
+  HuggingFace token. The new surface addresses one check by its stable id:
+  `list` shows every check plus the lifecycle actions available on it, `show
+  <id> [--validate]` re-probes one (and, with `--validate`, runs a live
+  HuggingFace `whoami` check so a revoked/expired token reads as `live: fail`
+  instead of surfacing as a confusing pyannote 403), and `run <id> <action>`
+  performs one action — `renew` (store a new token, then validate), `forget`
+  (remove compost's local copy; names the hf.co delete step it cannot do, and
+  refuses to imply success for a shell-exported token), plus the generalized
+  `model:<name> pull` and `secret-perms:<path> fix`. Mutating actions require a
+  TTY or `--yes`. The read-only `compost setup --json` report is unchanged
+  byte-for-byte. The TTY wizard gains a "maintain an item?" step once the
+  install is healthy, and the `/compost-setup` skill wraps the same verbs.
+- **`compost setup` reuses installed Ollama chat models instead of forcing a
+  pull.** The local-chat step now lists chat models already in Ollama (embedding
+  models like `bge-m3` filtered out) and lets you pick one with no download;
+  pulling a default (`llama3.1:8b`) becomes just one more option, used when
+  nothing suitable is installed.
+
 ## v0.1.3 — 2026-06-10
 
 Onboarding becomes a guided path instead of a checklist (`compost setup` wizard,
