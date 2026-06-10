@@ -33,9 +33,11 @@ export class LLMAdapter {
 
     const baseUrl = providerBaseUrl(this.config, name)
     const apiKey = providerApiKey(this.config, name)
+    const timeoutMs = this.config.providers[name]?.timeout_ms
     const cfg = {
       baseUrl,
       ...(apiKey !== undefined ? { apiKey } : {}),
+      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       ...(this.opts.fetchImpl ? { fetchImpl: this.opts.fetchImpl } : {}),
     }
 

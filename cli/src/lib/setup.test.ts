@@ -103,7 +103,7 @@ describe('runSetup', () => {
     assert.equal(report.ready, false)
   })
 
-  it('docker + transcriber down are warns (feature-gated), not fails', async () => {
+  it('docker + transcriber down stay warns, but NO engine at all is a fail (#242)', async () => {
     initSeed('demo', { cwd: work })
     const report = await runSetup({
       cwd: work,
@@ -115,11 +115,33 @@ describe('runSetup', () => {
         // /health unrouted → throws → transcriber warn
         'huggingface.co': { ok: true },
       }),
-      exec: async () => ({ stdout: '', ok: false }), // docker down
+      exec: async () => ({ stdout: '', ok: false }), // docker down, native deps absent
     })
     assert.equal(check(report, 'docker').status, 'warn')
     assert.equal(check(report, 'transcriber').status, 'warn')
-    // No fails → ready stays true (core loop works without transcribe).
+    // Neither the service nor the native runtime resolved: audio AND document
+    // ingest would fail, so the derived engine check fails and ready is false —
+    // a fresh machine must not be told it's ready (#242).
+    assert.equal(check(report, 'ingest-engine').status, 'fail')
+    assert.equal(report.ready, false)
+  })
+
+  it('a healthy transcriber service alone satisfies the engine requirement (#242)', async () => {
+    initSeed('demo', { cwd: work })
+    const report = await runSetup({
+      cwd: work,
+      keychain: null,
+      home: join(work, 'compost-home'),
+      env: { HUGGINGFACE_TOKEN: 'hf_x' },
+      fetchImpl: fakeFetch({
+        '/api/tags': { ok: true, json: { models: [{ name: 'bge-m3' }] } },
+        '/health': { ok: true },
+        'huggingface.co': { ok: true },
+      }),
+      exec: async () => ({ stdout: '', ok: false }),
+    })
+    assert.equal(check(report, 'transcriber').status, 'ok')
+    assert.ok(!report.checks.some((c) => c.id === 'ingest-engine'))
     assert.equal(report.ready, true)
   })
 

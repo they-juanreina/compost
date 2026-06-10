@@ -228,6 +228,26 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
     }
   }
 
+  // 4c. Derived: is ANY ingest engine available? Document ingest (PDF/DOCX/…)
+  // rides the same engine as transcription, so a machine with neither the
+  // native runtime nor the Docker service cannot process a single inbox file —
+  // that is a FAIL, not an accumulation of warns (#242). The individual checks
+  // above stay warn-level because either one alone is sufficient.
+  const nativeOk = checks.some((c) => c.id === 'native-transcribe' && c.status === 'ok')
+  if (!transcriberOk && !nativeOk) {
+    checks.push({
+      id: 'ingest-engine',
+      label: 'Ingest engine',
+      status: 'fail',
+      detail:
+        'no transcription engine available — audio AND document (PDF/DOCX/…) ingest will fail',
+      fix:
+        (deps.appleSilicon ?? isAppleSilicon())
+          ? 'compost setup  (guided; or compost setup --provision-native)'
+          : 'compost setup  (guided; or start the Docker transcriber)',
+    })
+  }
+
   // 5. HuggingFace token present. Resolved by the documented precedence:
   // env > OS keychain > ~/.compost/secrets.env (0600). A keychain- or
   // file-stored token counts as "set" here just like an exported env var.
