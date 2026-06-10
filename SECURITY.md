@@ -239,6 +239,11 @@ ledger. Two call sites:
   than a model-supplied argument. Still, if you auto-approve every tool call in a
   non-gating host, an autonomous agent could create-then-endorse its own drafts.
   Keep mutation confirmation on, and read the args.
+- **Agent-driven `compost_ingest` is confined to the workspace.** Via the MCP
+  plugin, the agent can only ingest files under the project directory (where
+  `Seeds/` lives); extend with `COMPOST_INGEST_ROOTS` (colon-separated). This
+  blocks an injected instruction from pulling `~/.ssh` or a sibling repo into the
+  retrievable corpus. The human CLI (`compost ingest`) stays fully permissive.
 - **Don't commit `Seeds/`** — it's gitignored by default. Transcripts
   contain interview content.
 - **Store tokens with `compost secrets`, not hand-rolled files** — see

@@ -8,6 +8,7 @@ import {
   aiActorId,
   buildArgv,
   type CliRunner,
+  isIngestPathAllowed,
   MUTATION_TOOLS,
   PLUGIN_VERSION,
   READ_ONLY_TOOLS,
@@ -165,6 +166,17 @@ describe('MCP tool definitions', () => {
     assert.ok(!eArgv.includes('--ai'))
   })
 
+  it('compost_endorse never forwards a researcher arg — identity is server-side (#236)', () => {
+    const endorse = tool('compost_endorse')
+    // Even if a model supplies `researcher`, it must not reach the CLI argv.
+    const argv = endorse.toArgv({ artifact: 'abc123', researcher: 'someone-else' })
+    assert.ok(!argv.includes('--researcher'))
+    assert.deepEqual(argv, ['endorse', 'abc123'])
+    // …and the schema doesn't advertise the arg.
+    const props = (endorse.inputSchema as { properties: Record<string, unknown> }).properties
+    assert.ok(!('researcher' in props))
+  })
+
   it('buildArgv supplies the schema-required model + prompt_hash for AI creates (#165)', () => {
     // actor_type=ai events require model + a 64-hex prompt_hash; without them the
     // CLI fails schema validation and orphans the markdown.
@@ -216,6 +228,34 @@ describe('runTool', () => {
     const res = await runTool('compost_nope', {})
     assert.equal(res.ok, false)
     assert.match(res.content, /unknown tool/)
+  })
+
+  it('confines compost_ingest to the workspace by default (#236)', async () => {
+    const cwd = '/home/u/project'
+    // In-workspace paths are allowed.
+    assert.ok(isIngestPathAllowed('./recording.m4a', {}, cwd))
+    assert.ok(isIngestPathAllowed('interviews/a.mp3', {}, cwd))
+    assert.ok(isIngestPathAllowed('/home/u/project/sub/a.mp3', {}, cwd))
+    // Escapes / arbitrary absolute paths are denied.
+    assert.ok(!isIngestPathAllowed('/home/u/.ssh/id_rsa', {}, cwd))
+    assert.ok(!isIngestPathAllowed('../sibling-repo/secrets.txt', {}, cwd))
+    // COMPOST_INGEST_ROOTS extends the allow-list.
+    assert.ok(
+      isIngestPathAllowed('/data/audio/a.mp3', { COMPOST_INGEST_ROOTS: '/data/audio' }, cwd),
+    )
+  })
+
+  it('runTool blocks an out-of-workspace ingest before invoking the CLI', async () => {
+    let called = false
+    const runner: CliRunner = async () => {
+      called = true
+      return { stdout: '{}', code: 0 }
+    }
+    // An absolute path well outside any plausible workspace root.
+    const res = await runTool('compost_ingest', { path: '/etc/shadow' }, runner)
+    assert.equal(res.ok, false)
+    assert.match(res.content, /INGEST_PATH_DENIED/)
+    assert.equal(called, false) // the CLI was never run
   })
 
   it('maps code_suggest (read) and code_apply (mutation) to `compost code`', () => {
