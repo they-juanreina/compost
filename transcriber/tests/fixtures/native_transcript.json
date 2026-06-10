@@ -5,9 +5,7 @@
   "source": "sample/sessions/S001/source.mp3",
   "language": "es-CO",
   "duration_ms": 15000,
-  "modality": [
-    "audio"
-  ],
+  "modality": ["audio"],
   "speakers": [
     {
       "id": "S0",
