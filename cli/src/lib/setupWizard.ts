@@ -8,6 +8,7 @@ import { diagnoseNativeRuntime, isAppleSilicon } from './nativeRuntime.js'
 import { provisionNativeVenv } from './provisionNative.js'
 import { setSecret } from './secrets.js'
 import { runSetup, type SetupCheck, type SetupReport } from './setup.js'
+import { actionsFor, type RunItemDeps, runItem } from './setupItem.js'
 import { saveUserConfig } from './userConfig.js'
 
 /** Per-task routes the wizard writes for each chat-model choice. The local
@@ -288,6 +289,17 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
   report = await check({ cwd, env })
   printReport(io, report)
   io.say('')
+
+  // ── Maintain one item (change/renew/forget a token, re-pull a model) ──────
+  // Only once the install is otherwise healthy, so a first-run-with-gaps flow
+  // is unchanged. This is the path a *returning* user needs — the gap-driven
+  // walk above only surfaces an item when it is broken, never to change a set
+  // one. Driven by item number (blank = skip), so it wraps the same `runItem`
+  // primitive the `compost setup item` CLI and the skill use.
+  if (report.ready) {
+    await maintainItem({ io, report, run, fetchImpl, storeSecret, actions })
+  }
+
   io.say(
     report.ready
       ? 'Ready. Next steps:'
@@ -297,4 +309,85 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
   io.say('  open Seeds/<study-name>/sessions/_inbox    # drop a recording or PDF in')
   io.say('  compost watch --once          # process it')
   return { report, actions }
+}
+
+/**
+ * Interactive "fix one item" menu — the path a *returning* user needs once the
+ * install is healthy (the gap-driven walk above only ever surfaces an item when
+ * it is broken, never to change a set one). Lists every check that carries
+ * lifecycle actions, runs the chosen one through the shared `runItem` primitive
+ * (same code path as the `compost setup item` CLI and the skill), and surfaces
+ * the remote half — the part compost can't do. Selection is by number; a blank
+ * entry skips, so an exhausted/scripted IO is a no-op. One item per run.
+ */
+async function maintainItem(args: {
+  io: WizardIO
+  report: SetupReport
+  run: (cmd: string, cmdArgs: string[]) => { ok: boolean }
+  fetchImpl: FetchLike
+  storeSecret: typeof setSecret
+  actions: string[]
+}): Promise<void> {
+  const { io, report } = args
+  const items = report.checks
+    .map((c) => ({ id: c.id, actions: actionsFor(c.id) }))
+    .filter((it) => it.actions.length > 0)
+  if (items.length === 0) return
+
+  io.say('Maintain a specific item? (e.g. change/renew/forget the HuggingFace token)')
+  for (const [i, it] of items.entries()) {
+    io.say(`  [${i + 1}] ${it.id}  (${it.actions.map((a) => a.id).join(' / ')})`)
+  }
+  const pick = (await io.ask('Item number (blank to finish)', '')).trim()
+  if (pick === '') return
+  const item = items[Number.parseInt(pick, 10) - 1]
+  if (!item) {
+    io.say(`  no item "${pick}".`)
+    return
+  }
+
+  for (const [i, a] of item.actions.entries()) {
+    io.say(`  [${i + 1}] ${a.id} — ${a.label}${a.url ? `  (${a.url})` : ''}`)
+  }
+  const aPick = (await io.ask('Action number', '1')).trim()
+  const action = item.actions[Number.parseInt(aPick, 10) - 1]
+  if (!action) {
+    io.say(`  no action "${aPick}".`)
+    return
+  }
+
+  const deps: RunItemDeps = {
+    run: args.run,
+    fetchImpl: args.fetchImpl,
+    storeSecret: args.storeSecret,
+  }
+  if (action.id === 'renew' || action.id === 'set') {
+    if (action.url) io.say(`  Mint a new token at ${action.url}, then paste it below.`)
+    const v = (await io.askHidden('New value (hidden, Enter to cancel): ')).trim()
+    if (v === '') {
+      io.say('  cancelled (no value).')
+      return
+    }
+    deps.value = v
+  } else if (action.id === 'forget') {
+    if (!(await io.confirm(`Forget compost's local copy of ${item.id}?`, false))) {
+      io.say('  cancelled.')
+      return
+    }
+  } else if (action.id === 'pull') {
+    if (!(await io.confirm('Pull now (may download several GB)?', true))) {
+      io.say('  cancelled.')
+      return
+    }
+  }
+
+  const result = await runItem(item.id, action.id, deps)
+  const glyph = result.recheck.status === 'ok' ? '✓' : result.recheck.status === 'warn' ? '!' : '✗'
+  io.say(`  ${glyph} ${item.id} ${action.id}: ${result.recheck.detail}`)
+  const r = result.result as { remote_action?: { note: string; url: string }; env_note?: string }
+  if (r.remote_action) {
+    io.say(`  remote step (yours to do): ${r.remote_action.note} — ${r.remote_action.url}`)
+  }
+  if (r.env_note) io.say(`  ${r.env_note}`)
+  args.actions.push(`maintained ${item.id}: ${action.id} → ${result.recheck.status}`)
 }

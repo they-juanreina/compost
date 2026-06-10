@@ -124,6 +124,37 @@ describe('runSetupWizard', () => {
     })
   })
 
+  it('maintain step renews an already-set token via runItem (returning-user path)', async () => {
+    const stored: Array<[string, string]> = []
+    // chat step: skip (3); then maintain: item 1 (hf-token), action 2 (renew), new value.
+    const { io, said } = scriptedIO({ ask: ['3', '1', '2'], hidden: ['hf_NEW2'] })
+    await runSetupWizard({
+      io,
+      appleSilicon: true,
+      // hf-token already ok → the gap-driven walk never prompts for it; only the
+      // maintain step can touch a set token. No model:* check → hf-token is item 1.
+      check: async () =>
+        report(check('ollama', 'ok'), check('native-transcribe', 'ok'), check('hf-token', 'ok')),
+      run: () => ({ ok: true }),
+      fetchImpl: (async () => ({
+        ok: true,
+        status: 200,
+        statusText: '',
+        json: async () => ({ name: 'tester' }),
+        text: async () => '',
+      })) as unknown as Parameters<typeof runSetupWizard>[0]['fetchImpl'],
+      storeSecret: (name, value) => {
+        stored.push([name, value])
+        return { name, stored_in: 'keychain', location: 'login keychain' }
+      },
+      saveDefaults: () => {
+        throw new Error('chat step skipped')
+      },
+    })
+    assert.deepEqual(stored, [['HUGGINGFACE_TOKEN', 'hf_NEW2']])
+    assert.ok(said.some((s) => s.includes('renew') && s.includes('tester')))
+  })
+
   it('cloud chat choice stores the key and routes to anthropic models', async () => {
     const stored: string[] = []
     let savedDefaults: Record<string, string> | undefined
