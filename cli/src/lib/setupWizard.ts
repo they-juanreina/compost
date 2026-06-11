@@ -404,7 +404,7 @@ async function maintainItem(args: {
     fetchImpl: args.fetchImpl,
     storeSecret: args.storeSecret,
   }
-  if (action.id === 'renew' || action.id === 'set') {
+  if (action.id === 'renew') {
     if (action.url) io.say(`  Mint a new token at ${action.url}, then paste it below.`)
     const v = (await io.askHidden('New value (hidden, Enter to cancel): ')).trim()
     if (v === '') {

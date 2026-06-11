@@ -15,9 +15,9 @@ import { readStdin } from '../lib/stdin.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { statusGlyph } from '../render/glyphs.js'
 
-/** Everything except `validate` changes state; only renew/set need a value. */
+/** Everything except `validate` changes state; only renew needs a value. */
 const READONLY = new Set(['validate'])
-const NEEDS_VALUE = new Set(['renew', 'set'])
+const NEEDS_VALUE = new Set(['renew'])
 
 /**
  * Gate a `setup item run` invocation before it mutates anything. Extracted so

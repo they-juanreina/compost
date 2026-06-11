@@ -55,11 +55,6 @@ export interface ResolvedSecret {
  */
 const autoloadedNames = new Set<string>()
 
-/** True when `name` was injected into the env by the startup autoload. */
-export function wasAutoloaded(name: string): boolean {
-  return autoloadedNames.has(name)
-}
-
 /**
  * Well-known secret names. Used by `compost secrets list` (which never reads
  * the value, only reports presence) and to decide what's worth probing in the

@@ -41,7 +41,7 @@ import {
  * (keychain / 0600 file / Ollama store), 'remote' is the provider account only
  * the user controls, 'both' touches each in turn. */
 export interface SetupItemAction {
-  id: 'validate' | 'renew' | 'forget' | 'set' | 'pull' | 'fix'
+  id: 'validate' | 'renew' | 'forget' | 'pull' | 'fix'
   label: string
   side: 'local' | 'remote' | 'both'
   /** Where the user performs the remote half, when there is one. */
@@ -256,7 +256,7 @@ async function runHfToken(action: string, deps: RunItemDeps): Promise<RunItemRes
     }
   }
 
-  if (action === 'renew' || action === 'set') {
+  if (action === 'renew') {
     const value = (deps.value ?? '').trim()
     if (value === '') {
       throw new CompostError('INVALID_INPUT', `No token value provided for ${id} ${action}.`)
