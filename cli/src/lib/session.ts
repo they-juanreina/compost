@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
-import { assertSessionId } from './sessionId.js'
+import { assertSessionContained } from './sessionId.js'
 
 export interface SessionView {
   session_id: string
@@ -77,7 +77,9 @@ export function listSessions(seedPath: string): SessionSummary[] {
  * agent can pull a full session into context.
  */
 export function getSession(seedPath: string, sessionId: string): SessionView {
-  assertSessionId(sessionId)
+  // Validate the id (regex) AND assert it stays under <seed>/sessions/ before
+  // any fs op — the containment backstop is belt-and-braces over the regex.
+  assertSessionContained(seedPath, sessionId)
   const dir = join(seedPath, 'sessions', sessionId)
   if (!existsSync(dir)) {
     throw new CompostError('FILE_NOT_FOUND', `No session "${sessionId}" under ${seedPath}/sessions`)

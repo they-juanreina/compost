@@ -5,7 +5,7 @@ import type { Command } from 'commander'
 import { CompostError, isCompostError } from '../errors.js'
 import { parseTextTranscript } from '../lib/importTranscript.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
-import { assertSessionId } from '../lib/sessionId.js'
+import { assertSessionContained } from '../lib/sessionId.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
 
@@ -39,9 +39,10 @@ export function registerImport(program: Command): void {
         if (!existsSync(file)) throw new CompostError('FILE_NOT_FOUND', `No such file: ${file}`)
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const sessionId = flags.session ?? deriveSession(file)
-        // A user-supplied --session must not contain path separators or `..`;
-        // it is joined straight into <seed>/sessions/<id>/ below (#211 followup).
-        assertSessionId(sessionId)
+        // A user-supplied --session must not contain path separators or `..`, and
+        // must resolve under <seed>/sessions/ — it is joined straight into that
+        // tree and written to below (#211 followup).
+        assertSessionContained(seedPath, sessionId)
         const transcript = parseTextTranscript(readFileSync(file, 'utf8'), {
           sessionId,
           source: file,
