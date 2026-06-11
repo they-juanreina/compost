@@ -31,7 +31,8 @@ Seeds/<name>/
       notes.md
   glossary/glossary.md
   highlights/            # one .md per highlight; frontmatter has utterance ref + provenance
-  codebook/codebook.md
+  codebook/              # one .md per code; frontmatter carries codebook_id
+  codebooks/             # one .md per codebook (lens); "primary" created by init (ADR 0001)
   synthesis/             # themes, journey maps, saturation pulses, reports
   exports/               # csv, pdf, pptx, ELAN .eaf
   legacy/                # ingested PDFs/DOCX/PPTX/CSV, normalized
@@ -112,11 +113,13 @@ The full cue taxonomy is versioned in `schema/cues.taxonomy.json`. The frame tri
 
 ```
 Project (1) ──< Seed (n)
-Seed   (1) ──< Session, Glossary, Codebook, Theme, Insight, EventLog
+Seed   (1) ──< Session, Glossary, Codebook (n; default "primary"), Theme, Insight, EventLog
+Codebook(1) ──< Code (n), Category (n)   # stance: inductive|deductive|in_vivo|framework (ADR 0001)
+Category(1) ──< Code (n via link events; one is_primary link per code)   # optional second-cycle tier (ADR 0002)
 Session(1) ──< RichTranscript (1) ──< Utterance (n)
 Utterance(1) ──< Silence/Cue (n), Highlight (n)
 Highlight(1) ──< Comment (n), Code (n via join)
-Code (m) ──< (n) Theme
+Theme       ──< evidence[ {kind: code|category, ref, codebook_id} ]   # codebook_id null = cross-lens synthesis (≥2 codebooks)
 Glossary(1) ──< Term (n)             # span anchors back to Utterances
 Insight(1)   ── derived from Theme + Highlight evidence
 
@@ -125,6 +128,8 @@ Event   ──> any artifact (highlight, code, theme, term, suggestion)
 Embedding ──> Utterance, Highlight, Code, Theme, Term, LegacyChunk
 Eval    ──> any AI-authored event
 ```
+
+Codebook multiplicity and the category tier are specified in [ADR 0001](docs/adr/0001-codebook-multiplicity.md) and [ADR 0002](docs/adr/0002-category-tier.md); the audit + sequencing live in [docs/codebook-category-audit.md](docs/codebook-category-audit.md). Frame-internal themes (non-null `codebook_id`) are subject to κ/α agreement; cross-lens themes (null) are held accountable through the endorsement gate.
 
 Every artifact is **content-addressable** by SHA256 of its initial state and **versioned via the event log**.
 
@@ -323,7 +328,7 @@ Eval results are first-class in the UI — every AI artifact shows its eval scor
 ## Learning mechanisms
 
 - **Project glossary that grows** — every tagged term and recurring noun phrase becomes an AI-suggested Term; on endorsement, injected into every subsequent LLM call in this seed.
-- **Codebook reuse across seeds** — codes/themes scoped per-Seed by default, addressable from siblings. Stable codebooks emerge.
+- **Codebook reuse across seeds** — codes/themes scoped per-Seed by default, addressable from siblings. Stable codebooks emerge — and as first-class artifacts with identity + declared stance ([ADR 0001](docs/adr/0001-codebook-multiplicity.md)), a codebook can be forked/imported into another seed as a shareable, citable coding frame.
 - **Prompt journal (`.compost/AGENTS.md`)** — anarlog-style. User-editable, versioned with the seed, diffable.
 - **Eval feedback loop** — researcher rejections become labeled negative examples; after N rejections of the same shape, the rejection set is appended to the skill's eval golden-set automatically.
 
@@ -377,6 +382,7 @@ Tauri-wrap into a desktop bundle later; not v1.
 
 - **M1 — Compost core (4–6 weeks)**: `compost init|ingest|transcribe|snap|watch|status|blame|export|migrate|reindex|config`. Rich transcript schema with audio cues, semantically typed silences, prosody hints, speaker diarization, screenshot capture. Provenance event log + three-actor model. Legacy ingest for PDF/DOCX/PPTX/CSV. LanceDB index built but not yet queried. Ollama default with LM Studio side-by-side. Bash-callable from Claude Code. *Ships when (a) `_inbox/session.mp4` → `transcript.json` with audio cues + frames lands autonomously, (b) `compost blame` shows the lineage of any artifact, (c) a folder of mixed legacy PDFs + .mp3 + .mp4 batch-ingests successfully.*
 - **M2 — Annotation + retrieval (4–6 weeks)**: highlights (including frame-anchored), comments, codes, glossary, codebook UI. Cross-session-similarity scanner over LanceDB. RAG-grounded `compost chat` with citations + schema-bound JSON. Optional frame annotation via Claude-with-vision or Moondream2 local. Next.js web UI with provenance badges, lineage modals, transcript/video player with frame strip + timeline cue markers. MCP server + slash commands for Claude Code. Glossary-grower loop. Eval-grader loop. Refactored `querying-research-knowledge` and `thematic-coding` skills. *Ships when a researcher runs a 12-session project end-to-end with grounded chat, frame-anchored highlights, and per-artifact provenance, never opening a spreadsheet.*
+- **Data-model track (v0.2, runs alongside M2 — [ADR 0001](docs/adr/0001-codebook-multiplicity.md)/[0002](docs/adr/0002-category-tier.md))**: slice 1 — codebook as first-class artifact, `compost codebook new|list|migrate`, `codebook_id` on codes, `init` creates `primary` (+ `--question`), all additive; scoping slice — `--codebook` on `agreement|recode|saturate`; category slice — category artifact, `is_primary` links, theme `evidence[]` restructure + `saturate` rewiring (the one breaking change, isolated); retrieval slice — `code_ids[]` backfill, codebook-qualified chunk metadata, code-centroid clustering for AI-proposed categories (reusing `retrieval/src/clustering.ts`). Validated by the replicable Edges-and-Ecotones study (wiki).
 - **M3 — Synthesis + Cowork (6–8 weeks)**: autonomous theme suggestion via refactored `thematic-coding`, journey-map drafting, saturation-pulse, prompt-journal UI. Cowork plugin packaging. ELAN `.eaf` export. PDF report + PPTX exports. End-to-end harness evals. Frame-annotation tightening. *Ships when a seed produces a stakeholder-ready, citation-grounded report on its own, with provenance visible.*
 
 ## Verification
