@@ -11,17 +11,9 @@ import {
   type SetupItemAction,
   validateHfToken,
 } from '../lib/setupItem.js'
+import { readStdin } from '../lib/stdin.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { statusGlyph } from '../render/glyphs.js'
-
-/** Read all of stdin (the new token value, piped so it never lands in shell
- * history). Returns '' when stdin is an interactive TTY. (mirrors secrets.ts) */
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return ''
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk))
-  return Buffer.concat(chunks).toString('utf8')
-}
 
 /** Everything except `validate` changes state; only renew/set need a value. */
 const READONLY = new Set(['validate'])

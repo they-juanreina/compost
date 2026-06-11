@@ -11,21 +11,13 @@ import {
   type SetResult,
   setSecret,
 } from '../lib/secrets.js'
+import { readStdin } from '../lib/stdin.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { glyphs } from '../render/glyphs.js'
 
 /** Aliases to also check when resolving a given primary name. */
 function aliasesFor(name: string): string[] {
   return name === 'HUGGINGFACE_TOKEN' ? HF_ALIASES : []
-}
-
-/** Read all of stdin (for `secrets set <name>` with the value piped in, so it
- * never lands in shell history). Returns '' if stdin is an interactive TTY. */
-async function readStdin(): Promise<string> {
-  if (process.stdin.isTTY) return ''
-  const chunks: Buffer[] = []
-  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk))
-  return Buffer.concat(chunks).toString('utf8')
 }
 
 /** True when the user explicitly forced JSON with the root `--json` flag. */
