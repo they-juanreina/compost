@@ -11,6 +11,7 @@ import { provisionNativeVenv } from '../lib/provisionNative.js'
 import { runSetup } from '../lib/setup.js'
 import { runSetupWizard, type WizardIO } from '../lib/setupWizard.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+import { registerSetupItem } from './setupItem.js'
 
 interface SetupFlags {
   provisionNative?: boolean
@@ -72,7 +73,7 @@ function existingSeeds(cwd: string): string[] {
 }
 
 export function registerSetup(program: Command): void {
-  program
+  const setup = program
     .command('setup')
     .description(
       'Guided setup at a terminal (checks + confirmed fixes + tokens + chat model); a read-only JSON health report when piped, with --json, or with --check',
@@ -141,4 +142,8 @@ export function registerSetup(program: Command): void {
         throw err
       }
     })
+
+  // Per-item maintenance lives on its own `setup item …` JSON envelope, so the
+  // read-only `compost setup` report above stays byte-for-byte unchanged.
+  registerSetupItem(setup)
 }

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync, writeFileSync
 import { basename, join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { seedNameOf } from './seedResolve.js'
 import { loadTemplate, render } from './templates.js'
 
 /** Folders that compost expects in a migrated seed, beyond the renamed legacy dirs. */
@@ -92,7 +93,7 @@ export function planMigration(seedPath: string): MigratePlan {
   }
 
   return {
-    seed_name: basename(seedPath),
+    seed_name: seedNameOf(seedPath),
     path: seedPath,
     already_migrated: alreadyMigrated,
     renames,
@@ -149,7 +150,13 @@ export function migrate(seedPath: string, opts: MigrateOptions = {}): MigrateRes
   }
   for (const file of plan.scaffold_files) {
     const templateName = file === 'seed.md' ? 'seed.md' : basename(file)
-    writeFileSync(join(seedPath, file), render(loadTemplate(templateName), vars), 'utf8')
+    // Write atomically (temp + rename) so a failure mid-write never leaves a
+    // truncated config.toml/seed.md that re-runs would keep (existsSync guards
+    // the scaffold, so a half-written file would otherwise never be repaired).
+    const finalPath = join(seedPath, file)
+    const tmpPath = `${finalPath}.tmp`
+    writeFileSync(tmpPath, render(loadTemplate(templateName), vars), 'utf8')
+    renameSync(tmpPath, finalPath)
   }
 
   return { ...plan, applied: true }

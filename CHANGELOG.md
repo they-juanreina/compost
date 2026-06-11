@@ -1,5 +1,60 @@
 # Changelog
 
+## v0.1.4 — 2026-06-11
+
+### Added
+
+- **Per-item setup maintenance: `compost setup item list | show | run`.** Once
+  an install is set up, the gap-driven wizard could no longer act on a single
+  prerequisite — there was no way to change, renew, or revoke a stored
+  HuggingFace token. The new surface addresses one check by its stable id:
+  `list` shows every check plus the lifecycle actions available on it, `show
+  <id> [--validate]` re-probes one (and, with `--validate`, runs a live
+  HuggingFace `whoami` check so a revoked/expired token reads as `live: fail`
+  instead of surfacing as a confusing pyannote 403), and `run <id> <action>`
+  performs one action — `renew` (store a new token, then validate), `forget`
+  (remove compost's local copy; names the hf.co delete step it cannot do, and
+  refuses to imply success for a shell-exported token), plus the generalized
+  `model:<name> pull` and `secret-perms:<path> fix`. Mutating actions require a
+  TTY or `--yes`. The read-only `compost setup --json` report is unchanged
+  byte-for-byte. The TTY wizard gains a "maintain an item?" step once the
+  install is healthy, and the `/compost-setup` skill wraps the same verbs.
+- **`compost setup` reuses installed Ollama chat models instead of forcing a
+  pull.** The local-chat step now lists chat models already in Ollama (embedding
+  models like `bge-m3` filtered out) and lets you pick one with no download;
+  pulling a default (`llama3.1:8b`) becomes just one more option, used when
+  nothing suitable is installed.
+
+### Fixed
+
+- **`compost setup` no longer hangs on a slow HuggingFace.** The pyannote
+  gated-license probe was a bare fetch with no timeout; it now time-boxes each
+  request (5 s) and, on a timeout or when offline, reports "could not verify
+  license" rather than mislabeling it "not accepted".
+- **`compost backup` takes a consistent snapshot of the event ledger.** It now
+  copies `events.sqlite` via SQLite `VACUUM INTO` instead of a raw file copy, so
+  a backup taken while a worker is writing (or in WAL mode) can't capture a torn
+  ledger — the one artifact this command exists to protect.
+
+### Hardened
+
+- **Session-id containment is asserted at every write/exec site.** `getSession`,
+  `snap`, `transcribe`, and `import` now assert the resolved session path stays
+  under `<seed>/sessions/` (belt-and-braces over the strict id regex), so a
+  future loosening of that regex can't open a path traversal.
+- **`compost setup item run` gates mutations on a real TTY, not `--human`.** A
+  mutating action run non-interactively still requires `--yes`, and that gate can
+  no longer be bypassed by forcing the `--human` output flag.
+- Status glyphs (`✓ ✗ ⚠`) degrade to ASCII under a non-UTF-8 locale across the
+  setup report, the wizard, and the secrets output.
+
+### Internal
+
+- Consolidated repeated idioms into shared helpers — `errMessage`,
+  `statusGlyph`, `failedHealth`, `readStdin`, `fetchWithTimeout`,
+  `isContainedUnder`, `eventsDbPath` / `openReadonlyEvents`, `runNativeCli`, and
+  `seedNameOf` — and removed dead code. No user-facing behavior change.
+
 ## v0.1.3 — 2026-06-10
 
 Onboarding becomes a guided path instead of a checklist (`compost setup` wizard,

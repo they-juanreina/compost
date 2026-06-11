@@ -1,6 +1,8 @@
 import { appendFile, mkdir, stat } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
+import { redactSecrets } from './lib/redact.js'
+
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export interface LogFields {
@@ -21,7 +23,8 @@ export class Logger {
     const entry: LogEntry = { ts: new Date().toISOString(), level, msg, ...fields }
     try {
       await mkdir(dirname(this.logFilePath), { recursive: true })
-      await appendFile(this.logFilePath, `${JSON.stringify(entry)}\n`, 'utf8')
+      // Defense-in-depth: mask any secret that slipped into a field/msg (#236).
+      await appendFile(this.logFilePath, `${redactSecrets(JSON.stringify(entry))}\n`, 'utf8')
     } catch {
       // Logging must never throw — the CLI keeps running even if logs are unwritable.
     }

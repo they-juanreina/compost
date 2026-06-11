@@ -2,6 +2,8 @@ import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import { scrubbedEnv } from './childEnv.js'
+
 // Prompt-journal version/diff logic (#62). The seed's .compost/AGENTS.md is
 // the prompt journal loops read. When git is initialized the web UI commits on
 // save; otherwise we append a timestamped version section so history is never
@@ -37,16 +39,6 @@ export function parseVersions(content: string): { draft: string; versions: Journ
     draft: draftLines.join('\n').trimEnd(),
     versions: versions.map((v) => ({ ts: v.ts, body: v.body.trimEnd() })),
   }
-}
-
-/** Append the current draft as a timestamped version section (git-less
- * fallback). Returns the new file content. Idempotent if the draft is empty. */
-export function appendVersion(content: string, ts: string): string {
-  const { draft } = parseVersions(content)
-  if (draft.trim().length === 0) return content
-  const marker = `<!-- compost:version ${ts} -->`
-  // The new draft stays at top; the snapshot is recorded below it.
-  return `${draft}\n\n${marker}\n${draft}\n`
 }
 
 export interface DiffLine {
@@ -105,12 +97,6 @@ export function readJournal(seedPath: string): string {
   return existsSync(p) ? readFileSync(p, 'utf8') : ''
 }
 
-export function saveJournalVersion(seedPath: string, ts: string): void {
-  const p = agentsPath(seedPath)
-  if (!existsSync(p)) return
-  writeFileSync(p, appendVersion(readFileSync(p, 'utf8'), ts), 'utf8')
-}
-
 /** Compose an AGENTS.md from a working draft + recorded inline versions. The
  * inverse of parseVersions, so save → load round-trips. */
 function composeJournal(draft: string, versions: JournalVersion[]): string {
@@ -125,13 +111,18 @@ function composeJournal(draft: string, versions: JournalVersion[]): string {
 function isGitWorkTree(dir: string): boolean {
   const r = spawnSync('git', ['-C', dir, 'rev-parse', '--is-inside-work-tree'], {
     encoding: 'utf8',
+    env: scrubbedEnv(),
   })
   return r.status === 0 && r.stdout.trim() === 'true'
 }
 
 function gitCommitFile(dir: string, file: string, message: string): void {
-  spawnSync('git', ['-C', dir, 'add', '--', file], { encoding: 'utf8' })
-  spawnSync('git', ['-C', dir, 'commit', '-m', message, '--', file], { encoding: 'utf8' })
+  // git needs no compost secrets — don't expose tokens to hooks/credential helpers.
+  spawnSync('git', ['-C', dir, 'add', '--', file], { encoding: 'utf8', env: scrubbedEnv() })
+  spawnSync('git', ['-C', dir, 'commit', '-m', message, '--', file], {
+    encoding: 'utf8',
+    env: scrubbedEnv(),
+  })
 }
 
 export type JournalSaveMode = 'git' | 'append'

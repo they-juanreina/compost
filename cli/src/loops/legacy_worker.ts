@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
+import { CompostError, errMessage } from '../errors.js'
+
 import {
   LegacyIngestClient,
   type LegacyIngestRequest,
@@ -116,7 +118,18 @@ export function linkNormalizedDoc(
       warnings.push(`session ${sid} already has transcript.json — not overwritten`)
       return { normalized_path: finalNormalized, warnings }
     }
-    const doc = JSON.parse(readFileSync(finalNormalized, 'utf8')) as Record<string, unknown>
+    let doc: Record<string, unknown>
+    try {
+      doc = JSON.parse(readFileSync(finalNormalized, 'utf8')) as Record<string, unknown>
+    } catch (cause) {
+      // A truncated/corrupt normalized doc (e.g. disk full, killed mid-write)
+      // otherwise surfaces as a raw SyntaxError. Point at the recovery action.
+      throw new CompostError(
+        'IO_ERROR',
+        `normalized doc at ${finalNormalized} is not valid JSON — requeue to re-ingest (\`compost jobs requeue\`).`,
+        { cause },
+      )
+    }
     // The service derives session_id from the file basename ("DOC-source");
     // the session's real id is what search/status/exports key on.
     doc.session_id = sid
@@ -124,7 +137,7 @@ export function linkNormalizedDoc(
     try {
       writeTranscriptMd(transcriptPath)
     } catch (err) {
-      warnings.push(`transcript.md render failed: ${err instanceof Error ? err.message : err}`)
+      warnings.push(`transcript.md render failed: ${errMessage(err)}`)
     }
     return { normalized_path: finalNormalized, transcript_path: transcriptPath, warnings }
   }
@@ -224,7 +237,7 @@ export async function runLegacyWorkerOnce(
           ...(warnings.length > 0 ? { warnings } : {}),
         })
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = errMessage(err)
         queue.fail(job.id, msg, MAX_ATTEMPTS)
         out.results.push({ job_id: job.id, source_path: sourcePath, status: 'error' })
         // On service-down, stop the drain — nothing else will succeed now.

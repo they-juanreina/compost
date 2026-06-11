@@ -1,9 +1,9 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { basename, join, resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
 import { listCanonicalSessionIds } from './canonicalSessions.js'
-import { resolveSeedPath } from './seedResolve.js'
+import { resolveSeedPath, seedNameOf } from './seedResolve.js'
 
 export interface SessionWithThemes {
   id: string
@@ -56,7 +56,7 @@ export function gatherSessionsWithThemes(opts: GatherOptions = {}): SessionWithT
           // than silently distorting the saturation curve.
           throw new CompostError(
             'SCHEMA_VIOLATION',
-            `Highlight ${hid} references session ${sessionId}, but Seeds/${basename(seedPath)}/sessions/${sessionId}/ does not exist.`,
+            `Highlight ${hid} references session ${sessionId}, but Seeds/${seedNameOf(seedPath)}/sessions/${sessionId}/ does not exist.`,
           )
         }
         bucket.add(themeId)

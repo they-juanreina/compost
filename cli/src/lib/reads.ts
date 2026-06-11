@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { type Event, reduce, type Snapshot } from '@they-juanreina/compost-provenance'
 import Database from 'better-sqlite3'
+
+import { eventsDbPath } from './events.js'
 
 /** A current snapshot plus the timestamp of its latest event, so callers can
  * sort by recency ("recent activity on top") without a second query. */
@@ -48,7 +49,7 @@ function rowToEvent(r: EventRow): Event {
 }
 
 function openReadonly(seedPath: string): Database.Database | null {
-  const dbPath = join(seedPath, '.compost', 'events.sqlite')
+  const dbPath = eventsDbPath(seedPath)
   if (!existsSync(dbPath)) return null
   return new Database(dbPath, { readonly: true, fileMustExist: true })
 }

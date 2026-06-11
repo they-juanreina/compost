@@ -1,5 +1,6 @@
 import type { DoctorReport } from '../lib/doctor.js'
 import type { StatusSnapshot } from '../lib/status.js'
+import { glyphs } from './glyphs.js'
 
 /** Human-readable summaries for the tutorial-facing verbs (#173). Commands pass
  * these to `emit(..., render)`; machine/JSON output is unaffected. Verbs without
@@ -12,6 +13,7 @@ function fmtMs(ms?: number): string {
 }
 
 export function renderStatus(s: StatusSnapshot): string {
+  const g = glyphs()
   const lines: string[] = [`compost — ${s.seeds.length} seed(s) under ${s.root}`]
   for (const seed of s.seeds) {
     const c = seed.counts
@@ -22,7 +24,7 @@ export function renderStatus(s: StatusSnapshot): string {
     )
     lines.push(`    highlights: ${c.highlights}   codes: ${c.codes}   themes: ${c.themes}`)
     lines.push(`    frames: ${c.frames}   insights: ${c.insights}   legacy: ${c.legacy_assets}`)
-    for (const w of seed.warnings) lines.push(`    ⚠ ${w}`)
+    for (const w of seed.warnings) lines.push(`    ${g.warn} ${w}`)
   }
   return lines.join('\n')
 }
@@ -39,35 +41,43 @@ interface SearchView {
     score: number
     text: string
   }>
+  /** Optional guidance when 0 results — points at the real upstream cause. */
+  hint?: string
 }
 
 export function renderSearch(v: SearchView): string {
+  const g = glyphs()
   const lines: string[] = [
     `"${v.query}" — ${v.returned} result(s) [${v.retrieval}] of ${v.indexed_chunks} chunks`,
   ]
   for (const [i, r] of v.results.entries()) {
     const t = r.text.replace(/\s+/g, ' ').trim()
-    const clipped = t.length > 160 ? `${t.slice(0, 157)}…` : t
+    const clipped = t.length > 160 ? `${t.slice(0, 157)}${g.ellipsis}` : t
     lines.push('')
     lines.push(
       `  ${i + 1}. [${r.session ?? '?'} ${fmtMs(r.start_ms)}–${fmtMs(r.end_ms)}] score ${r.score}`,
     )
     lines.push(`     ${clipped}`)
   }
+  if (v.hint !== undefined) {
+    lines.push('')
+    lines.push(`  ${g.arrow} ${v.hint}`)
+  }
   return lines.join('\n')
 }
 
 export function renderDoctor(r: DoctorReport): string {
+  const g = glyphs()
   const lines: string[] = [`models doctor — ${r.ok ? 'OK' : 'ISSUES'}`, '  providers:']
   for (const [name, h] of Object.entries(r.providers)) {
     lines.push(
-      `    ${h.ok ? '✓' : '✗'} ${name}${h.ok ? ` (${h.model_list.length} models, ${h.latency_ms}ms)` : ` — ${h.error ?? 'down'}`}`,
+      `    ${h.ok ? g.ok : g.fail} ${name}${h.ok ? ` (${h.model_list.length} models, ${h.latency_ms}ms)` : ` — ${h.error ?? 'down'}`}`,
     )
   }
   lines.push('  tasks:')
   for (const t of r.tasks) {
     lines.push(
-      `    ${t.status === 'ok' ? '✓' : '✗'} ${t.task} → ${t.route}${t.status === 'ok' ? '' : `  [${t.status}]`}${t.suggestion ? `  ↳ ${t.suggestion}` : ''}`,
+      `    ${t.status === 'ok' ? g.ok : g.fail} ${t.task} → ${t.route}${t.status === 'ok' ? '' : `  [${t.status}]`}${t.suggestion ? `  ${g.arrow} ${t.suggestion}` : ''}`,
     )
   }
   const unused = Object.entries(r.unused_models)

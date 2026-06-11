@@ -1,7 +1,10 @@
+import { type SpawnSyncReturns, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+import { CompostError } from '../errors.js'
 
 /**
  * Native (host) transcription runtime resolution (#176, native-first).
@@ -156,4 +159,72 @@ export function pickRuntime(
 ): 'native' | 'docker' {
   if (explicit === 'native' || explicit === 'docker') return explicit
   return appleSilicon && native !== null ? 'native' : 'docker'
+}
+
+/** Injectable spawn surface (real `spawnSync` in prod; a fake in tests). */
+export type SpawnImpl = (
+  cmd: string,
+  args: string[],
+  opts: { cwd: string; env: NodeJS.ProcessEnv; encoding: 'utf8'; maxBuffer: number },
+) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout' | 'stderr' | 'error'>
+
+export interface RunNativeCliOptions {
+  cwd: string
+  env: NodeJS.ProcessEnv
+  /** Short noun used in the error messages, e.g. 'transcriber' / 'legacy-ingest'. */
+  label: string
+  /** Recovery hint appended to the failed-to-start message. */
+  startHint: string
+  spawnImpl?: SpawnImpl
+}
+
+export interface NativeCliResult<T> {
+  parsed: T
+  status: number | null
+  stderr: string
+}
+
+/**
+ * Spawn a native `python -m app.<cli>` entrypoint and parse its single JSON-line
+ * result. Owns the spawn dispatch, the 64 MiB buffer, the failed-to-start error,
+ * and the last-line/parse/object-guard. The caller keeps its own success check
+ * (`status !== 0 || parsed.status === 'failed'`) on the returned
+ * `{ parsed, status, stderr }`, since the two callers phrase that failure
+ * differently. (#176, #184)
+ */
+export function runNativeCli<T>(
+  python: string,
+  args: string[],
+  opts: RunNativeCliOptions,
+): NativeCliResult<T> {
+  const spawn: SpawnImpl = opts.spawnImpl ?? (spawnSync as unknown as SpawnImpl)
+  const res = spawn(python, args, {
+    cwd: opts.cwd,
+    env: opts.env,
+    encoding: 'utf8',
+    maxBuffer: 64 * 1024 * 1024,
+  })
+  if (res.error) {
+    throw new CompostError(
+      'PROVIDER_ERROR',
+      `native ${opts.label} failed to start (${python}): ${res.error.message}. ${opts.startHint}`,
+    )
+  }
+  const stderr = res.stderr || ''
+  // The entrypoint prints exactly one JSON line; take the last non-empty line.
+  const lastLine = (res.stdout || '').trim().split('\n').filter(Boolean).pop() ?? ''
+  let parsed: T
+  try {
+    // JSON.parse succeeds on primitives (null, 123, "s"); require an object so a
+    // stray non-object line surfaces as the CompostError below, not a TypeError.
+    const value: unknown = JSON.parse(lastLine)
+    if (typeof value !== 'object' || value === null) throw new Error('not a JSON object')
+    parsed = value as T
+  } catch {
+    throw new CompostError(
+      'PROVIDER_ERROR',
+      `native ${opts.label} produced no parseable result. stderr: ${stderr.slice(-400)}`,
+    )
+  }
+  return { parsed, status: res.status, stderr }
 }

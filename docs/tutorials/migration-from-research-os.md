@@ -42,4 +42,7 @@ missing compost dirs and `.compost/` (config.toml, AGENTS.md).
   errors rather than merge — resolve by hand first.
 - **An existing `seed.md` is preserved**; one is written from template only if
   absent.
-- Re-index after migrating to build the vector index: `compost reindex --vectors`.
+- After migrating, the vector index builds automatically the first time you run
+  `compost watch` (or `compost watch --once`). Note: `compost reindex --vectors`
+  is **not wired yet** — it reports a `not_implemented` status and exits non-zero
+  rather than rebuilding the index (#137). Use `compost watch` for the index.

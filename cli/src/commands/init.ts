@@ -21,6 +21,10 @@ export function registerInit(program: Command): void {
       'Migrate a legacy folder into the new seed (delegates to compost migrate)',
     )
     .option('--from-sample', 'Unpack the bundled sample seed (a redacted single-session corpus)')
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost init my-study\n  $ compost init demo --from-sample',
+    )
     .action((seedName: string, flags: InitFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {

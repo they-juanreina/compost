@@ -20,6 +20,10 @@ export function registerSearch(program: Command): void {
     .argument('<query>', 'Free-text query')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--top-k <n>', 'Number of passages to return', '8')
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost search "what frustrated users"\n  $ compost search "onboarding" --top-k 15 --seed my-study',
+    )
     .action(async (query: string, flags: SearchFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
@@ -43,6 +47,16 @@ export function registerSearch(program: Command): void {
           text: c.text,
         }))
 
+        // Distinguish "nothing indexed yet" (an upstream ingest/transcribe gap,
+        // which first surfaces here as a clean 0 results) from "indexed, but no
+        // match for this query" — point the user at the real diagnostic.
+        const hint =
+          corpus.chunks.length === 0
+            ? 'No transcribed sessions are indexed for this seed yet. Run `compost status` to see transcribed/queued counts and `compost jobs` to inspect the ingest/transcribe queue.'
+            : results.length === 0
+              ? 'Indexed, but nothing matched this query — try different terms.'
+              : undefined
+
         emit(
           {
             status: 'ok',
@@ -54,6 +68,7 @@ export function registerSearch(program: Command): void {
             // embeddings provider are available; 'bm25' otherwise.
             retrieval: mode,
             results,
+            ...(hint ? { hint } : {}),
           },
           out,
           renderSearch,

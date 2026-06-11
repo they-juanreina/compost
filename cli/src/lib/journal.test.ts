@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { appendVersion, diffLines, parseVersions } from './journal.js'
+import { diffLines, parseVersions } from './journal.js'
 
 describe('parseVersions', () => {
   it('separates the working draft from versioned sections', () => {
@@ -22,20 +22,6 @@ describe('parseVersions', () => {
     const { draft, versions } = parseVersions('just a prompt')
     assert.equal(draft, 'just a prompt')
     assert.equal(versions.length, 0)
-  })
-})
-
-describe('appendVersion', () => {
-  it('records the current draft as a timestamped version', () => {
-    const out = appendVersion('my prompt', '2026-06-03T00:00:00Z')
-    const { versions } = parseVersions(out)
-    assert.equal(versions.length, 1)
-    assert.equal(versions[0]?.ts, '2026-06-03T00:00:00Z')
-    assert.match(versions[0]?.body ?? '', /my prompt/)
-  })
-
-  it('is a no-op on an empty draft', () => {
-    assert.equal(appendVersion('   ', '2026-06-03T00:00:00Z'), '   ')
   })
 })
 

@@ -7,6 +7,7 @@ import { CompostError, isCompostError } from '../errors.js'
 import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { HF_ALIASES, resolveSecret } from '../lib/secrets.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
+import { assertSessionContained } from '../lib/sessionId.js'
 import { applySidecar } from '../lib/speakers.js'
 import { transcribeNative } from '../lib/transcribeNative.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -32,6 +33,14 @@ function resolveSource(seedPath: string, sessionId: string): string {
   return join(dir, src)
 }
 
+/** After a transcript lands, re-apply persisted speaker names (#177) and render
+ * the human-readable transcript.md. No-op if the file isn't there. */
+function finalizeTranscript(path: string): void {
+  if (!existsSync(path)) return
+  applySidecar(path)
+  writeTranscriptMd(path)
+}
+
 export function registerTranscribe(program: Command): void {
   program
     .command('transcribe')
@@ -54,10 +63,19 @@ export function registerTranscribe(program: Command): void {
       '--transcriber-dir <path>',
       'transcriber/ package dir for the native runtime (or env COMPOST_TRANSCRIBER_DIR)',
     )
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost transcribe S001\n  $ compost transcribe S001 --language es-CO --runtime native',
+    )
     .action(async (sessionId: string, flags: TranscribeFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        // Guard both branches: sessionId is passed verbatim to the native Python
+        // entrypoint (--session-id, no regex there) and the Docker route. Validate
+        // it (regex + containment under <seed>/sessions/) before any path join or
+        // subprocess (#211 followup).
+        assertSessionContained(seedPath, sessionId)
         const source = resolveSource(seedPath, sessionId)
 
         if (
@@ -96,6 +114,11 @@ export function registerTranscribe(program: Command): void {
           // secrets.env) and pass it explicitly to the python subprocess, so a
           // keychain-stored token works even though it isn't in process.env.
           const hf = resolveSecret('HUGGINGFACE_TOKEN', { aliases: HF_ALIASES })
+          // Native ASR captures the subprocess's stdio, so the terminal is blank
+          // for minutes otherwise. Heartbeat to stderr in human mode at a TTY.
+          if (out.human && process.stderr.isTTY === true) {
+            process.stderr.write(`transcribing ${sessionId} (native; this can take minutes)…\n`)
+          }
           const resp = transcribeNative(seedPath, sessionId, source, {
             python: native.python,
             transcriberDir: native.transcriberDir,
@@ -104,10 +127,7 @@ export function registerTranscribe(program: Command): void {
             ...(flags.language !== undefined ? { language: flags.language } : {}),
             ...(hf ? { env: { HUGGINGFACE_TOKEN: hf.value } } : {}),
           })
-          if (existsSync(resp.transcript_path)) {
-            applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)
-            writeTranscriptMd(resp.transcript_path)
-          }
+          finalizeTranscript(resp.transcript_path)
           emit(
             {
               status: resp.status,
@@ -133,11 +153,11 @@ export function registerTranscribe(program: Command): void {
         const client = new TranscriberClient(
           flags.baseUrl !== undefined ? { baseUrl: flags.baseUrl } : {},
         )
-        const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
-        if (existsSync(resp.transcript_path)) {
-          applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)
-          writeTranscriptMd(resp.transcript_path)
+        if (out.human && process.stderr.isTTY === true) {
+          process.stderr.write(`transcribing ${sessionId} (docker; this can take minutes)…\n`)
         }
+        const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
+        finalizeTranscript(resp.transcript_path)
         emit(
           {
             status: resp.status,

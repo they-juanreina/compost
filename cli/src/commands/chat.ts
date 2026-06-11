@@ -5,7 +5,7 @@ import { isCompostError } from '../errors.js'
 import { ANSWER_JSON_SCHEMA } from '../lib/answerSchema.js'
 import { chat } from '../lib/chat.js'
 import { loadConfig } from '../lib/config.js'
-import { resolveSeedPath } from '../lib/seedResolve.js'
+import { resolveSeedPath, seedNameOf } from '../lib/seedResolve.js'
 import { LLMAdapter } from '../llm/adapter.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -59,11 +59,15 @@ export function registerChat(program: Command): void {
       "LLM task to answer with — local by default; use 'synthesis' for cloud quality (needs an API key)",
       'quick_chat',
     )
+    .addHelpText(
+      'after',
+      '\nExamples:\n  $ compost chat "what did participants say about pricing?"\n  $ compost chat "summarize the onboarding pain points" --task synthesis',
+    )
     .action(async (question: string, flags: ChatFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-        const seedName = seedPath.split('/').pop() ?? 'seed'
+        const seedName = seedNameOf(seedPath)
         const config = loadConfig(seedPath)
         const adapter = new LLMAdapter(config)
 

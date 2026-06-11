@@ -34,13 +34,15 @@ Or try the bundled sample corpus without recording anything: `compost init sampl
 
 Three surfaces over one engine:
 
-- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `ingest`, `transcribe`, `watch`, `snap`, `status`, `blame`, `export`, `validate`, `reindex`, `config`, `search`, `session`, `create`, `endorse`, `setup`, `secrets`, `tag`, `code`, `rescan`, `saturate`.
+- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `ingest`, `transcribe`, `watch`, `snap`, `status`, `blame`, `export`, `backup`, `validate`, `reindex`, `config`, `search`, `session`, `create`, `endorse`, `setup`, `secrets`, `tag`, `code`, `rescan`, `saturate`.
 - **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-status`, …) and 14 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
 - **Web UI** — coming in v0.2 (transcript player, drag-to-highlight, theme board). Today the surfaces are the CLI and the plugin.
 
 ## Provenance
 
 Every change to every artifact is an append-only event in `.compost/events.sqlite` with a three-actor model — **researcher** (human, accountable), **agent** (deterministic software), **AI-suggestion** (raw model output, untrusted until endorsed). `compost blame <id>` prints the lineage chain. AI-authored artifacts surface as `[draft]` until `compost endorse` promotes them.
+
+`.compost/events.sqlite` is **canonical and not rebuildable** — snapshots and the markdown artifacts derive from it, never the reverse. It lives inside the per-seed `.compost/` (gitignored by default), so it must travel with the seed on any move or backup: copy the whole seed folder (including `.compost/`), or run `compost backup` to export a portable copy of the ledger plus a W3C PROV-O bundle into `exports/`. Losing `.compost/` leaves the markdown but makes every claim unattributable.
 
 ## Status
 
@@ -50,7 +52,7 @@ Retrieval is hybrid end to end: `compost watch` builds the LanceDB index by defa
 
 Known limitations:
 - The cross-encoder rerank stage (`retrieval/src/rerank.ts`) is implemented and unit-tested but has no CLI caller yet, so the final `hybrid → rerank → top-N` step is effectively off — `search` and `chat` return RRF-fused results directly.
-- `compost reindex --vectors` is a recognized flag but isn't wired yet: it reports a "not yet wired" status instead of rebuilding the LanceDB index. (The index is rebuilt automatically by `compost watch`; only the manual flag is the gap.)
+- `compost reindex --vectors` is a recognized flag but isn't wired yet: it reports a `not_implemented` status and exits non-zero instead of rebuilding the LanceDB index. (The index is rebuilt automatically by `compost watch`; only the manual flag is the gap.)
 - The web UI is the [v0.2 milestone](https://github.com/they-juanreina/compost/milestone/4).
 - `compost serve`, `query`, and `synthesize` are stubs.
 

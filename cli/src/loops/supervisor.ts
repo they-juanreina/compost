@@ -85,7 +85,10 @@ export async function runSupervisorOnce(
   let embed = { embedded: 0, inserted: 0, transcripts_scanned: 0 }
   if (deps.skipEmbed !== true) {
     try {
-      embed = await runEmbedWorkerOnce(seedPath, deps.embed ?? {})
+      embed = await runEmbedWorkerOnce(seedPath, {
+        ...(deps.embed ?? {}),
+        ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+      })
       await logger.info('embed drained', embed)
     } catch (err) {
       // Embed failures must not block ingest/transcribe/legacy progress — surface + continue.
@@ -132,6 +135,10 @@ export interface RunLiveOptions extends WorkerDeps {
   intervalMs?: number
   signal?: AbortSignal
   onError?: (loop: string, err: unknown) => void
+  /** Called after each completed pass (not on a thrown/crashed pass — that goes
+   * to onError). Lets `watch` surface drained-but-failed jobs / dead jobs that
+   * complete without throwing, so a long-lived watch can signal silent failure. */
+  onPass?: (result: SupervisorResult) => void
 }
 
 /**
@@ -146,7 +153,8 @@ export async function runLive(seedPath: string, opts: RunLiveOptions = {}): Prom
     let attempt = 0
     while (true) {
       try {
-        await runSupervisorOnce(seedPath, opts)
+        const result = await runSupervisorOnce(seedPath, opts)
+        opts.onPass?.(result)
         break
       } catch (err) {
         opts.onError?.('supervisor', err)

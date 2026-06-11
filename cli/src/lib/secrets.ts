@@ -12,7 +12,7 @@ import {
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 
-import { CompostError } from '../errors.js'
+import { CompostError, errMessage } from '../errors.js'
 
 /**
  * Secret resolution + storage (#236 readiness hardening).
@@ -44,6 +44,16 @@ export interface ResolvedSecret {
   value: string
   source: SecretSource
 }
+
+/**
+ * Names that `loadSecretsEnv` copied from the 0600 file into `process.env` this
+ * run. Because the autoload makes a file-stored secret resolve via `process.env`
+ * first, resolution would otherwise mislabel its source as `env`. Tracking the
+ * autoloaded names lets `resolveSecret`/`listSecrets` report the truthful
+ * `file` source (the value is the file's, not a shell export). Empty until
+ * `loadSecretsEnv` runs (so direct unit tests are unaffected).
+ */
+const autoloadedNames = new Set<string>()
 
 /**
  * Well-known secret names. Used by `compost secrets list` (which never reads
@@ -133,6 +143,16 @@ export function fileIsSecure(path: string, platform: NodeJS.Platform = process.p
     return (statSync(path).mode & 0o077) === 0
   } catch {
     return true // absent file can't leak
+  }
+}
+
+/** The POSIX mode bits of `path`, or undefined when it can't be stat'd (absent
+ * or unreadable) — lets a perms check skip what it can't see. */
+function statMode(path: string): number | undefined {
+  try {
+    return statSync(path).mode
+  } catch {
+    return undefined
   }
 }
 
@@ -230,6 +250,14 @@ function ensureSecureHome(deps: SecretsDeps): string {
   return dir
 }
 
+/** Serialize the dotenv to `path` with 0600 perms — `mode` on create, plus an
+ * explicit chmod on POSIX so an already-loose file is tightened (the write mode
+ * is umask-masked and on its own won't downgrade a permissive existing file). */
+function writeDotenv600(path: string, values: Record<string, string>, deps: SecretsDeps): void {
+  writeFileSync(path, serializeDotenv(values), { mode: 0o600 })
+  if ((deps.platform ?? process.platform) !== 'win32') chmodSync(path, 0o600)
+}
+
 /** Write/replace a single key in the dotenv, always (re)normalizing perms to
  * 0600. Reads existing contents raw (bypassing the secrecy gate) so a key set
  * on a previously-loose file both preserves siblings and *fixes* the perms. */
@@ -238,8 +266,7 @@ function writeSecretToFile(name: string, value: string, deps: SecretsDeps): stri
   const path = secretsEnvPath(deps)
   const existing = existsSync(path) ? parseDotenv(readFileSync(path, 'utf8')) : {}
   existing[name] = value
-  writeFileSync(path, serializeDotenv(existing), { mode: 0o600 })
-  if ((deps.platform ?? process.platform) !== 'win32') chmodSync(path, 0o600)
+  writeDotenv600(path, existing, deps)
   return path
 }
 
@@ -253,8 +280,7 @@ function removeSecretFromFile(name: string, deps: SecretsDeps): boolean {
   if (Object.keys(existing).length === 0) {
     rmSync(path, { force: true })
   } else {
-    writeFileSync(path, serializeDotenv(existing), { mode: 0o600 })
-    if ((deps.platform ?? process.platform) !== 'win32') chmodSync(path, 0o600)
+    writeDotenv600(path, existing, deps)
   }
   return true
 }
@@ -286,24 +312,27 @@ function runCmd(cmd: string, args: string[], input?: string): CmdResult {
   }
 }
 
+/** Map a `runCmd` result to its newline-trimmed stdout, or undefined when the
+ * command failed or produced no value — the shared keychain-read shape. */
+function cmdValue(r: CmdResult): string | undefined {
+  if (!r.ok) return undefined
+  const v = r.stdout.replace(/\n$/, '')
+  return v === '' ? undefined : v
+}
+
 /** macOS Keychain via the `security` CLI. NB: `add-generic-password -w <value>`
- * passes the secret as an argv (briefly visible to `ps`); there's no stdin mode
- * for `security`. Acceptable under the single-user threat model (SECURITY.md). */
+ * passes the secret as an argv element, briefly visible to `ps` for the lifetime
+ * of the spawned `security` process. The interactive `-w` (no value) prompt form
+ * reads the password from the controlling TTY, not stdin, so it can't be fed via
+ * our piped `runCmd` without allocating a pty — not worth it under the single-user
+ * threat model. The exposure is documented in SECURITY.md ("Storing your tokens"). */
 function macKeychain(): KeychainBackend {
   return {
     label: `macOS Keychain (service "${KEYCHAIN_SERVICE}")`,
     get(name) {
-      const r = runCmd('security', [
-        'find-generic-password',
-        '-s',
-        KEYCHAIN_SERVICE,
-        '-a',
-        name,
-        '-w',
-      ])
-      if (!r.ok) return undefined
-      const v = r.stdout.replace(/\n$/, '')
-      return v === '' ? undefined : v
+      return cmdValue(
+        runCmd('security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', name, '-w']),
+      )
     },
     set(name, value) {
       const r = runCmd('security', [
@@ -339,10 +368,7 @@ function linuxKeychain(): KeychainBackend {
   return {
     label: `Secret Service (libsecret, service "${KEYCHAIN_SERVICE}")`,
     get(name) {
-      const r = runCmd('secret-tool', ['lookup', ...attrs(name)])
-      if (!r.ok) return undefined
-      const v = r.stdout.replace(/\n$/, '')
-      return v === '' ? undefined : v
+      return cmdValue(runCmd('secret-tool', ['lookup', ...attrs(name)]))
     },
     set(name, value) {
       const r = runCmd(
@@ -397,7 +423,11 @@ export function resolveSecret(name: string, opts: ResolveOpts = {}): ResolvedSec
 
   for (const key of names) {
     const v = env[key]
-    if (v && v.trim() !== '') return { value: v, source: 'env' }
+    if (v && v.trim() !== '') {
+      // If the autoload put this here, its real home is the 0600 file — report
+      // that, not 'env', so the user isn't told a managed file is a shell export.
+      return { value: v, source: autoloadedNames.has(key) ? 'file' : 'env' }
+    }
   }
 
   const kc = detectKeychain(opts)
@@ -440,7 +470,7 @@ export function setSecret(name: string, value: string, deps: SecretsDeps = {}): 
       kc.set(name, value)
       return { name, stored_in: 'keychain', location: kc.label }
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err)
+      const reason = errMessage(err)
       const path = writeSecretToFile(name, value, deps)
       return { name, stored_in: 'file', location: path, fallback_reason: reason }
     }
@@ -486,7 +516,9 @@ export function listSecrets(deps: SecretsDeps = {}): {
   for (const name of candidates) {
     const sources: SecretSource[] = []
     const e = env[name]
-    if (e && e.trim() !== '') sources.push('env')
+    // An autoloaded name is in env only because of the file — count it once, as
+    // 'file' (below), not 'env', so it doesn't masquerade/double-count.
+    if (e && e.trim() !== '' && !autoloadedNames.has(name)) sources.push('env')
     if (kc) {
       const v = kc.get(name)
       if (v && v.trim() !== '') sources.push('keychain')
@@ -533,6 +565,8 @@ export function loadSecretsEnv(
     if (cur === undefined || cur === '') {
       env[k] = v
       loaded.push(k)
+      // Remember the file is the true source, so resolution doesn't mislabel it 'env'.
+      autoloadedNames.add(k)
     }
   }
   return { path: read.path, loaded, skipped: null }
@@ -560,40 +594,28 @@ export function auditSecretsPerms(deps: SecretsDeps = {}): PermIssue[] {
   const home = compostHome(deps)
 
   // Home dir: flag group/world-writable (the dangerous case for a secrets dir).
-  if (existsSync(home)) {
-    try {
-      const m = statSync(home).mode
-      if ((m & 0o022) !== 0) {
-        issues.push({
-          path: home,
-          kind: 'dir',
-          mode: octal(m),
-          fix: `chmod 700 ${home}`,
-          detail: 'group/world-writable — others could replace files here',
-        })
-      }
-    } catch {
-      // unreadable dir: nothing we can assert
-    }
+  const homeMode = statMode(home)
+  if (homeMode !== undefined && (homeMode & 0o022) !== 0) {
+    issues.push({
+      path: home,
+      kind: 'dir',
+      mode: octal(homeMode),
+      fix: `chmod 700 ${home}`,
+      detail: 'group/world-writable — others could replace files here',
+    })
   }
 
   // The managed dotenv specifically.
   const sp = secretsEnvPath(deps)
-  if (existsSync(sp)) {
-    try {
-      const m = statSync(sp).mode
-      if ((m & 0o077) !== 0) {
-        issues.push({
-          path: sp,
-          kind: 'file',
-          mode: octal(m),
-          fix: `chmod 600 ${sp}`,
-          detail: 'secrets file is group/world-readable',
-        })
-      }
-    } catch {
-      // ignore
-    }
+  const spMode = statMode(sp)
+  if (spMode !== undefined && (spMode & 0o077) !== 0) {
+    issues.push({
+      path: sp,
+      kind: 'file',
+      mode: octal(spMode),
+      fix: `chmod 600 ${sp}`,
+      detail: 'secrets file is group/world-readable',
+    })
   }
 
   // Bounded scan for other secret-ish files left around the home dir.
@@ -619,20 +641,16 @@ export function auditSecretsPerms(deps: SecretsDeps = {}): PermIssue[] {
       const rel = relative(home, full)
       if (!SECRETISH_RE.test(rel)) continue
       if (seen.has(full)) continue
-      try {
-        const m = statSync(full).mode
-        if ((m & 0o077) !== 0) {
-          seen.add(full)
-          issues.push({
-            path: full,
-            kind: 'file',
-            mode: octal(m),
-            fix: `chmod 600 ${full}`,
-            detail: 'looks like a secret file and is group/world-readable',
-          })
-        }
-      } catch {
-        // ignore unreadable entry
+      const m = statMode(full)
+      if (m !== undefined && (m & 0o077) !== 0) {
+        seen.add(full)
+        issues.push({
+          path: full,
+          kind: 'file',
+          mode: octal(m),
+          fix: `chmod 600 ${full}`,
+          detail: 'looks like a secret file and is group/world-readable',
+        })
       }
     }
   }

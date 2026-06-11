@@ -1,10 +1,49 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 const execFileAsync = promisify(execFile);
+/**
+ * Roots an *agent-driven* ingest may read from (#236). An MCP agent is a
+ * lower-trust caller than a human at a shell: combined with prompt-injection in
+ * an already-ingested transcript, an unconstrained `compost_ingest` is a
+ * self-directed exfiltration primitive (read planted instruction → ingest
+ * ~/.ssh or a sibling repo → surface it via compost_search). So MCP ingest is
+ * confined to the project working directory (where Seeds/ lives) by default;
+ * `$COMPOST_INGEST_ROOTS` (colon-separated) adds more. The human CLI stays
+ * fully permissive — this guard is the plugin layer only.
+ */
+export function ingestRoots(env = process.env, cwd = process.cwd()) {
+    const extra = (env.COMPOST_INGEST_ROOTS ?? '')
+        .split(':')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0)
+        .map((p) => resolve(cwd, p));
+    return [resolve(cwd), ...extra];
+}
+/** True when `rawPath` resolves inside one of the allowed ingest roots. The
+ * per-root lexical check is the parallel of cli/src/lib/pathSafe.ts's
+ * `isContainedUnder` — kept inline here because the plugin is a separate package
+ * and this is its only use, but deliberately ALLOWS `target === root` (`rel ===
+ * ''`), unlike the strict CLI twin. Keep the two in sync if the rule changes. */
+export function isIngestPathAllowed(rawPath, env = process.env, cwd = process.cwd()) {
+    const target = resolve(cwd, rawPath);
+    return ingestRoots(env, cwd).some((root) => {
+        const rel = relative(root, target);
+        return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel) && !rel.includes(`..${sep}`));
+    });
+}
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
 export const PLUGIN_VERSION = '0.1.2';
 const str = (desc) => ({ type: 'string', description: desc });
+/** A session-id arg constrained at the schema boundary to a bare label, so a
+ * host agent can't pass a path-traversal value (mirrors assertSessionId in the
+ * CLI; the CLI re-validates regardless). */
+const sessionArg = (desc) => ({
+    type: 'string',
+    description: desc,
+    pattern: '^[A-Za-z0-9_-]+$',
+});
 /**
  * Provenance fingerprint for an AI-authored artifact: sha256 over the tool-call
  * args. It is NOT the upstream LLM prompt (the MCP layer can't observe that),
@@ -84,7 +123,7 @@ export const TOOLS = [
         inputSchema: {
             type: 'object',
             required: ['session'],
-            properties: { session: str('Session id, e.g. S001'), seed: str('Seed') },
+            properties: { session: sessionArg('Session id, e.g. S001'), seed: str('Seed') },
         },
         toArgv: (a) => ['transcribe', String(a.session), ...(a.seed ? ['--seed', String(a.seed)] : [])],
     },
@@ -143,7 +182,7 @@ export const TOOLS = [
         inputSchema: {
             type: 'object',
             required: ['session'],
-            properties: { session: str('Session id, e.g. S001'), seed: str('Seed') },
+            properties: { session: sessionArg('Session id, e.g. S001'), seed: str('Seed') },
         },
         toArgv: (a) => ['session', String(a.session), ...(a.seed ? ['--seed', String(a.seed)] : [])],
     },
@@ -237,22 +276,19 @@ export const TOOLS = [
         description: "Endorse an artifact — promotes an AI [draft] to researcher-approved. This is the RESEARCHER's act: the host shows a confirmation, and approving it IS the endorsement. Do not call autonomously to self-approve your own drafts.",
         readOnly: false,
         // Not aiAuthored: the endorse event's actor is the researcher (the human
-        // who approves the mutation), not Claude Code.
+        // who approves the mutation), not Claude Code. The endorsing IDENTITY is
+        // bound server-side to $COMPOST_USER (the CLI default) — deliberately NOT a
+        // tool arg, so an agent can't endorse under an arbitrary/author identity and
+        // the CLI's self-endorse refusal can't be sidestepped (#236).
         inputSchema: {
             type: 'object',
             required: ['artifact'],
             properties: {
                 artifact: str('SHA256 prefix or latest:<kind>=<seed>'),
-                researcher: str('Researcher identity (default $COMPOST_USER)'),
                 seed: str('Seed'),
             },
         },
-        toArgv: (a) => [
-            'endorse',
-            String(a.artifact),
-            ...(a.researcher ? ['--researcher', String(a.researcher)] : []),
-            ...(a.seed ? ['--seed', String(a.seed)] : []),
-        ],
+        toArgv: (a) => ['endorse', String(a.artifact), ...(a.seed ? ['--seed', String(a.seed)] : [])],
     },
     {
         name: 'compost_rerun',
@@ -382,6 +418,18 @@ export async function runTool(name, args, runner = defaultRunner) {
     const tool = TOOLS.find((t) => t.name === name);
     if (tool === undefined)
         return { ok: false, content: `unknown tool: ${name}` };
+    // Confine agent-driven ingest to the workspace (the human CLI stays permissive).
+    if (name === 'compost_ingest' && !isIngestPathAllowed(String(args.path ?? ''))) {
+        return {
+            ok: false,
+            content: JSON.stringify({
+                error: {
+                    code: 'INGEST_PATH_DENIED',
+                    message: `ingest path "${String(args.path ?? '')}" is outside the allowed roots (the project directory; extend with COMPOST_INGEST_ROOTS). Move the file into the workspace, or run \`compost ingest\` from a shell.`,
+                },
+            }),
+        };
+    }
     const { stdout, code } = await runner(buildArgv(tool, args));
     return { ok: code === 0, content: stdout.trim() };
 }

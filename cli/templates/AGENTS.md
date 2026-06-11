@@ -2,7 +2,7 @@
 
 This is the versioned prompt journal for this seed. Compost reads this file when invoking LLM tasks (synthesis, coding, query, chat) and prepends its contents to system prompts. Treat it like a `CLAUDE.md` for your research.
 
-Edit freely. Commit changes to version-control alongside the rest of the seed.
+Edit freely — this is the human-authored file in the otherwise machine-owned `.compost/`. Compost versions it automatically (a timestamped section is appended on each save). `.compost/` is hidden and gitignored by default, so to preserve or move this seed, copy the whole folder (including `.compost/`) — or run `compost backup` to export its provenance.
 
 ## Voice & style
 

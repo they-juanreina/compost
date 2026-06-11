@@ -182,6 +182,51 @@ describe('LLMAdapter routing', () => {
     )
   })
 
+  it('maps a 401 from a cloud provider to PROVIDER_AUTH naming the env var (#236)', async () => {
+    process.env.TEST_ANTHROPIC_KEY = 'sk-wrong'
+    try {
+      const fetchImpl: FetchLike = async () => ({
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        json: async () => ({}),
+        text: async () => '{"error":"invalid x-api-key"}',
+      })
+      const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+      await assert.rejects(
+        () => adapter.chat('synthesis', [{ role: 'user', content: 'hi' }]),
+        (e: unknown) =>
+          isCompostError(e) &&
+          (e as { code: string }).code === 'PROVIDER_AUTH' &&
+          /TEST_ANTHROPIC_KEY/.test((e as Error).message) &&
+          /401/.test((e as Error).message),
+      )
+    } finally {
+      delete process.env.TEST_ANTHROPIC_KEY
+    }
+  })
+
+  it('reclassifies anthropic embeddings-unsupported as CONFIG_ERROR (#236)', async () => {
+    process.env.TEST_ANTHROPIC_KEY = 'sk-present'
+    try {
+      // Route embeddings to anthropic to hit the unsupported path.
+      const cfg = CONFIG_TOML.replace(
+        'embeddings = "ollama:bge-m3"',
+        'embeddings = "anthropic:none"',
+      )
+      const adapter = new LLMAdapter(parseConfig(cfg))
+      await assert.rejects(
+        () => adapter.embed('embeddings', ['hi']),
+        (e: unknown) =>
+          isCompostError(e) &&
+          (e as { code: string }).code === 'CONFIG_ERROR' &&
+          /does not support embeddings/.test((e as Error).message),
+      )
+    } finally {
+      delete process.env.TEST_ANTHROPIC_KEY
+    }
+  })
+
   it('lets non-404 Ollama errors propagate untranslated (provider_down etc.)', async () => {
     // 503 from Ollama → keep the original Error so callers can surface it as
     // a service-down problem, not a missing-model problem.

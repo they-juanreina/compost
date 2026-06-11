@@ -1,7 +1,16 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { isContainedUnder } from './pathSafe.js'
+
+/** The seed's display name: its directory basename. The single way to derive a
+ * name from a seed path — replaces an ad-hoc mix of `split('/').pop() ?? 'seed'`
+ * (which mishandles Windows separators) and bare `basename`. Named `…Of` so it
+ * doesn't shadow the conventional `const seedName` at call sites. */
+export function seedNameOf(seedPath: string): string {
+  return basename(seedPath)
+}
 
 /**
  * Seed names are labels, not paths (#211). We reject the patterns that let an
@@ -39,8 +48,9 @@ function assertSeedName(seed: string): void {
 }
 
 function assertContainedUnder(seedPath: string, root: string): void {
-  const rel = relative(root, seedPath)
-  if (rel.startsWith('..') || isAbsolute(rel) || rel.includes(`..${sep}`)) {
+  // seed is non-empty (assertSeedName), so seedPath never equals root here —
+  // the strict isContainedUnder is equivalent for every reachable input.
+  if (!isContainedUnder(root, seedPath)) {
     throw new CompostError('INVALID_INPUT', `--seed resolves outside the Seeds/ root: ${seedPath}`)
   }
 }

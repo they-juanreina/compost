@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
 
+import { scrubbedEnv } from '../lib/childEnv.js'
 import { type PdfRenderer, reportToHtml } from './html.js'
 import type { ReportInput } from './report.js'
 
@@ -19,13 +20,17 @@ export const chromiumRenderer: PdfRenderer = async (html, outPath) => {
   let lastErr: unknown
   for (const bin of bins) {
     try {
-      await execFileAsync(bin, [
-        '--headless',
-        '--no-sandbox',
-        `--print-to-pdf=${outPath}`,
-        '--no-pdf-header-footer',
-        `file://${htmlPath}`,
-      ])
+      await execFileAsync(
+        bin,
+        [
+          '--headless',
+          '--no-sandbox',
+          `--print-to-pdf=${outPath}`,
+          '--no-pdf-header-footer',
+          `file://${htmlPath}`,
+        ],
+        { env: scrubbedEnv() }, // a browser rendering local HTML needs no secrets (#236)
+      )
       return
     } catch (err) {
       lastErr = err

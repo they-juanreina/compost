@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs'
 
+import { errMessage } from '../errors.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { JobQueue, MAX_ATTEMPTS, resolveJobSource, stateDbPath } from '../lib/queue.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
-import { TranscriberClient } from '../transcriber_client.js'
+import { TranscriberClient, TranscriberServiceError } from '../transcriber_client.js'
 
 const AGENT_NAME = 'transcribe-worker'
 const AGENT_VERSION = '0.1.0'
@@ -15,6 +16,9 @@ export interface WorkerStepResult {
 
 export interface WorkerDeps {
   client?: TranscriberClient
+  /** Optional per-item progress sink (the watch command wires this to a
+   * TTY-gated stderr line in human mode; stdout stays machine-clean). */
+  onProgress?: (msg: string) => void
 }
 
 /**
@@ -39,6 +43,7 @@ export async function runTranscribeWorkerOnce(
       if (job === null) break
       out.processed += 1
       const sessionId = String(job.payload.session_id ?? 'S?')
+      deps.onProgress?.(`transcribing ${sessionId} (this can take minutes)…`)
       try {
         const language = typeof job.payload.language === 'string' ? job.payload.language : undefined
         const resp = await client.transcribe(
@@ -78,10 +83,19 @@ export async function runTranscribeWorkerOnce(
         })
         // needs_speaker_labels: completed but flagged for human; surfaced in result.
       } catch (err) {
-        queue.fail(job.id, err instanceof Error ? err.message : String(err), MAX_ATTEMPTS)
+        queue.fail(job.id, errMessage(err), MAX_ATTEMPTS)
         out.results.push({ job_id: job.id, session_id: sessionId, status: 'error' })
-        // stop the drain on a service-down error; nothing else will succeed now.
-        break
+        // Stop the drain ONLY on a service-level failure (down / model missing) —
+        // then nothing else will succeed this pass. A per-file failure (kind
+        // 'failed': corrupt media, bad codec) is specific to this job, so keep
+        // draining the rest of the queue instead of stalling them (mirrors
+        // legacy_worker.ts). The per-job attempt counter handles transient retries.
+        if (
+          err instanceof TranscriberServiceError &&
+          (err.kind === 'down' || err.kind === 'model_missing')
+        ) {
+          break
+        }
       }
     }
     return out

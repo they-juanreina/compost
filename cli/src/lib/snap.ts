@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { assertSessionContained } from './sessionId.js'
 
 export interface SnapResult {
   session_id: string
@@ -80,6 +81,10 @@ export function snap(
   opts: SnapOptions = {},
 ): SnapResult {
   const runner = opts.runner ?? defaultRunner
+  // sessionId is joined into the seed path (and written to) below — reject any
+  // path-separator/`..` value, and assert containment under the seed, before any
+  // fs op (#211 followup).
+  assertSessionContained(seedPath, sessionId)
   const atMs = parseTimestamp(at)
   const sessionDir = join(seedPath, 'sessions', sessionId)
   const source = findSource(sessionDir)
