@@ -12,7 +12,7 @@ import {
   validateHfToken,
 } from '../lib/setupItem.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
-import { glyphs } from '../render/glyphs.js'
+import { statusGlyph } from '../render/glyphs.js'
 
 /** Read all of stdin (the new token value, piped so it never lands in shell
  * history). Returns '' when stdin is an interactive TTY. (mirrors secrets.ts) */
@@ -57,11 +57,6 @@ export function assertRunAllowed(
   }
 }
 
-function glyph(status: SetupCheck['status']): string {
-  const g = glyphs()
-  return status === 'ok' ? g.ok : status === 'warn' ? g.warn : g.fail
-}
-
 /**
  * Register the `compost setup item …` group on the existing `setup` command.
  * This is the per-item maintenance surface: it has its OWN `command:'setup
@@ -103,7 +98,7 @@ export function registerSetupItem(setup: Command): void {
                 const acts = it.actions.length
                   ? `  actions: ${it.actions.map((a) => a.id).join(', ')}`
                   : ''
-                return `  ${glyph(it.status)} ${it.id.padEnd(28)} ${it.label}${acts}`
+                return `  ${statusGlyph(it.status)} ${it.id.padEnd(28)} ${it.label}${acts}`
               })
               .join('\n'),
         )
