@@ -146,6 +146,16 @@ export function fileIsSecure(path: string, platform: NodeJS.Platform = process.p
   }
 }
 
+/** The POSIX mode bits of `path`, or undefined when it can't be stat'd (absent
+ * or unreadable) — lets a perms check skip what it can't see. */
+function statMode(path: string): number | undefined {
+  try {
+    return statSync(path).mode
+  } catch {
+    return undefined
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Dotenv parsing
 // ---------------------------------------------------------------------------
@@ -240,6 +250,14 @@ function ensureSecureHome(deps: SecretsDeps): string {
   return dir
 }
 
+/** Serialize the dotenv to `path` with 0600 perms — `mode` on create, plus an
+ * explicit chmod on POSIX so an already-loose file is tightened (the write mode
+ * is umask-masked and on its own won't downgrade a permissive existing file). */
+function writeDotenv600(path: string, values: Record<string, string>, deps: SecretsDeps): void {
+  writeFileSync(path, serializeDotenv(values), { mode: 0o600 })
+  if ((deps.platform ?? process.platform) !== 'win32') chmodSync(path, 0o600)
+}
+
 /** Write/replace a single key in the dotenv, always (re)normalizing perms to
  * 0600. Reads existing contents raw (bypassing the secrecy gate) so a key set
  * on a previously-loose file both preserves siblings and *fixes* the perms. */
@@ -248,8 +266,7 @@ function writeSecretToFile(name: string, value: string, deps: SecretsDeps): stri
   const path = secretsEnvPath(deps)
   const existing = existsSync(path) ? parseDotenv(readFileSync(path, 'utf8')) : {}
   existing[name] = value
-  writeFileSync(path, serializeDotenv(existing), { mode: 0o600 })
-  if ((deps.platform ?? process.platform) !== 'win32') chmodSync(path, 0o600)
+  writeDotenv600(path, existing, deps)
   return path
 }
 
@@ -263,8 +280,7 @@ function removeSecretFromFile(name: string, deps: SecretsDeps): boolean {
   if (Object.keys(existing).length === 0) {
     rmSync(path, { force: true })
   } else {
-    writeFileSync(path, serializeDotenv(existing), { mode: 0o600 })
-    if ((deps.platform ?? process.platform) !== 'win32') chmodSync(path, 0o600)
+    writeDotenv600(path, existing, deps)
   }
   return true
 }
@@ -296,6 +312,14 @@ function runCmd(cmd: string, args: string[], input?: string): CmdResult {
   }
 }
 
+/** Map a `runCmd` result to its newline-trimmed stdout, or undefined when the
+ * command failed or produced no value — the shared keychain-read shape. */
+function cmdValue(r: CmdResult): string | undefined {
+  if (!r.ok) return undefined
+  const v = r.stdout.replace(/\n$/, '')
+  return v === '' ? undefined : v
+}
+
 /** macOS Keychain via the `security` CLI. NB: `add-generic-password -w <value>`
  * passes the secret as an argv element, briefly visible to `ps` for the lifetime
  * of the spawned `security` process. The interactive `-w` (no value) prompt form
@@ -306,17 +330,9 @@ function macKeychain(): KeychainBackend {
   return {
     label: `macOS Keychain (service "${KEYCHAIN_SERVICE}")`,
     get(name) {
-      const r = runCmd('security', [
-        'find-generic-password',
-        '-s',
-        KEYCHAIN_SERVICE,
-        '-a',
-        name,
-        '-w',
-      ])
-      if (!r.ok) return undefined
-      const v = r.stdout.replace(/\n$/, '')
-      return v === '' ? undefined : v
+      return cmdValue(
+        runCmd('security', ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-a', name, '-w']),
+      )
     },
     set(name, value) {
       const r = runCmd('security', [
@@ -352,10 +368,7 @@ function linuxKeychain(): KeychainBackend {
   return {
     label: `Secret Service (libsecret, service "${KEYCHAIN_SERVICE}")`,
     get(name) {
-      const r = runCmd('secret-tool', ['lookup', ...attrs(name)])
-      if (!r.ok) return undefined
-      const v = r.stdout.replace(/\n$/, '')
-      return v === '' ? undefined : v
+      return cmdValue(runCmd('secret-tool', ['lookup', ...attrs(name)]))
     },
     set(name, value) {
       const r = runCmd(
@@ -581,40 +594,28 @@ export function auditSecretsPerms(deps: SecretsDeps = {}): PermIssue[] {
   const home = compostHome(deps)
 
   // Home dir: flag group/world-writable (the dangerous case for a secrets dir).
-  if (existsSync(home)) {
-    try {
-      const m = statSync(home).mode
-      if ((m & 0o022) !== 0) {
-        issues.push({
-          path: home,
-          kind: 'dir',
-          mode: octal(m),
-          fix: `chmod 700 ${home}`,
-          detail: 'group/world-writable — others could replace files here',
-        })
-      }
-    } catch {
-      // unreadable dir: nothing we can assert
-    }
+  const homeMode = statMode(home)
+  if (homeMode !== undefined && (homeMode & 0o022) !== 0) {
+    issues.push({
+      path: home,
+      kind: 'dir',
+      mode: octal(homeMode),
+      fix: `chmod 700 ${home}`,
+      detail: 'group/world-writable — others could replace files here',
+    })
   }
 
   // The managed dotenv specifically.
   const sp = secretsEnvPath(deps)
-  if (existsSync(sp)) {
-    try {
-      const m = statSync(sp).mode
-      if ((m & 0o077) !== 0) {
-        issues.push({
-          path: sp,
-          kind: 'file',
-          mode: octal(m),
-          fix: `chmod 600 ${sp}`,
-          detail: 'secrets file is group/world-readable',
-        })
-      }
-    } catch {
-      // ignore
-    }
+  const spMode = statMode(sp)
+  if (spMode !== undefined && (spMode & 0o077) !== 0) {
+    issues.push({
+      path: sp,
+      kind: 'file',
+      mode: octal(spMode),
+      fix: `chmod 600 ${sp}`,
+      detail: 'secrets file is group/world-readable',
+    })
   }
 
   // Bounded scan for other secret-ish files left around the home dir.
@@ -640,20 +641,16 @@ export function auditSecretsPerms(deps: SecretsDeps = {}): PermIssue[] {
       const rel = relative(home, full)
       if (!SECRETISH_RE.test(rel)) continue
       if (seen.has(full)) continue
-      try {
-        const m = statSync(full).mode
-        if ((m & 0o077) !== 0) {
-          seen.add(full)
-          issues.push({
-            path: full,
-            kind: 'file',
-            mode: octal(m),
-            fix: `chmod 600 ${full}`,
-            detail: 'looks like a secret file and is group/world-readable',
-          })
-        }
-      } catch {
-        // ignore unreadable entry
+      const m = statMode(full)
+      if (m !== undefined && (m & 0o077) !== 0) {
+        seen.add(full)
+        issues.push({
+          path: full,
+          kind: 'file',
+          mode: octal(m),
+          fix: `chmod 600 ${full}`,
+          detail: 'looks like a secret file and is group/world-readable',
+        })
       }
     }
   }
