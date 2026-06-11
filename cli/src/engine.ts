@@ -44,6 +44,7 @@ export {
   ensurePrimaryCodebook,
   HUMAN_REF_RE,
   rejectArtifact,
+  resolveCodebookId,
   updateArtifact,
 } from './lib/artifacts.js'
 // ---- blame: artifact lineage chain (#122)

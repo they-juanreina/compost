@@ -191,6 +191,16 @@ describe('MCP tool definitions', () => {
     assert.deepEqual(migrate.toArgv({ apply: false }), ['codebook', 'migrate'])
   })
 
+  it('forwards --codebook on agreement only when given (per-frame κ)', () => {
+    const agree = tool('compost_agreement')
+    assert.deepEqual(agree.toArgv({ codebook: 'epistemology' }), [
+      'agreement',
+      '--codebook',
+      'epistemology',
+    ])
+    assert.ok(!agree.toArgv({ seed: 's' }).includes('--codebook'))
+  })
+
   it('forwards --codebook on create_code only when given', () => {
     const code = tool('compost_create_code')
     assert.deepEqual(code.toArgv({ name: 'c', definition: 'd', codebook: 'epistemology' }), [

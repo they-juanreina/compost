@@ -106,16 +106,17 @@ describe('computeAgreement', () => {
     const out: Coding[] = []
     for (let i = 1; i <= 12; i++) {
       const u = `H-${String(i).padStart(3, '0')}`
+      const cb = 'CB-primary'
       // both apply 'distrust' to the first 8
       if (i <= 8) {
-        out.push({ coder: 'human', unit: u, code: 'distrust' })
-        out.push({ coder: 'machine', unit: u, code: 'distrust' })
+        out.push({ coder: 'human', unit: u, code: 'distrust', codebook: cb })
+        out.push({ coder: 'machine', unit: u, code: 'distrust', codebook: cb })
       }
       // human applies 'override' to 9-12; machine only to 9-10 (two misses)
       if (i >= 9) {
-        out.push({ coder: 'human', unit: u, code: 'override' })
-        if (i <= 10) out.push({ coder: 'machine', unit: u, code: 'override' })
-        else out.push({ coder: 'machine', unit: u, code: 'distrust' }) // keep it doubly-coded
+        out.push({ coder: 'human', unit: u, code: 'override', codebook: cb })
+        if (i <= 10) out.push({ coder: 'machine', unit: u, code: 'override', codebook: cb })
+        else out.push({ coder: 'machine', unit: u, code: 'distrust', codebook: cb }) // keep doubly-coded
       }
     }
     return out
@@ -133,8 +134,8 @@ describe('computeAgreement', () => {
 
   it('reports insufficient below minUnits (κ on few items is noise)', () => {
     const few: Coding[] = [
-      { coder: 'human', unit: 'H-001', code: 'x' },
-      { coder: 'machine', unit: 'H-001', code: 'x' },
+      { coder: 'human', unit: 'H-001', code: 'x', codebook: 'CB-primary' },
+      { coder: 'machine', unit: 'H-001', code: 'x', codebook: 'CB-primary' },
     ]
     const r = computeAgreement(few, { minUnits: 10 })
     assert.equal(r.status, 'insufficient')
@@ -149,8 +150,8 @@ describe('computeAgreement', () => {
 
   it('only units coded by BOTH coders count', () => {
     const mixed: Coding[] = [
-      { coder: 'human', unit: 'H-001', code: 'x' }, // human-only → excluded
-      { coder: 'machine', unit: 'H-002', code: 'x' }, // machine-only → excluded
+      { coder: 'human', unit: 'H-001', code: 'x', codebook: 'CB-primary' }, // human-only → excluded
+      { coder: 'machine', unit: 'H-002', code: 'x', codebook: 'CB-primary' }, // machine-only → excluded
     ]
     const r = computeAgreement(mixed, { minUnits: 1 })
     assert.equal(r.doubly_coded_units, 0)

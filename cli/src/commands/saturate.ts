@@ -1,13 +1,15 @@
 import { saturationPulse } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
-
 import { isCompostError } from '../errors.js'
+import { resolveCodebookId } from '../lib/artifacts.js'
 import { gatherSessionsWithThemes } from '../lib/saturate.js'
+import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
 interface SaturateFlags {
   seed?: string
   dryStreak?: string
+  codebook?: string
 }
 
 export function registerSaturate(program: Command): void {
@@ -22,10 +24,16 @@ export function registerSaturate(program: Command): void {
       'Consecutive dry sessions that trigger a conclude recommendation',
       '2',
     )
+    .option(
+      '--codebook <ref>',
+      'Codebook (frame) to measure saturation within (default: primary); a deductive and an inductive lens saturate differently',
+    )
     .action((flags: SaturateFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
-        const opts: { seed?: string } = {}
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        const codebookId = resolveCodebookId(seedPath, flags.codebook)
+        const opts: { seed?: string; codebookId: string } = { codebookId }
         if (flags.seed !== undefined) opts.seed = flags.seed
         const sessions = gatherSessionsWithThemes(opts)
         const pulse = saturationPulse(sessions, {
@@ -35,6 +43,7 @@ export function registerSaturate(program: Command): void {
           {
             status: 'ok',
             command: 'saturate',
+            codebook: codebookId,
             sessions: sessions.length,
             ...pulse,
           },
