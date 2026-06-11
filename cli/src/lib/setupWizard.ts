@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
+import { errMessage } from '../errors.js'
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { glyphs } from '../render/glyphs.js'
@@ -189,7 +190,7 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
         const result = provision({})
         actions.push(`native engine: ${result.status}`)
       } catch (err) {
-        io.say(`  provisioning failed: ${err instanceof Error ? err.message : err}`)
+        io.say(`  provisioning failed: ${errMessage(err)}`)
         actions.push('native provisioning failed')
       }
     }
