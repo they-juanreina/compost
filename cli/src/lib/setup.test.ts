@@ -188,6 +188,26 @@ describe('runSetup', () => {
     assert.match(seg.fix ?? '', /huggingface\.co\/pyannote\/segmentation-3\.0/)
   })
 
+  it('pyannote license probe degrades to a warn when HuggingFace is unreachable / times out', async () => {
+    initSeed('demo', { cwd: work })
+    const report = await runSetup({
+      cwd: work,
+      keychain: null,
+      home: join(work, 'compost-home'),
+      env: { HUGGINGFACE_TOKEN: 'hf_x' },
+      // No huggingface.co route → the gated-license fetch throws, exactly as a
+      // timeout/abort surfaces. Setup must not hang or fail over it.
+      fetchImpl: fakeFetch({
+        '/api/tags': { ok: true, json: { models: [{ name: 'bge-m3' }] } },
+        '/health': { ok: true },
+      }),
+      exec: async () => ({ stdout: '27', ok: true }),
+    })
+    const seg = check(report, 'pyannote:pyannote/segmentation-3.0')
+    assert.equal(seg.status, 'warn')
+    assert.match(seg.detail, /could not verify/)
+  })
+
   it('resolves the HF token from a 0600 secrets.env (not just env)', async () => {
     initSeed('demo', { cwd: work })
     const home = join(work, 'compost-home')
