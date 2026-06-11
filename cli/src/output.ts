@@ -38,8 +38,7 @@ export function emit(data: unknown, opts: OutputOptions, render?: (data: never) 
 }
 
 export function emitError(err: unknown, opts: OutputOptions): never {
-  const compost = isCompostError(err)
-  const code = compost ? err.code : 'INTERNAL'
+  const code = isCompostError(err) ? err.code : 'INTERNAL'
   // Mask any secret that reached the error message (defense-in-depth, #236).
   const message = redactSecrets(errMessage(err))
 
