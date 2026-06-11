@@ -1,14 +1,7 @@
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process'
 import { CompostError } from '../errors.js'
 import type { LegacyIngestRequest, LegacyIngestResponse } from '../legacy_client.js'
 import { scrubbedEnv } from './childEnv.js'
-
-/** Injectable spawn surface (real `spawnSync` in prod; a fake in tests). */
-export type SpawnImpl = (
-  cmd: string,
-  args: string[],
-  opts: { cwd: string; env: NodeJS.ProcessEnv; encoding: 'utf8'; maxBuffer: number },
-) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout' | 'stderr' | 'error'>
+import { runNativeCli, type SpawnImpl } from './nativeRuntime.js'
 
 export interface NativeLegacyOptions {
   /** Path to a Python (3.11+) interpreter in a venv with the [legacy] deps. */
@@ -40,38 +33,20 @@ export function legacyIngestNative(
   if (req.speaker_col !== undefined) args.push('--speaker-col', req.speaker_col)
   if (req.sheet !== undefined) args.push('--sheet', req.sheet)
 
-  const spawn: SpawnImpl = opts.spawnImpl ?? (spawnSync as unknown as SpawnImpl)
-  const res = spawn(opts.python, args, {
+  const { parsed, status, stderr } = runNativeCli<
+    LegacyIngestResponse & { error?: string; kind?: string }
+  >(opts.python, args, {
     cwd: opts.transcriberDir,
     // Legacy document ingest needs no secrets — don't leak tokens to it (#236).
     env: scrubbedEnv(),
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
+    label: 'legacy-ingest',
+    startHint: 'Run `compost setup` to provision the native venv, or start the Docker fallback.',
+    ...(opts.spawnImpl ? { spawnImpl: opts.spawnImpl } : {}),
   })
-
-  if (res.error) {
+  if (status !== 0 || parsed.status === 'failed') {
     throw new CompostError(
       'PROVIDER_ERROR',
-      `native legacy-ingest failed to start (${opts.python}): ${res.error.message}. ` +
-        'Run `compost setup` to provision the native venv, or start the Docker fallback.',
-    )
-  }
-  const lastLine = (res.stdout || '').trim().split('\n').filter(Boolean).pop() ?? ''
-  let parsed: LegacyIngestResponse & { error?: string; kind?: string }
-  try {
-    const value: unknown = JSON.parse(lastLine)
-    if (typeof value !== 'object' || value === null) throw new Error('not a JSON object')
-    parsed = value as LegacyIngestResponse & { error?: string; kind?: string }
-  } catch {
-    throw new CompostError(
-      'PROVIDER_ERROR',
-      `native legacy-ingest produced no parseable result. stderr: ${(res.stderr || '').slice(-400)}`,
-    )
-  }
-  if (res.status !== 0 || parsed.status === 'failed') {
-    throw new CompostError(
-      'PROVIDER_ERROR',
-      `native legacy-ingest failed (${parsed.kind ?? 'error'}): ${parsed.error ?? (res.stderr || '').slice(-400)}`,
+      `native legacy-ingest failed (${parsed.kind ?? 'error'}): ${parsed.error ?? stderr.slice(-400)}`,
     )
   }
   return parsed

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { isCompostError } from '../errors.js'
-import { type SpawnImpl, transcribeNative } from './transcribeNative.js'
+import type { SpawnImpl } from './nativeRuntime.js'
+import { transcribeNative } from './transcribeNative.js'
 
 function fakeSpawn(ret: {
   status?: number | null

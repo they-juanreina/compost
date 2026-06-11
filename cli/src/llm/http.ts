@@ -30,6 +30,24 @@ export function resolveFetch(injected?: FetchLike): FetchLike {
   return globalThis.fetch as unknown as FetchLike
 }
 
+/** Run a FetchLike with an abort-on-timeout guard and return the raw response.
+ * Centralizes the AbortController + setTimeout + clearTimeout dance; the caller
+ * keeps its own res.ok / json / error handling. */
+export async function fetchWithTimeout(
+  fetchImpl: FetchLike,
+  url: string,
+  init: { method?: string; headers?: Record<string, string>; body?: string },
+  timeoutMs: number,
+): Promise<Awaited<ReturnType<FetchLike>>> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export interface TimedJson {
   json: unknown
   latency_ms: number
@@ -47,27 +65,21 @@ export async function postJson(
   headers: Record<string, string> = {},
   timeoutMs = 120000,
 ): Promise<unknown> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetchImpl(url, {
+  const res = await fetchWithTimeout(
+    fetchImpl,
+    url,
+    {
       method: 'POST',
       headers: { 'content-type': 'application/json', ...headers },
       body: JSON.stringify(body),
-      signal: controller.signal,
-    })
-    if (!res.ok) {
-      const detail = await safeText(res)
-      throw new HttpError(
-        `POST ${url} → ${res.status} ${res.statusText}: ${detail}`,
-        res.status,
-        url,
-      )
-    }
-    return await res.json()
-  } finally {
-    clearTimeout(timer)
+    },
+    timeoutMs,
+  )
+  if (!res.ok) {
+    const detail = await safeText(res)
+    throw new HttpError(`POST ${url} → ${res.status} ${res.statusText}: ${detail}`, res.status, url)
   }
+  return await res.json()
 }
 
 export async function getJsonTimed(
@@ -76,24 +88,14 @@ export async function getJsonTimed(
   headers: Record<string, string> = {},
   timeoutMs = 10000,
 ): Promise<TimedJson> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
   const start = nowMs()
-  try {
-    const res = await fetchImpl(url, { method: 'GET', headers, signal: controller.signal })
-    const latency_ms = Math.round(nowMs() - start)
-    if (!res.ok) {
-      const detail = await safeText(res)
-      throw new HttpError(
-        `GET ${url} → ${res.status} ${res.statusText}: ${detail}`,
-        res.status,
-        url,
-      )
-    }
-    return { json: await res.json(), latency_ms }
-  } finally {
-    clearTimeout(timer)
+  const res = await fetchWithTimeout(fetchImpl, url, { method: 'GET', headers }, timeoutMs)
+  const latency_ms = Math.round(nowMs() - start)
+  if (!res.ok) {
+    const detail = await safeText(res)
+    throw new HttpError(`GET ${url} → ${res.status} ${res.statusText}: ${detail}`, res.status, url)
   }
+  return { json: await res.json(), latency_ms }
 }
 
 async function safeText(res: { text: () => Promise<string> }): Promise<string> {

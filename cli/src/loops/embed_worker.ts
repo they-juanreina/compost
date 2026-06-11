@@ -15,6 +15,7 @@ import {
 
 import { CompostError } from '../errors.js'
 import { loadConfig, parseRoute } from '../lib/config.js'
+import { seedNameOf } from '../lib/seedResolve.js'
 import { LLMAdapter } from '../llm/adapter.js'
 
 /**
@@ -57,7 +58,7 @@ export async function runEmbedWorkerOnce(
   seedPath: string,
   deps: EmbedWorkerDeps = {},
 ): Promise<EmbedWorkerResult> {
-  const seedName = seedPath.split('/').pop() ?? 'seed'
+  const seedName = seedNameOf(seedPath)
   const transcripts = findTranscripts(seedPath)
   if (transcripts.length === 0) {
     return { embedded: 0, inserted: 0, transcripts_scanned: 0 }

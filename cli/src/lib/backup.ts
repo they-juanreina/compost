@@ -1,10 +1,12 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { join } from 'node:path'
 
 import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { eventsToProvO } from '../exporters/prov.js'
+import { eventsDbPath } from './events.js'
+import { seedNameOf } from './seedResolve.js'
 
 /**
  * Back up a seed's canonical provenance (#236 readiness follow-up).
@@ -45,7 +47,7 @@ export interface BackupResult {
 }
 
 export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupResult {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+  const eventsDb = eventsDbPath(seedPath)
   if (!existsSync(eventsDb)) {
     throw new CompostError(
       'FILE_NOT_FOUND',
@@ -56,7 +58,7 @@ export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupRe
   // Reading the full event log doubles as a consistency check: a corrupt ledger
   // throws here instead of silently producing a bad backup.
   const prov = eventsToProvO(eventsDb)
-  const seedName = basename(seedPath)
+  const seedName = seedNameOf(seedPath)
 
   if (opts.verify === true) {
     return {
