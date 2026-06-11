@@ -7,7 +7,7 @@ import { CompostError, isCompostError } from '../errors.js'
 import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { HF_ALIASES, resolveSecret } from '../lib/secrets.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
-import { assertSessionId } from '../lib/sessionId.js'
+import { assertSessionContained } from '../lib/sessionId.js'
 import { applySidecar } from '../lib/speakers.js'
 import { transcribeNative } from '../lib/transcribeNative.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -70,11 +70,12 @@ export function registerTranscribe(program: Command): void {
     .action(async (sessionId: string, flags: TranscribeFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         // Guard both branches: sessionId is passed verbatim to the native Python
         // entrypoint (--session-id, no regex there) and the Docker route. Validate
-        // before it reaches any path join or subprocess (#211 followup).
-        assertSessionId(sessionId)
-        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        // it (regex + containment under <seed>/sessions/) before any path join or
+        // subprocess (#211 followup).
+        assertSessionContained(seedPath, sessionId)
         const source = resolveSource(seedPath, sessionId)
 
         if (
