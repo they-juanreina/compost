@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import type { LanceDBWriter, VectorRecord } from '@they-juanreina/compost-retrieval'
 
+import { createHighlight } from '../lib/artifacts.js'
 import { initSeed } from '../lib/seed.js'
-import { runEmbedWorkerOnce } from './embed_worker.js'
+import { runEmbedWorkerOnce, runHighlightEmbedWorkerOnce } from './embed_worker.js'
 
 const MINI_TRANSCRIPT = {
   schema_version: '1.0',
@@ -205,5 +206,112 @@ describe('runEmbedWorkerOnce', () => {
     // The MINI_TRANSCRIPT body is identical per session so most chunks dedupe to
     // their first occurrence. We assert only that inserts happened, not the count.
     assert.ok(result.inserted > 0)
+  })
+})
+
+describe('runHighlightEmbedWorkerOnce (#262)', () => {
+  let work: string
+  // Deterministic stand-in embedder: a fixed 4-dim vector per call, no network.
+  const embed = async (texts: string[]) => texts.map(() => [0.1, 0.2, 0.3, 0.4])
+
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-hl-embed-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  function sidecarPath(seedPath: string, id: string): string {
+    return join(seedPath, 'highlights', `${id}.json`)
+  }
+
+  it('writes a {id, vector, text_sha} sidecar in the shape the scanner reads', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const hl = createHighlight(path, {
+      sessionId: 'S001',
+      utteranceId: 'U-0001',
+      span: [0, 5],
+      text: 'I never trust them blindly.',
+      author: { actorType: 'researcher', actorId: 'juan@x' },
+    })
+
+    const res = await runHighlightEmbedWorkerOnce(path, { embed, vectorDim: 4 })
+    assert.equal(res.highlights_scanned, 1)
+    assert.equal(res.embedded, 1)
+    assert.equal(res.skipped, 0)
+
+    const sidecar = JSON.parse(readFileSync(sidecarPath(path, hl.id), 'utf8')) as {
+      id: string
+      vector: number[]
+      text_sha: string
+    }
+    // The scanner's loadEmbeddedHighlights reads exactly {id, vector}.
+    assert.equal(sidecar.id, 'H-001')
+    assert.deepEqual(sidecar.vector, [0.1, 0.2, 0.3, 0.4])
+    assert.equal(typeof sidecar.text_sha, 'string')
+  })
+
+  it('is idempotent on text_sha: a second pass re-embeds nothing', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createHighlight(path, {
+      sessionId: 'S001',
+      utteranceId: 'U-0001',
+      span: [0, 5],
+      text: 'hello',
+      author: { actorType: 'researcher', actorId: 'juan@x' },
+    })
+    const first = await runHighlightEmbedWorkerOnce(path, { embed, vectorDim: 4 })
+    assert.equal(first.embedded, 1)
+
+    let calls = 0
+    const countingEmbed = async (texts: string[]) => {
+      calls += 1
+      return texts.map(() => [0.1, 0.2, 0.3, 0.4])
+    }
+    const second = await runHighlightEmbedWorkerOnce(path, { embed: countingEmbed, vectorDim: 4 })
+    assert.equal(second.embedded, 0)
+    assert.equal(second.skipped, 1)
+    assert.equal(calls, 0, 'embedder must not be called when nothing is stale')
+  })
+
+  it('re-embeds when a highlight body changes (stale sidecar)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const hl = createHighlight(path, {
+      sessionId: 'S001',
+      utteranceId: 'U-0001',
+      span: [0, 5],
+      text: 'original',
+      author: { actorType: 'researcher', actorId: 'juan@x' },
+    })
+    await runHighlightEmbedWorkerOnce(path, { embed, vectorDim: 4 })
+
+    // Rewrite the highlight markdown body (frontmatter kept, text changed).
+    const md = readFileSync(hl.path, 'utf8').replace('original', 'edited text')
+    writeFileSync(hl.path, md, 'utf8')
+
+    const res = await runHighlightEmbedWorkerOnce(path, { embed, vectorDim: 4 })
+    assert.equal(res.embedded, 1, 'changed body must re-embed')
+  })
+
+  it('embeds a highlight whose .md has CRLF line endings (externally edited)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const hl = createHighlight(path, {
+      sessionId: 'S001',
+      utteranceId: 'U-0001',
+      span: [0, 5],
+      text: 'situated knowledge',
+      author: { actorType: 'researcher', actorId: 'juan@x' },
+    })
+    // Simulate a Windows editor / core.autocrlf rewriting the file to CRLF.
+    writeFileSync(hl.path, readFileSync(hl.path, 'utf8').replace(/\n/g, '\r\n'), 'utf8')
+
+    const res = await runHighlightEmbedWorkerOnce(path, { embed, vectorDim: 4 })
+    assert.equal(res.embedded, 1, 'CRLF highlight must still be parsed and embedded')
+    assert.ok(existsSync(sidecarPath(path, hl.id)))
+  })
+
+  it('no highlights dir / no highlights → zero work, no throw', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const res = await runHighlightEmbedWorkerOnce(path, { embed, vectorDim: 4 })
+    assert.deepEqual(res, { highlights_scanned: 0, embedded: 0, skipped: 0 })
+    assert.ok(!existsSync(sidecarPath(path, 'H-001')))
   })
 })
