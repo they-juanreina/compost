@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync, writeFileSync
 import { basename, join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { seedNameOf } from './seedResolve.js'
 import { loadTemplate, render } from './templates.js'
 
 /** Folders that compost expects in a migrated seed, beyond the renamed legacy dirs. */
@@ -92,7 +93,7 @@ export function planMigration(seedPath: string): MigratePlan {
   }
 
   return {
-    seed_name: basename(seedPath),
+    seed_name: seedNameOf(seedPath),
     path: seedPath,
     already_migrated: alreadyMigrated,
     renames,

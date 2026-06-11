@@ -1,10 +1,10 @@
 import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
 import { eventsToProvO } from '../exporters/prov.js'
+import { eventsDbPath } from '../lib/events.js'
 import { type ExportFormat, exportTranscript, loadTranscript } from '../lib/export.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -33,7 +33,7 @@ export function registerExport(program: Command): void {
         // PROV-O exports the event log, not a transcript.
         if (flags.format === 'prov') {
           const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-          const prov = eventsToProvO(join(seedPath, '.compost', 'events.sqlite'))
+          const prov = eventsToProvO(eventsDbPath(seedPath))
           const content = JSON.stringify(prov.document, null, 2)
           if (flags.out !== undefined) {
             writeFileSync(flags.out, content, 'utf8')

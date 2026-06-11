@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import Database from 'better-sqlite3'
+import type Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import {
@@ -12,6 +12,7 @@ import {
   emitEndorse,
   emitReject,
   emitUpdate,
+  openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
 
@@ -325,11 +326,7 @@ export function endorseArtifact(
   parent_event_id: string
   already_endorsed?: true
 } {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
-  if (!existsSync(eventsDb)) {
-    throw new CompostError('FILE_NOT_FOUND', `No events.sqlite in seed; nothing to endorse.`)
-  }
-  const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  const db = openReadonlyEvents(seedPath, 'No events.sqlite in seed; nothing to endorse.')
   let createRow: (CreateEventRow & { artifact_id: string }) | undefined
   // Same (artifact_id, researcher) endorse already on the timeline → idempotent
   // no-op (#169). Looked up alongside the create row so we hold the read-only
@@ -412,11 +409,7 @@ export function rejectArtifact(
   parent_event_id: string
   already_rejected?: true
 } {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
-  if (!existsSync(eventsDb)) {
-    throw new CompostError('FILE_NOT_FOUND', `No events.sqlite in seed; nothing to reject.`)
-  }
-  const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  const db = openReadonlyEvents(seedPath, 'No events.sqlite in seed; nothing to reject.')
   let resolved:
     | { createRow: CreateEventRow & { artifact_id: string }; parentEventId: string }
     | undefined
@@ -484,11 +477,7 @@ export function updateArtifact(
   patch: { field: string; before?: unknown; after: unknown },
   author: Author,
 ): { artifact_id: string; update_event_id: string; parent_event_id: string } {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
-  if (!existsSync(eventsDb)) {
-    throw new CompostError('FILE_NOT_FOUND', `No events.sqlite in seed; nothing to update.`)
-  }
-  const db = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  const db = openReadonlyEvents(seedPath, 'No events.sqlite in seed; nothing to update.')
   let resolved:
     | { createRow: CreateEventRow & { artifact_id: string }; parentEventId: string }
     | undefined

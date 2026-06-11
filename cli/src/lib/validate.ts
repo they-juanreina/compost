@@ -6,6 +6,7 @@ import addFormatsImport from 'ajv-formats'
 import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
+import { eventsDbPath } from './events.js'
 import {
   CUES_TAXONOMY,
   EVENTS_SCHEMA,
@@ -228,7 +229,7 @@ export function validateSeed(seedPath: string): SeedValidateResult {
       if (f.endsWith('.json')) transcripts.push(validateTranscript(join(legacyDir, f)))
     }
   }
-  const events = validateSeedEvents(join(seedPath, '.compost', 'events.sqlite'))
+  const events = validateSeedEvents(eventsDbPath(seedPath))
   const ok = transcripts.every((t) => t.ok) && (events === null || events.ok)
   return { ok, seed: seedPath, transcripts, events }
 }

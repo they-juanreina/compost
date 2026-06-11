@@ -1,8 +1,12 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { eventsToProvO } from '../exporters/prov.js'
+import { eventsDbPath } from './events.js'
+import { seedNameOf } from './seedResolve.js'
 
 /**
  * Back up a seed's canonical provenance (#236 readiness follow-up).
@@ -43,7 +47,7 @@ export interface BackupResult {
 }
 
 export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupResult {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+  const eventsDb = eventsDbPath(seedPath)
   if (!existsSync(eventsDb)) {
     throw new CompostError(
       'FILE_NOT_FOUND',
@@ -54,7 +58,7 @@ export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupRe
   // Reading the full event log doubles as a consistency check: a corrupt ledger
   // throws here instead of silently producing a bad backup.
   const prov = eventsToProvO(eventsDb)
-  const seedName = basename(seedPath)
+  const seedName = seedNameOf(seedPath)
 
   if (opts.verify === true) {
     return {
@@ -72,7 +76,18 @@ export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupRe
   const stamp = (opts.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-')
   const ledgerCopy = join(outDir, `${seedName}-events-${stamp}.sqlite`)
   const provenance = join(outDir, `${seedName}-provenance-${stamp}.jsonld`)
-  copyFileSync(eventsDb, ledgerCopy)
+  // A *consistent* snapshot, not a raw byte copy. `copyFileSync` of a live db can
+  // tear if `compost watch` is emitting events during the backup, and in WAL mode
+  // it omits un-checkpointed frames — exactly the way to corrupt the one ledger
+  // this feature exists to protect. `VACUUM INTO` takes a transactional read
+  // snapshot into a fresh file; it runs on the read-only connection and never
+  // mutates the source. Single-quotes in the path are escaped for the SQL literal.
+  const src = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  try {
+    src.exec(`VACUUM INTO '${ledgerCopy.replace(/'/g, "''")}'`)
+  } finally {
+    src.close()
+  }
   writeFileSync(provenance, JSON.stringify(prov.document, null, 2), 'utf8')
 
   return {

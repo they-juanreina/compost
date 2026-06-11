@@ -1,3 +1,4 @@
+import { errMessage } from './errors.js'
 import { resolveFetch } from './llm/http.js'
 import type { FetchLike } from './llm/types.js'
 
@@ -60,7 +61,7 @@ export class LegacyIngestClient {
       })
     } catch (err) {
       throw new LegacyServiceError(
-        `legacy-ingest service unreachable at ${this.base}: ${err instanceof Error ? err.message : String(err)}`,
+        `legacy-ingest service unreachable at ${this.base}: ${errMessage(err)}`,
         'down',
       )
     }

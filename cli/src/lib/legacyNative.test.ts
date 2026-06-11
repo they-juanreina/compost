@@ -3,7 +3,8 @@ import { describe, it } from 'node:test'
 
 import { CompostError } from '../errors.js'
 import type { LegacyIngestRequest } from '../legacy_client.js'
-import { legacyIngestNative, type SpawnImpl } from './legacyNative.js'
+import { legacyIngestNative } from './legacyNative.js'
+import type { SpawnImpl } from './nativeRuntime.js'
 
 const REQ: LegacyIngestRequest = { seed_path: '/seed', source_path: '/seed/legacy/x.csv' }
 

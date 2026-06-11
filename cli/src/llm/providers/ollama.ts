@@ -1,5 +1,5 @@
 import { CompostError } from '../../errors.js'
-import { getJsonTimed, postJson, resolveFetch } from '../http.js'
+import { failedHealth, getJsonTimed, postJson, resolveFetch } from '../http.js'
 import type {
   ChatRequest,
   ChatResponse,
@@ -109,12 +109,7 @@ export class OllamaProvider implements Provider {
       const models = (json as { models?: Array<{ name: string }> }).models ?? []
       return { ok: true, latency_ms, model_list: models.map((m) => m.name) }
     } catch (err) {
-      return {
-        ok: false,
-        latency_ms: 0,
-        model_list: [],
-        error: err instanceof Error ? err.message : String(err),
-      }
+      return failedHealth(err)
     }
   }
 }

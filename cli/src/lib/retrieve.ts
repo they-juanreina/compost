@@ -16,6 +16,7 @@ import {
 
 import { LLMAdapter } from '../llm/adapter.js'
 import { type CompostConfig, loadConfig } from './config.js'
+import { seedNameOf } from './seedResolve.js'
 
 /**
  * Shared retrieval primitives for `compost search` (retrieval-only) and
@@ -41,7 +42,7 @@ export interface LoadedCorpus {
  *   - `evidence`: utterance_id → {session_id, text}, for citation validation
  */
 export function loadSeedCorpus(seedPath: string): LoadedCorpus {
-  const seedName = seedPath.split('/').pop() ?? 'seed'
+  const seedName = seedNameOf(seedPath)
   const sessionsDir = join(seedPath, 'sessions')
   const evidence: EvidenceSet = new Map()
   const allChunks: Chunk[] = []

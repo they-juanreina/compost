@@ -33,6 +33,14 @@ function resolveSource(seedPath: string, sessionId: string): string {
   return join(dir, src)
 }
 
+/** After a transcript lands, re-apply persisted speaker names (#177) and render
+ * the human-readable transcript.md. No-op if the file isn't there. */
+function finalizeTranscript(path: string): void {
+  if (!existsSync(path)) return
+  applySidecar(path)
+  writeTranscriptMd(path)
+}
+
 export function registerTranscribe(program: Command): void {
   program
     .command('transcribe')
@@ -119,10 +127,7 @@ export function registerTranscribe(program: Command): void {
             ...(flags.language !== undefined ? { language: flags.language } : {}),
             ...(hf ? { env: { HUGGINGFACE_TOKEN: hf.value } } : {}),
           })
-          if (existsSync(resp.transcript_path)) {
-            applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)
-            writeTranscriptMd(resp.transcript_path)
-          }
+          finalizeTranscript(resp.transcript_path)
           emit(
             {
               status: resp.status,
@@ -152,10 +157,7 @@ export function registerTranscribe(program: Command): void {
           process.stderr.write(`transcribing ${sessionId} (docker; this can take minutes)…\n`)
         }
         const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
-        if (existsSync(resp.transcript_path)) {
-          applySidecar(resp.transcript_path) // re-apply persisted speaker names (#177)
-          writeTranscriptMd(resp.transcript_path)
-        }
+        finalizeTranscript(resp.transcript_path)
         emit(
           {
             status: resp.status,

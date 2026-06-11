@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { glyphs, supportsUnicode } from './glyphs.js'
+import { glyphs, statusGlyph, supportsUnicode } from './glyphs.js'
 
 describe('glyphs', () => {
   it('defaults to UTF-8 when locale is unset/empty', () => {
@@ -28,5 +28,16 @@ describe('glyphs', () => {
   it('COMPOST_ASCII=0 / empty does not force ASCII', () => {
     assert.equal(supportsUnicode({ COMPOST_ASCII: '0', LANG: 'en_US.UTF-8' }), true)
     assert.equal(supportsUnicode({ COMPOST_ASCII: '', LANG: 'en_US.UTF-8' }), true)
+  })
+
+  it('statusGlyph maps ok/warn/fail to the locale-appropriate glyph', () => {
+    const utf = { LANG: 'en_US.UTF-8' }
+    assert.equal(statusGlyph('ok', utf), '✓')
+    assert.equal(statusGlyph('warn', utf), '⚠')
+    assert.equal(statusGlyph('fail', utf), '✗')
+    const ascii = { LANG: 'C' }
+    assert.equal(statusGlyph('ok', ascii), '[OK]')
+    assert.equal(statusGlyph('warn', ascii), '[!]')
+    assert.equal(statusGlyph('fail', ascii), '[X]')
   })
 })

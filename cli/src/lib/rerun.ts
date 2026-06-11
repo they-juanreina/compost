@@ -1,11 +1,9 @@
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-
 import { type AiInputRow, EventWriter, inputId } from '@they-juanreina/compost-provenance'
-import Database from 'better-sqlite3'
+import type Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { HUMAN_REF_RE } from './artifacts.js'
+import { eventsDbPath, openReadonlyEvents } from './events.js'
 
 interface CreateRow {
   id: string
@@ -124,13 +122,8 @@ export interface RerunOptions {
  * an `ai` diff is fuzzy; a deterministic `agent` reproduces exactly.
  */
 export async function rerunEvent(seedPath: string, opts: RerunOptions): Promise<RerunReport> {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
-  if (!existsSync(eventsDb)) {
-    throw new CompostError('FILE_NOT_FOUND', 'No events.sqlite in seed; nothing to rerun.')
-  }
-
   // Resolve target (read-only connection).
-  const rdb = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  const rdb = openReadonlyEvents(seedPath, 'No events.sqlite in seed; nothing to rerun.')
   let target: CreateRow | undefined
   try {
     target = resolveCreateEvent(rdb, opts.ref)
@@ -148,7 +141,7 @@ export async function rerunEvent(seedPath: string, opts: RerunOptions): Promise<
   }
 
   // Load inputs + integrity-check via a writer connection (also used to append).
-  const writer = new EventWriter({ dbPath: eventsDb })
+  const writer = new EventWriter({ dbPath: eventsDbPath(seedPath) })
   try {
     const inputs = writer.readInputs(target.input_id)
     if (inputs === undefined) {

@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { resolveFetch } from '../llm/http.js'
+import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { scrubbedEnv } from './childEnv.js'
 import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
@@ -52,6 +52,11 @@ export interface SetupDeps {
 }
 
 const PYANNOTE_GATED_REPOS = ['pyannote/speaker-diarization-3.1', 'pyannote/segmentation-3.0']
+
+/** Per-repo timeout for the gated-license probe — a slow/hanging HuggingFace
+ * response must never stall `compost setup`, which is meant to be cheap and
+ * deterministic. On timeout the check degrades to a "could not verify" warn. */
+export const LICENSE_PROBE_TIMEOUT_MS = 5000
 
 const DEFAULT_REQUIRED_MODELS = ['bge-m3']
 
@@ -308,33 +313,37 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
     // 6. pyannote license — must be a FILE fetch, not a metadata ping (the
     // /api/models endpoint returns 200 even when the license isn't accepted).
     for (const repo of PYANNOTE_GATED_REPOS) {
-      let accepted = false
+      const id = `pyannote:${repo}`
+      const label = `pyannote license: ${repo}`
       try {
-        const res = await fetchImpl(`https://huggingface.co/${repo}/resolve/main/config.yaml`, {
-          method: 'GET',
-          headers: { Authorization: `Bearer ${hfToken}` },
-        })
-        accepted = res.ok
+        const res = await fetchWithTimeout(
+          fetchImpl,
+          `https://huggingface.co/${repo}/resolve/main/config.yaml`,
+          { method: 'GET', headers: { Authorization: `Bearer ${hfToken}` } },
+          LICENSE_PROBE_TIMEOUT_MS,
+        )
+        checks.push(
+          res.ok
+            ? { id, label, status: 'ok', detail: 'accepted', fix: null }
+            : {
+                id,
+                label,
+                status: 'warn',
+                detail: 'license not accepted (403 on the gated model file)',
+                fix: `Accept at https://huggingface.co/${repo} (logged in as the token's account)`,
+              },
+        )
       } catch {
-        accepted = false
+        // Network failure or the probe timed out — can't verify, but a flaky or
+        // slow HuggingFace must not fail setup; surface an unverified warn.
+        checks.push({
+          id,
+          label,
+          status: 'warn',
+          detail: 'could not verify license (HuggingFace unreachable or timed out)',
+          fix: `Check at https://huggingface.co/${repo}`,
+        })
       }
-      checks.push(
-        accepted
-          ? {
-              id: `pyannote:${repo}`,
-              label: `pyannote license: ${repo}`,
-              status: 'ok',
-              detail: 'accepted',
-              fix: null,
-            }
-          : {
-              id: `pyannote:${repo}`,
-              label: `pyannote license: ${repo}`,
-              status: 'warn',
-              detail: 'license not accepted (403 on the gated model file)',
-              fix: `Accept at https://huggingface.co/${repo} (logged in as the token's account)`,
-            },
-      )
     }
   }
 

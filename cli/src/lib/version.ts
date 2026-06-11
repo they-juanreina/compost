@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { resolveFetch } from '../llm/http.js'
+import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -64,20 +64,18 @@ export async function checkVersionStatus(deps: {
 }): Promise<VersionStatus | null> {
   const fetchImpl = resolveFetch(deps.fetchImpl)
   const current = deps.current ?? currentCliVersion()
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? 2500)
   try {
-    const res = await fetchImpl(`https://registry.npmjs.org/-/package/${PACKAGE_NAME}/dist-tags`, {
-      method: 'GET',
-      signal: controller.signal,
-    })
+    const res = await fetchWithTimeout(
+      fetchImpl,
+      `https://registry.npmjs.org/-/package/${PACKAGE_NAME}/dist-tags`,
+      { method: 'GET' },
+      deps.timeoutMs ?? 2500,
+    )
     if (!res.ok) return null
     const tags = (await res.json()) as { latest?: string }
     if (typeof tags.latest !== 'string') return null
     return { current, latest: tags.latest, behind: compareVersions(current, tags.latest) < 0 }
   } catch {
     return null
-  } finally {
-    clearTimeout(timer)
   }
 }

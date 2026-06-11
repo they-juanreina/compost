@@ -1,13 +1,15 @@
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { resolveFetch } from '../llm/http.js'
+import { errMessage } from '../errors.js'
+import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
+import { glyphs, statusGlyph } from '../render/glyphs.js'
 import { loadConfig, saveConfig, setConfigValue } from './config.js'
 import { diagnoseNativeRuntime, isAppleSilicon } from './nativeRuntime.js'
 import { provisionNativeVenv } from './provisionNative.js'
 import { setSecret } from './secrets.js'
-import { runSetup, type SetupCheck, type SetupReport } from './setup.js'
+import { LICENSE_PROBE_TIMEOUT_MS, runSetup, type SetupCheck, type SetupReport } from './setup.js'
 import { actionsFor, type RunItemDeps, runItem } from './setupItem.js'
 import { saveUserConfig } from './userConfig.js'
 
@@ -86,13 +88,9 @@ function notOk(report: SetupReport, id: string): boolean {
   return c !== undefined && c.status !== 'ok'
 }
 
-function statusGlyph(c: SetupCheck): string {
-  return c.status === 'ok' ? '✓' : c.status === 'warn' ? '!' : '✗'
-}
-
 function printReport(io: WizardIO, report: SetupReport): void {
   for (const c of report.checks) {
-    io.say(`  ${statusGlyph(c)} ${c.label} — ${c.detail}`)
+    io.say(`  ${statusGlyph(c.status)} ${c.label} — ${c.detail}`)
   }
 }
 
@@ -187,7 +185,7 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
         const result = provision({})
         actions.push(`native engine: ${result.status}`)
       } catch (err) {
-        io.say(`  provisioning failed: ${err instanceof Error ? err.message : err}`)
+        io.say(`  provisioning failed: ${errMessage(err)}`)
         actions.push('native provisioning failed')
       }
     }
@@ -240,18 +238,21 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
       for (const repo of PYANNOTE_GATED_REPOS) {
         let accepted = false
         try {
-          const res = await fetchImpl(`https://huggingface.co/${repo}/resolve/main/config.yaml`, {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${token}` },
-          })
+          const res = await fetchWithTimeout(
+            fetchImpl,
+            `https://huggingface.co/${repo}/resolve/main/config.yaml`,
+            { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+            LICENSE_PROBE_TIMEOUT_MS,
+          )
           accepted = res.ok
         } catch {
           accepted = false
         }
+        const lg = glyphs()
         io.say(
           accepted
-            ? `  ✓ license accepted: ${repo}`
-            : `  ! license NOT accepted yet: https://huggingface.co/${repo}`,
+            ? `  ${lg.ok} license accepted: ${repo}`
+            : `  ${lg.warn} license NOT accepted yet: https://huggingface.co/${repo}`,
         )
       }
     }
@@ -405,7 +406,7 @@ async function maintainItem(args: {
     fetchImpl: args.fetchImpl,
     storeSecret: args.storeSecret,
   }
-  if (action.id === 'renew' || action.id === 'set') {
+  if (action.id === 'renew') {
     if (action.url) io.say(`  Mint a new token at ${action.url}, then paste it below.`)
     const v = (await io.askHidden('New value (hidden, Enter to cancel): ')).trim()
     if (v === '') {
@@ -426,7 +427,7 @@ async function maintainItem(args: {
   }
 
   const result = await runItem(item.id, action.id, deps)
-  const glyph = result.recheck.status === 'ok' ? '✓' : result.recheck.status === 'warn' ? '!' : '✗'
+  const glyph = statusGlyph(result.recheck.status)
   io.say(`  ${glyph} ${item.id} ${action.id}: ${result.recheck.detail}`)
   const r = result.result as { remote_action?: { note: string; url: string }; env_note?: string }
   if (r.remote_action) {

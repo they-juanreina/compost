@@ -41,16 +41,6 @@ export function parseVersions(content: string): { draft: string; versions: Journ
   }
 }
 
-/** Append the current draft as a timestamped version section (git-less
- * fallback). Returns the new file content. Idempotent if the draft is empty. */
-export function appendVersion(content: string, ts: string): string {
-  const { draft } = parseVersions(content)
-  if (draft.trim().length === 0) return content
-  const marker = `<!-- compost:version ${ts} -->`
-  // The new draft stays at top; the snapshot is recorded below it.
-  return `${draft}\n\n${marker}\n${draft}\n`
-}
-
 export interface DiffLine {
   type: 'add' | 'del' | 'ctx'
   text: string
@@ -105,12 +95,6 @@ export function agentsPath(seedPath: string): string {
 export function readJournal(seedPath: string): string {
   const p = agentsPath(seedPath)
   return existsSync(p) ? readFileSync(p, 'utf8') : ''
-}
-
-export function saveJournalVersion(seedPath: string, ts: string): void {
-  const p = agentsPath(seedPath)
-  if (!existsSync(p)) return
-  writeFileSync(p, appendVersion(readFileSync(p, 'utf8'), ts), 'utf8')
 }
 
 /** Compose an AGENTS.md from a working draft + recorded inline versions. The

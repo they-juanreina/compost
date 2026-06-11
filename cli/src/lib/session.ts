@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { seedNameOf } from './seedResolve.js'
 import { assertSessionContained } from './sessionId.js'
 
 export interface SessionView {
@@ -101,7 +102,7 @@ export function getSession(seedPath: string, sessionId: string): SessionView {
 
   return {
     session_id: sessionId,
-    seed: seedPath.split('/').pop() ?? 'seed',
+    seed: seedNameOf(seedPath),
     transcript_path: transcriptPath,
     transcript,
     frames: deriveFrameIndex(transcript, dir),

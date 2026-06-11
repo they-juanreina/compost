@@ -1,14 +1,6 @@
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process'
-
 import { CompostError } from '../errors.js'
 import { childEnv } from './childEnv.js'
-
-/** Injectable spawn surface (real `spawnSync` in prod; a fake in tests). */
-export type SpawnImpl = (
-  cmd: string,
-  args: string[],
-  opts: { cwd: string; env: NodeJS.ProcessEnv; encoding: 'utf8'; maxBuffer: number },
-) => Pick<SpawnSyncReturns<string>, 'status' | 'stdout' | 'stderr' | 'error'>
+import { runNativeCli, type SpawnImpl } from './nativeRuntime.js'
 
 /**
  * Native (host) transcription path (#176): shell out to the transcriber
@@ -70,42 +62,19 @@ export function transcribeNative(
   if (opts.model) args.push('--model', opts.model)
   if (opts.language) args.push('--language', opts.language)
 
-  const spawn: SpawnImpl = opts.spawnImpl ?? (spawnSync as unknown as SpawnImpl)
-  const res = spawn(opts.python, args, {
+  const { parsed, status, stderr } = runNativeCli<NativeTranscribeResult>(opts.python, args, {
     cwd: opts.transcriberDir,
     // Scrub LLM/other secrets from the inherited env; re-add only what the
     // caller passed (the HF token for pyannote) — least privilege (#236).
     env: childEnv(opts.env),
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
+    label: 'transcriber',
+    startHint: 'Run `compost setup` to provision the native transcription venv.',
+    ...(opts.spawnImpl ? { spawnImpl: opts.spawnImpl } : {}),
   })
-
-  if (res.error) {
+  if (status !== 0 || parsed.status === 'failed') {
     throw new CompostError(
       'PROVIDER_ERROR',
-      `native transcriber failed to start (${opts.python}): ${res.error.message}. ` +
-        'Run `compost setup` to provision the native transcription venv.',
-    )
-  }
-  // The entrypoint prints exactly one JSON line; take the last non-empty line.
-  const lastLine = (res.stdout || '').trim().split('\n').filter(Boolean).pop() ?? ''
-  let parsed: NativeTranscribeResult
-  try {
-    // JSON.parse succeeds on primitives (null, 123, "s"); require an object so a
-    // stray non-object line surfaces as the CompostError below, not a raw TypeError.
-    const value: unknown = JSON.parse(lastLine)
-    if (typeof value !== 'object' || value === null) throw new Error('not a JSON object')
-    parsed = value as NativeTranscribeResult
-  } catch {
-    throw new CompostError(
-      'PROVIDER_ERROR',
-      `native transcriber produced no parseable result. stderr: ${(res.stderr || '').slice(-400)}`,
-    )
-  }
-  if (res.status !== 0 || parsed.status === 'failed') {
-    throw new CompostError(
-      'PROVIDER_ERROR',
-      `native transcription failed: ${parsed.error ?? (res.stderr || '').slice(-400)}`,
+      `native transcription failed: ${parsed.error ?? stderr.slice(-400)}`,
     )
   }
   return parsed
