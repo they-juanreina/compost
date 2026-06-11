@@ -270,6 +270,7 @@ export const TOOLS: ToolDef[] = [
         name: str('Code name (slugified for the id, e.g. distrust-of-automation)'),
         definition: str('What this code captures'),
         evidence: str('Comma-separated highlight ids, e.g. H-001,H-002'),
+        codebook: str('Codebook this code belongs to (name or CB- id; default: primary)'),
         seed: str('Seed'),
         model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
       },
@@ -282,6 +283,7 @@ export const TOOLS: ToolDef[] = [
       '--definition',
       String(a.definition),
       ...(a.evidence ? ['--evidence', String(a.evidence)] : []),
+      ...(a.codebook ? ['--codebook', String(a.codebook)] : []),
       ...(a.seed ? ['--seed', String(a.seed)] : []),
     ],
   },
@@ -397,6 +399,70 @@ export const TOOLS: ToolDef[] = [
       '--apply',
       ...(a.seed ? ['--seed', String(a.seed)] : []),
       ...(a.threshold ? ['--threshold', String(a.threshold)] : []),
+    ],
+  },
+  {
+    name: 'compost_codebook_new',
+    description:
+      'Create a codebook — an interpretive lens codes belong to (ADR 0001) — with a declared stance. A seed can hold several coexisting lenses over one corpus; codes are scoped to one. Researcher-authored (structural setup), not an AI [draft].',
+    readOnly: false,
+    // Not aiAuthored: `compost codebook new` authors as the researcher (a lens is
+    // structural setup, not an interpretive suggestion) and the CLI verb has no
+    // --ai path. Identity is the CLI default ($COMPOST_USER), as for endorse.
+    inputSchema: {
+      type: 'object',
+      required: ['name', 'stance'],
+      properties: {
+        name: str('Codebook name (slugified for the CB- id, e.g. epistemology)'),
+        stance: {
+          type: 'string',
+          enum: ['inductive', 'deductive', 'in_vivo', 'framework'],
+          description: 'Declared interpretive standpoint of this lens',
+        },
+        description: str('What this lens is for'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'codebook',
+      'new',
+      String(a.name),
+      '--stance',
+      String(a.stance),
+      ...(a.description ? ['--description', String(a.description)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
+    name: 'compost_codebook_list',
+    description:
+      "List the seed's codebooks (lenses) with their stance — the implicit `primary` plus any created lenses.",
+    readOnly: true,
+    inputSchema: { type: 'object', properties: { seed: str('Seed') } },
+    toArgv: (a) => ['codebook', 'list', ...(a.seed ? ['--seed', String(a.seed)] : [])],
+  },
+  {
+    name: 'compost_codebook_migrate',
+    description:
+      'Assign codes that predate codebooks to the primary codebook. Dry-run by default (previews the affected codes); set apply=true to emit the update events and stamp frontmatter.',
+    readOnly: false,
+    // Not aiAuthored: migrate stamps researcher update events (a maintenance op),
+    // and the CLI verb has no --ai path.
+    inputSchema: {
+      type: 'object',
+      properties: {
+        seed: str('Seed'),
+        apply: {
+          type: 'boolean',
+          description: 'Apply the migration (default false = dry-run preview)',
+        },
+      },
+    },
+    toArgv: (a) => [
+      'codebook',
+      'migrate',
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+      ...(a.apply === true ? ['--apply'] : []),
     ],
   },
 ]
