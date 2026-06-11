@@ -10,7 +10,7 @@ owners: []
 
 ## The question
 
-_Replace this with the research question this seed is set up to answer. One paragraph; less is more._
+{{question}}
 
 ## Status
 

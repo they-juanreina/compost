@@ -28,6 +28,7 @@ describe('initSeed', () => {
       'glossary',
       'highlights',
       'codebook',
+      'codebooks',
       'synthesis',
       'exports',
       'legacy',
@@ -40,6 +41,28 @@ describe('initSeed', () => {
     for (const file of ['seed.md', '.compost/AGENTS.md', '.compost/config.toml']) {
       assert.ok(existsSync(join(seed, file)), `missing file: ${file}`)
     }
+  })
+
+  it('init stays a pure scaffold: no events.sqlite until research begins', () => {
+    const result = initSeed('demo', { cwd: work })
+    assert.ok(!existsSync(join(result.path, '.compost', 'events.sqlite')))
+  })
+
+  it('writes the research question into seed.md when --question is given', () => {
+    const result = initSeed('demo', {
+      cwd: work,
+      question: 'How does a researcher’s standpoint shape a corpus reading?',
+    })
+    const seedMd = readFileSync(join(result.path, 'seed.md'), 'utf8')
+    assert.match(seedMd, /How does a researcher’s standpoint shape a corpus reading\?/)
+    // The placeholder prompt is replaced, not appended.
+    assert.doesNotMatch(seedMd, /Replace this with the research question/)
+  })
+
+  it('falls back to the placeholder question when --question is omitted', () => {
+    const result = initSeed('demo', { cwd: work })
+    const seedMd = readFileSync(join(result.path, 'seed.md'), 'utf8')
+    assert.match(seedMd, /Replace this with the research question/)
   })
 
   it('renders the seed name and timestamp into seed.md frontmatter', () => {

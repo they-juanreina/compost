@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, statSync, writeFileSync
 import { basename, join } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { QUESTION_PLACEHOLDER } from './seed.js'
 import { seedNameOf } from './seedResolve.js'
 import { loadTemplate, render } from './templates.js'
 
@@ -10,6 +11,7 @@ const SCAFFOLD_DIRS = [
   'glossary',
   'highlights',
   'codebook',
+  'codebooks',
   'exports',
   'legacy',
   'sessions/_inbox',
@@ -147,6 +149,7 @@ export function migrate(seedPath: string, opts: MigrateOptions = {}): MigrateRes
   const vars: Record<string, string> = {
     seed_name: plan.seed_name,
     created_at: now.toISOString(),
+    question: QUESTION_PLACEHOLDER,
   }
   for (const file of plan.scaffold_files) {
     const templateName = file === 'seed.md' ? 'seed.md' : basename(file)

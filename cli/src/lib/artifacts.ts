@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 import type Database from 'better-sqlite3'
 
@@ -12,16 +12,29 @@ import {
   emitEndorse,
   emitReject,
   emitUpdate,
+  eventsDbPath,
   openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
 
 export interface CreatedArtifact {
-  id: string // human/file id (H-NNN, C-slug, T-slug)
+  id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug)
   artifact_id: string // SHA256(initial state) — the provenance content-address
   path: string // markdown file written
   event_id: string // the create event's ULID
 }
+
+/**
+ * A codebook declares its interpretive standpoint up front (ADR 0001) —
+ * Haraway's "situated knowledge" as a required field, validated CLI-side
+ * because the event schema keeps payloads free-form by design.
+ */
+export const CODEBOOK_STANCES = ['inductive', 'deductive', 'in_vivo', 'framework'] as const
+export type CodebookStance = (typeof CODEBOOK_STANCES)[number]
+
+/** Every code belongs to a codebook; absent an explicit one, this is it.
+ * Readers treat a missing `codebook_id` as this value (lazy migration). */
+export const DEFAULT_CODEBOOK_ID = 'CB-primary'
 
 // ---------------------------------------------------------------- helpers
 
@@ -147,26 +160,169 @@ export function createHighlight(seedPath: string, input: CreateHighlightInput): 
   return { id, artifact_id: sha, path, event_id }
 }
 
+export interface CreateCodebookInput {
+  name: string
+  stance: CodebookStance
+  description?: string
+  author: Author
+  inputs?: AiInputBundle
+}
+
+/**
+ * Create a codebook — the lens/frame codes belong to (ADR 0001). Lives in
+ * `codebooks/<slug>.md`, a sibling of `codebook/`, because status counts and
+ * saturate parse every `.md` under `codebook/` as a code.
+ */
+export function createCodebook(seedPath: string, input: CreateCodebookInput): CreatedArtifact {
+  if (!CODEBOOK_STANCES.includes(input.stance)) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Invalid stance ${JSON.stringify(input.stance)}. A codebook declares its standpoint: ${CODEBOOK_STANCES.join(' | ')}.`,
+    )
+  }
+  const dir = join(seedPath, 'codebooks')
+  mkdirSync(dir, { recursive: true })
+  const name = slug(input.name)
+  const id = `CB-${name}`
+  const description = input.description ?? ''
+  const seedId = basename(seedPath)
+
+  const initialState = {
+    id,
+    kind: 'codebook',
+    seed_id: seedId,
+    name,
+    stance: input.stance,
+    description,
+  }
+  const sha = artifactId(initialState)
+  const body = `${frontmatter({
+    id,
+    name,
+    stance: input.stance,
+    seed_id: seedId,
+    artifact_id: sha,
+    provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
+  })}\n${description}\n`
+
+  const path = join(dir, `${name}.md`)
+  if (existsSync(path)) {
+    throw new CompostError('INVALID_INPUT', `Codebook "${id}" already exists at ${path}`)
+  }
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'codebook',
+    initialState,
+    author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
+  })
+  return { id, artifact_id: sha, path, event_id }
+}
+
+/**
+ * Create the primary codebook iff absent — the structural default every code
+ * lands in unless created with an explicit codebook. Researcher-authored (a
+ * human invoked init/create), so it is born endorsed rather than [draft].
+ * Idempotent on the `codebooks/primary.md` file.
+ */
+export function ensurePrimaryCodebook(seedPath: string): {
+  id: string
+  created: boolean
+  artifact_id?: string
+} {
+  if (existsSync(join(seedPath, 'codebooks', 'primary.md'))) {
+    return { id: DEFAULT_CODEBOOK_ID, created: false }
+  }
+  const created = createCodebook(seedPath, {
+    name: 'primary',
+    stance: 'inductive',
+    description:
+      'Default codebook: every code lands here unless created with an explicit codebook. Edit the stance and description to fit the study, or add lenses with `compost codebook new`.',
+    author: { actorType: 'researcher', actorId: defaultResearcherId() },
+  })
+  return { id: created.id, created: true, artifact_id: created.artifact_id }
+}
+
+/**
+ * Resolve the codebook a new code lands in. `CB-primary` is the implicit
+ * default frame — it needs no artifact, so the default path is a pure string
+ * stamp with no event side-effect (one `createCode` = one event). Explicit
+ * non-primary refs accept a name (`epistemology`) or CB- id and must already
+ * exist — a typo creating an orphan codebook_id would silently corrupt frame
+ * scoping, so unknown refs fail listing what is available.
+ */
+function resolveCodebookForCode(seedPath: string, ref: string | undefined): string {
+  if (ref === undefined) return DEFAULT_CODEBOOK_ID
+  const id = ref.startsWith('CB-') ? ref : `CB-${slug(ref)}`
+  if (id === DEFAULT_CODEBOOK_ID) return DEFAULT_CODEBOOK_ID
+
+  // No event log yet ⇒ no codebooks exist; the only valid explicit ref would be
+  // primary (handled above). Anything else is unknown — say so cleanly rather
+  // than surfacing a raw "no events.sqlite".
+  const noneAvailable = () =>
+    new CompostError(
+      'INVALID_INPUT',
+      `No codebook "${id}" in this seed. Available: (none — create one with \`compost codebook new <name> --stance <stance>\`)`,
+    )
+  if (!existsSync(eventsDbPath(seedPath))) throw noneAvailable()
+
+  const db = openReadonlyEvents(seedPath, 'No events.sqlite in seed.')
+  try {
+    const row = db
+      .prepare(
+        "SELECT artifact_id FROM events WHERE artifact_kind = 'codebook' AND action = 'create' AND json_extract(payload, '$.id') = ? LIMIT 1",
+      )
+      .get(id) as { artifact_id: string } | undefined
+    if (row === undefined) {
+      const names = (
+        db
+          .prepare(
+            "SELECT json_extract(payload, '$.id') AS id FROM events WHERE artifact_kind = 'codebook' AND action = 'create' ORDER BY ts, rowid",
+          )
+          .all() as Array<{ id: string }>
+      ).map((r) => r.id)
+      throw new CompostError(
+        'INVALID_INPUT',
+        `No codebook "${id}" in this seed. Available: ${names.length > 0 ? names.join(', ') : '(none — create one with `compost codebook new <name> --stance <stance>`)'}`,
+      )
+    }
+    return id
+  } finally {
+    db.close()
+  }
+}
+
 export interface CreateCodeInput {
   name: string
   definition: string
   evidence?: string[]
+  /** Codebook this code belongs to (name or CB- id). Default: the seed's
+   * primary codebook, created on first use if absent. */
+  codebookId?: string
   author: Author
   inputs?: AiInputBundle
 }
 
 export function createCode(seedPath: string, input: CreateCodeInput): CreatedArtifact {
+  const codebook_id = resolveCodebookForCode(seedPath, input.codebookId)
   const dir = join(seedPath, 'codebook')
   mkdirSync(dir, { recursive: true })
   const name = slug(input.name)
   const id = `C-${name}`
   const evidence = input.evidence ?? []
 
-  const initialState = { id, kind: 'code', name, definition: input.definition, evidence }
+  const initialState = {
+    id,
+    kind: 'code',
+    codebook_id,
+    name,
+    definition: input.definition,
+    evidence,
+  }
   const sha = artifactId(initialState)
   const body = `${frontmatter({
     id,
     name,
+    codebook_id,
     evidence,
     artifact_id: sha,
     provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
@@ -234,12 +390,13 @@ interface CreateEventRow {
 }
 
 /**
- * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug` — the id
- * `compost create` prints. We accept it wherever a SHA prefix is accepted so
- * the obvious `endorse <id-from-create>` round-trip works (#168). The dash and
- * non-hex chars make it unambiguous vs a SHA prefix (`^[a-f0-9]{8,64}$`).
+ * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug`, `CB-slug` —
+ * the id `compost create`/`compost codebook new` prints. We accept it wherever
+ * a SHA prefix is accepted so the obvious `endorse <id-from-create>` round-trip
+ * works (#168). The dash and non-hex chars make it unambiguous vs a SHA prefix
+ * (`^[a-f0-9]{8,64}$`).
  */
-export const HUMAN_REF_RE = /^[CHT]-[A-Za-z0-9_-]+$/
+export const HUMAN_REF_RE = /^(?:CB|[CHT])-[A-Za-z0-9_-]+$/
 
 /**
  * Look up a create event by the human id stored in its payload (initialState.id).

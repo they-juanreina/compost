@@ -5,6 +5,7 @@ import {
   suggestCodeClusters,
 } from '@they-juanreina/compost-retrieval'
 
+import { DEFAULT_CODEBOOK_ID } from '../lib/artifacts.js'
 import { artifactId, emitAgentCreate, openSeedEvents } from '../lib/events.js'
 
 const SCANNER = 'similarity-scanner'
@@ -41,6 +42,7 @@ export function suggestThemesOnce(
     for (const cluster of clusters) {
       const initialState = {
         kind: 'code',
+        codebook_id: DEFAULT_CODEBOOK_ID,
         members: cluster.members,
         cohesion: cluster.cohesion,
         status: 'draft',
