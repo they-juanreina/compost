@@ -2,14 +2,14 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { errMessage } from '../errors.js'
-import { resolveFetch } from '../llm/http.js'
+import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { glyphs, statusGlyph } from '../render/glyphs.js'
 import { loadConfig, saveConfig, setConfigValue } from './config.js'
 import { diagnoseNativeRuntime, isAppleSilicon } from './nativeRuntime.js'
 import { provisionNativeVenv } from './provisionNative.js'
 import { setSecret } from './secrets.js'
-import { runSetup, type SetupCheck, type SetupReport } from './setup.js'
+import { LICENSE_PROBE_TIMEOUT_MS, runSetup, type SetupCheck, type SetupReport } from './setup.js'
 import { actionsFor, type RunItemDeps, runItem } from './setupItem.js'
 import { saveUserConfig } from './userConfig.js'
 
@@ -238,10 +238,12 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
       for (const repo of PYANNOTE_GATED_REPOS) {
         let accepted = false
         try {
-          const res = await fetchImpl(`https://huggingface.co/${repo}/resolve/main/config.yaml`, {
-            method: 'GET',
-            headers: { Authorization: `Bearer ${token}` },
-          })
+          const res = await fetchWithTimeout(
+            fetchImpl,
+            `https://huggingface.co/${repo}/resolve/main/config.yaml`,
+            { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+            LICENSE_PROBE_TIMEOUT_MS,
+          )
           accepted = res.ok
         } catch {
           accepted = false
