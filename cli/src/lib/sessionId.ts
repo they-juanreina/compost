@@ -1,6 +1,7 @@
-import { isAbsolute, relative, resolve, sep } from 'node:path'
+import { resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { isContainedUnder } from './pathSafe.js'
 
 /**
  * Session ids are bare labels, not paths (#211 followup). A session id indexes
@@ -35,8 +36,7 @@ export function assertSessionContained(seedPath: string, sessionId: string): str
   assertSessionId(sessionId)
   const sessionsRoot = resolve(seedPath, 'sessions')
   const dir = resolve(sessionsRoot, sessionId)
-  const rel = relative(sessionsRoot, dir)
-  if (rel === '' || rel.startsWith('..') || isAbsolute(rel) || rel.includes(`..${sep}`)) {
+  if (!isContainedUnder(sessionsRoot, dir)) {
     throw new CompostError('INVALID_INPUT', `Session id resolves outside the seed: ${dir}`)
   }
   return dir

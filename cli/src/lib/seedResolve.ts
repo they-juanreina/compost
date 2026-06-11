@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { isAbsolute, join, resolve, sep } from 'node:path'
 
 import { CompostError } from '../errors.js'
+import { isContainedUnder } from './pathSafe.js'
 
 /**
  * Seed names are labels, not paths (#211). We reject the patterns that let an
@@ -39,8 +40,9 @@ function assertSeedName(seed: string): void {
 }
 
 function assertContainedUnder(seedPath: string, root: string): void {
-  const rel = relative(root, seedPath)
-  if (rel.startsWith('..') || isAbsolute(rel) || rel.includes(`..${sep}`)) {
+  // seed is non-empty (assertSeedName), so seedPath never equals root here —
+  // the strict isContainedUnder is equivalent for every reachable input.
+  if (!isContainedUnder(root, seedPath)) {
     throw new CompostError('INVALID_INPUT', `--seed resolves outside the Seeds/ root: ${seedPath}`)
   }
 }
