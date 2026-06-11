@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { chmodSync } from 'node:fs'
 
 import { CompostError } from '../errors.js'
-import { resolveFetch } from '../llm/http.js'
+import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { scrubbedEnv } from './childEnv.js'
 import {
@@ -111,14 +111,13 @@ export async function validateHfToken(
   deps: { fetchImpl?: FetchLike; timeoutMs?: number } = {},
 ): Promise<HfValidity> {
   const fetchImpl = resolveFetch(deps.fetchImpl)
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), deps.timeoutMs ?? 5000)
   try {
-    const res = await fetchImpl(HF_WHOAMI_URL, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
-      signal: controller.signal,
-    })
+    const res = await fetchWithTimeout(
+      fetchImpl,
+      HF_WHOAMI_URL,
+      { method: 'GET', headers: { Authorization: `Bearer ${token}` } },
+      deps.timeoutMs ?? 5000,
+    )
     if (res.ok) {
       const who = (await res.json()) as { name?: string }
       return who.name
@@ -137,8 +136,6 @@ export async function validateHfToken(
     }
   } catch {
     return { status: 'warn', detail: 'could not reach HuggingFace to verify (offline?)' }
-  } finally {
-    clearTimeout(timer)
   }
 }
 
