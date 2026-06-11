@@ -1,6 +1,6 @@
 import type { Command } from 'commander'
 
-import { isCompostError } from '../errors.js'
+import { errMessage, isCompostError } from '../errors.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { runLive, runSupervisorOnce } from '../loops/supervisor.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -74,7 +74,7 @@ export function registerWatch(program: Command): void {
           ...(onProgress ? { onProgress } : {}),
           onError: (loop, err) => {
             crashedPasses += 1
-            const message = err instanceof Error ? err.message : String(err)
+            const message = errMessage(err)
             if (out.human) process.stderr.write(`loop ${loop} error: ${message}\n`)
             else process.stderr.write(`${JSON.stringify({ loop, error: message })}\n`)
           },

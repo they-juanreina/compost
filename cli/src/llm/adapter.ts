@@ -1,6 +1,6 @@
 import { CompostError } from '../errors.js'
 import { type CompostConfig, parseRoute, providerApiKey, providerBaseUrl } from '../lib/config.js'
-import { HttpError } from './http.js'
+import { failedHealth, HttpError } from './http.js'
 import { AnthropicProvider } from './providers/anthropic.js'
 import { LMStudioProvider } from './providers/lmstudio.js'
 import { OllamaProvider } from './providers/ollama.js'
@@ -141,12 +141,7 @@ export class LLMAdapter {
         try {
           out[name] = await this.getProvider(name).health()
         } catch (err) {
-          out[name] = {
-            ok: false,
-            latency_ms: 0,
-            model_list: [],
-            error: err instanceof Error ? err.message : String(err),
-          }
+          out[name] = failedHealth(err)
         }
       }),
     )

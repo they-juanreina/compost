@@ -87,13 +87,14 @@ function pyVersion(exec: ProvisionExec, bin: string): [number, number] | null {
 }
 
 function resolvePython(exec: ProvisionExec, explicit?: string): string {
-  for (const c of explicit ? [explicit] : PY_CANDIDATES) {
+  const candidates = explicit ? [explicit] : PY_CANDIDATES
+  for (const c of candidates) {
     const v = pyVersion(exec, c)
     if (v && v[0] === 3 && v[1] >= MIN_MINOR && v[1] <= MAX_MINOR) return c
   }
   throw new CompostError(
     'INVALID_INPUT',
-    `no Python 3.${MIN_MINOR}–3.${MAX_MINOR} found (tried ${(explicit ? [explicit] : PY_CANDIDATES).join(', ')}). ` +
+    `no Python 3.${MIN_MINOR}–3.${MAX_MINOR} found (tried ${candidates.join(', ')}). ` +
       'Install one — e.g. `brew install python@3.11` — or pass --python-bin.',
   )
 }

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs'
 
+import { errMessage } from '../errors.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
 import { JobQueue, MAX_ATTEMPTS, resolveJobSource, stateDbPath } from '../lib/queue.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
@@ -82,7 +83,7 @@ export async function runTranscribeWorkerOnce(
         })
         // needs_speaker_labels: completed but flagged for human; surfaced in result.
       } catch (err) {
-        queue.fail(job.id, err instanceof Error ? err.message : String(err), MAX_ATTEMPTS)
+        queue.fail(job.id, errMessage(err), MAX_ATTEMPTS)
         out.results.push({ job_id: job.id, session_id: sessionId, status: 'error' })
         // Stop the drain ONLY on a service-level failure (down / model missing) —
         // then nothing else will succeed this pass. A per-file failure (kind

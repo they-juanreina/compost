@@ -1,5 +1,5 @@
 import { CompostError } from '../../errors.js'
-import { getJsonTimed, postJson, resolveFetch } from '../http.js'
+import { failedHealth, getJsonTimed, postJson, resolveFetch } from '../http.js'
 import type {
   ChatRequest,
   ChatResponse,
@@ -85,12 +85,7 @@ export class AnthropicProvider implements Provider {
       const data = (json as { data?: Array<{ id: string }> }).data ?? []
       return { ok: true, latency_ms, model_list: data.map((m) => m.id) }
     } catch (err) {
-      return {
-        ok: false,
-        latency_ms: 0,
-        model_list: [],
-        error: err instanceof Error ? err.message : String(err),
-      }
+      return failedHealth(err)
     }
   }
 }

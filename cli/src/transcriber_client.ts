@@ -1,3 +1,4 @@
+import { errMessage } from './errors.js'
 import { resolveFetch } from './llm/http.js'
 import type { FetchLike } from './llm/types.js'
 
@@ -89,7 +90,7 @@ export class TranscriberClient {
       })
     } catch (err) {
       throw new TranscriberServiceError(
-        `transcriber service unreachable at ${this.base}: ${err instanceof Error ? err.message : String(err)}`,
+        `transcriber service unreachable at ${this.base}: ${errMessage(err)}`,
         'down',
       )
     }

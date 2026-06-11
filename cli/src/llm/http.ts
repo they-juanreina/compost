@@ -1,5 +1,6 @@
+import { errMessage } from '../errors.js'
 import { redactSecrets } from '../lib/redact.js'
-import type { FetchLike } from './types.js'
+import type { FetchLike, ProviderHealth } from './types.js'
 
 /** A non-OK HTTP response. Carries the status so callers can branch (e.g. map
  * 401/403 → an auth error) without parsing the message. The message keeps the
@@ -14,6 +15,13 @@ export class HttpError extends Error {
     super(message)
     this.name = 'HttpError'
   }
+}
+
+/** The canonical `health()` failure value: a down provider with the reason.
+ * Every provider's catch block (and the adapter's per-provider guard) returns
+ * this, so the shape stays identical in one place. */
+export function failedHealth(err: unknown): ProviderHealth {
+  return { ok: false, latency_ms: 0, model_list: [], error: errMessage(err) }
 }
 
 export function resolveFetch(injected?: FetchLike): FetchLike {

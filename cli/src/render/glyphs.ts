@@ -36,3 +36,15 @@ export function supportsUnicode(env: NodeJS.ProcessEnv = process.env): boolean {
 export function glyphs(env: NodeJS.ProcessEnv = process.env): Glyphs {
   return supportsUnicode(env) ? UNICODE : ASCII
 }
+
+/** Map a setup/check status onto its glyph, locale-aware. The shared form of
+ * the `ok → ✓ / warn → ⚠ / fail → ✗` mapping the setup report, the wizard, and
+ * the `setup item` command all need. (NB: the doctor renderer maps a different,
+ * warn-less enum and intentionally does not use this.) */
+export function statusGlyph(
+  status: 'ok' | 'warn' | 'fail',
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const g = glyphs(env)
+  return status === 'ok' ? g.ok : status === 'warn' ? g.warn : g.fail
+}

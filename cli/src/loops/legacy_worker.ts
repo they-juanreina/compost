@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 
-import { CompostError } from '../errors.js'
+import { CompostError, errMessage } from '../errors.js'
 
 import {
   LegacyIngestClient,
@@ -137,7 +137,7 @@ export function linkNormalizedDoc(
     try {
       writeTranscriptMd(transcriptPath)
     } catch (err) {
-      warnings.push(`transcript.md render failed: ${err instanceof Error ? err.message : err}`)
+      warnings.push(`transcript.md render failed: ${errMessage(err)}`)
     }
     return { normalized_path: finalNormalized, transcript_path: transcriptPath, warnings }
   }
@@ -237,7 +237,7 @@ export async function runLegacyWorkerOnce(
           ...(warnings.length > 0 ? { warnings } : {}),
         })
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = errMessage(err)
         queue.fail(job.id, msg, MAX_ATTEMPTS)
         out.results.push({ job_id: job.id, source_path: sourcePath, status: 'error' })
         // On service-down, stop the drain — nothing else will succeed now.

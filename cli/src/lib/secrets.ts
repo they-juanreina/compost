@@ -12,7 +12,7 @@ import {
 import { homedir } from 'node:os'
 import { join, relative } from 'node:path'
 
-import { CompostError } from '../errors.js'
+import { CompostError, errMessage } from '../errors.js'
 
 /**
  * Secret resolution + storage (#236 readiness hardening).
@@ -54,11 +54,6 @@ export interface ResolvedSecret {
  * `loadSecretsEnv` runs (so direct unit tests are unaffected).
  */
 const autoloadedNames = new Set<string>()
-
-/** True when `name` was injected into the env by the startup autoload. */
-export function wasAutoloaded(name: string): boolean {
-  return autoloadedNames.has(name)
-}
 
 /**
  * Well-known secret names. Used by `compost secrets list` (which never reads
@@ -462,7 +457,7 @@ export function setSecret(name: string, value: string, deps: SecretsDeps = {}): 
       kc.set(name, value)
       return { name, stored_in: 'keychain', location: kc.label }
     } catch (err) {
-      const reason = err instanceof Error ? err.message : String(err)
+      const reason = errMessage(err)
       const path = writeSecretToFile(name, value, deps)
       return { name, stored_in: 'file', location: path, fallback_reason: reason }
     }
