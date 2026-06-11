@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.1.4 — 2026-06-11
 
 ### Added
 
@@ -24,6 +24,36 @@
   models like `bge-m3` filtered out) and lets you pick one with no download;
   pulling a default (`llama3.1:8b`) becomes just one more option, used when
   nothing suitable is installed.
+
+### Fixed
+
+- **`compost setup` no longer hangs on a slow HuggingFace.** The pyannote
+  gated-license probe was a bare fetch with no timeout; it now time-boxes each
+  request (5 s) and, on a timeout or when offline, reports "could not verify
+  license" rather than mislabeling it "not accepted".
+- **`compost backup` takes a consistent snapshot of the event ledger.** It now
+  copies `events.sqlite` via SQLite `VACUUM INTO` instead of a raw file copy, so
+  a backup taken while a worker is writing (or in WAL mode) can't capture a torn
+  ledger — the one artifact this command exists to protect.
+
+### Hardened
+
+- **Session-id containment is asserted at every write/exec site.** `getSession`,
+  `snap`, `transcribe`, and `import` now assert the resolved session path stays
+  under `<seed>/sessions/` (belt-and-braces over the strict id regex), so a
+  future loosening of that regex can't open a path traversal.
+- **`compost setup item run` gates mutations on a real TTY, not `--human`.** A
+  mutating action run non-interactively still requires `--yes`, and that gate can
+  no longer be bypassed by forcing the `--human` output flag.
+- Status glyphs (`✓ ✗ ⚠`) degrade to ASCII under a non-UTF-8 locale across the
+  setup report, the wizard, and the secrets output.
+
+### Internal
+
+- Consolidated repeated idioms into shared helpers — `errMessage`,
+  `statusGlyph`, `failedHealth`, `readStdin`, `fetchWithTimeout`,
+  `isContainedUnder`, `eventsDbPath` / `openReadonlyEvents`, `runNativeCli`, and
+  `seedNameOf` — and removed dead code. No user-facing behavior change.
 
 ## v0.1.3 — 2026-06-10
 
