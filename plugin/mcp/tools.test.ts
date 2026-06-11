@@ -150,6 +150,74 @@ describe('MCP tool definitions', () => {
     }
   })
 
+  it('maps the codebook tools to `compost codebook <verb>` argv', () => {
+    const create = tool('compost_codebook_new')
+    assert.deepEqual(create.toArgv({ name: 'epistemology', stance: 'framework' }), [
+      'codebook',
+      'new',
+      'epistemology',
+      '--stance',
+      'framework',
+    ])
+    assert.deepEqual(
+      create.toArgv({ name: 'justice', stance: 'framework', description: 'a lens', seed: 's' }),
+      [
+        'codebook',
+        'new',
+        'justice',
+        '--stance',
+        'framework',
+        '--description',
+        'a lens',
+        '--seed',
+        's',
+      ],
+    )
+
+    const list = tool('compost_codebook_list')
+    assert.deepEqual(list.toArgv({}), ['codebook', 'list'])
+    assert.deepEqual(list.toArgv({ seed: 'demo' }), ['codebook', 'list', '--seed', 'demo'])
+
+    const migrate = tool('compost_codebook_migrate')
+    assert.deepEqual(migrate.toArgv({}), ['codebook', 'migrate'])
+    assert.deepEqual(migrate.toArgv({ seed: 'demo', apply: true }), [
+      'codebook',
+      'migrate',
+      '--seed',
+      'demo',
+      '--apply',
+    ])
+    // apply:false must NOT pass the flag (dry-run is the safe default).
+    assert.deepEqual(migrate.toArgv({ apply: false }), ['codebook', 'migrate'])
+  })
+
+  it('forwards --codebook on create_code only when given', () => {
+    const code = tool('compost_create_code')
+    assert.deepEqual(code.toArgv({ name: 'c', definition: 'd', codebook: 'epistemology' }), [
+      'create',
+      'code',
+      '--name',
+      'c',
+      '--definition',
+      'd',
+      '--codebook',
+      'epistemology',
+    ])
+    assert.ok(!code.toArgv({ name: 'c', definition: 'd' }).includes('--codebook'))
+  })
+
+  it('classifies codebook_list read-only, codebook_new/migrate as mutations (not AI-authored)', () => {
+    assert.ok(tool('compost_codebook_list').readOnly)
+    assert.equal(tool('compost_codebook_new').readOnly, false)
+    assert.equal(tool('compost_codebook_migrate').readOnly, false)
+    // Lens setup / migration is the researcher's act — never an AI [draft].
+    assert.notEqual(tool('compost_codebook_new').aiAuthored, true)
+    assert.notEqual(tool('compost_codebook_migrate').aiAuthored, true)
+    assert.ok(
+      !buildArgv(tool('compost_codebook_new'), { name: 'x', stance: 'inductive' }).includes('--ai'),
+    )
+  })
+
   it('buildArgv appends AI authorship flags ONLY for aiAuthored tools', () => {
     const hl = tool('compost_create_highlight')
     const args = { session: 'S001', utterance: 'U-1', span: '0,5', text: 'hello' }
