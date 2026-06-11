@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import type {
@@ -11,6 +11,7 @@ import {
   buildVectorRecords,
   chunkTranscript,
   openLanceDBForWrite,
+  textSha,
 } from '@they-juanreina/compost-retrieval'
 
 import { CompostError } from '../errors.js'
@@ -65,24 +66,7 @@ export async function runEmbedWorkerOnce(
   }
 
   // Resolve embeddings provider + dimension.
-  let embed = deps.embed
-  let vectorDim = deps.vectorDim ?? 1024
-  if (embed === undefined) {
-    const config = loadConfig(seedPath)
-    const adapter = new LLMAdapter(config)
-    embed = async (texts: string[]) => {
-      const resp = await adapter.embed('embeddings', texts)
-      return resp.vectors
-    }
-    // Try to discover dim from the provider config — most embeddings models
-    // declare it in their tag. bge-m3 is 1024; mxbai-embed-large is 1024 too.
-    // Fall back to 1024 by default; mismatches surface as a clear LanceDB error.
-    const route = config.defaults.embeddings
-    if (route !== undefined) {
-      const { model } = parseRoute(route)
-      vectorDim = DEFAULT_DIM_FOR_MODEL[model] ?? 1024
-    }
-  }
+  const { embed, vectorDim } = resolveEmbedder(seedPath, deps)
 
   // Chunk every transcript.
   const allChunks: Array<Chunk & { sessionId: string }> = []
@@ -152,6 +136,137 @@ export async function runEmbedWorkerOnce(
     embedded: allChunks.length,
     inserted,
     transcripts_scanned: transcripts.length,
+  }
+}
+
+interface ResolvedEmbedder {
+  embed: (texts: string[]) => Promise<number[][]>
+  vectorDim: number
+}
+
+/**
+ * Resolve the embeddings call + vector dimension once, shared by the transcript
+ * and highlight passes. Honors an injected `deps.embed` (tests) before touching
+ * config/provider, so a test never needs Ollama running.
+ */
+function resolveEmbedder(seedPath: string, deps: EmbedWorkerDeps): ResolvedEmbedder {
+  if (deps.embed !== undefined) {
+    return { embed: deps.embed, vectorDim: deps.vectorDim ?? 1024 }
+  }
+  const config = loadConfig(seedPath)
+  const adapter = new LLMAdapter(config)
+  const embed = async (texts: string[]) => {
+    const resp = await adapter.embed('embeddings', texts)
+    return resp.vectors
+  }
+  // Discover dim from the provider config — most embeddings models declare it in
+  // their tag (bge-m3 / mxbai-embed-large are 1024). Fall back to 1024; a
+  // mismatch surfaces as a clear LanceDB error.
+  let vectorDim = deps.vectorDim ?? 1024
+  const route = config.defaults.embeddings
+  if (route !== undefined) {
+    const { model } = parseRoute(route)
+    vectorDim = DEFAULT_DIM_FOR_MODEL[model] ?? 1024
+  }
+  return { embed, vectorDim }
+}
+
+export interface HighlightEmbedResult {
+  highlights_scanned: number
+  embedded: number
+  skipped: number
+}
+
+/**
+ * Embed each highlight's verbatim text into a `highlights/<id>.json` sidecar
+ * (`{id, vector, text_sha}`) — the surface the cross-session-similarity scanner
+ * (`compost rescan` / `compost code`) reads. Highlights are created as `.md` +
+ * a provenance event only (create stays cheap and offline); embedding happens
+ * HERE, in the worker, where the provider lives. Idempotent on `text_sha`: a
+ * highlight whose sidecar already matches its text is skipped, so re-runs are
+ * cheap and a highlight created AFTER transcript ingest finally becomes visible
+ * to the scanner (#262). Independent of transcripts — a seed may have
+ * highlights over legacy-ingested sessions.
+ *
+ * (Sidecars are the scanner's existing read surface; unifying highlight vectors
+ * onto the LanceDB index is a separate future cleanup.)
+ */
+export async function runHighlightEmbedWorkerOnce(
+  seedPath: string,
+  deps: EmbedWorkerDeps = {},
+): Promise<HighlightEmbedResult> {
+  const dir = join(seedPath, 'highlights')
+  if (!existsSync(dir)) return { highlights_scanned: 0, embedded: 0, skipped: 0 }
+
+  const scanned: Array<{ id: string; text: string; text_sha: string; sidecar: string }> = []
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith('.md')) continue
+    const hl = readHighlight(join(dir, f))
+    if (hl === null) continue
+    scanned.push({
+      id: hl.id,
+      text: hl.text,
+      text_sha: textSha(hl.text),
+      sidecar: join(dir, `${hl.id}.json`),
+    })
+  }
+
+  const stale = scanned.filter((h) => !sidecarUpToDate(h.sidecar, h.text_sha))
+  if (stale.length === 0) {
+    return { highlights_scanned: scanned.length, embedded: 0, skipped: scanned.length }
+  }
+
+  const { embed } = resolveEmbedder(seedPath, deps)
+  const vectors = await embedInBatches(
+    embed,
+    stale.map((h) => h.text),
+    EMBED_BATCH_CAP,
+    deps.onProgress,
+  )
+  if (vectors.length !== stale.length) {
+    throw new CompostError(
+      'PROVIDER_ERROR',
+      `embeddings provider returned ${vectors.length} vectors for ${stale.length} highlights`,
+    )
+  }
+  for (let i = 0; i < stale.length; i++) {
+    const h = stale[i]
+    const vector = vectors[i]
+    if (h === undefined || vector === undefined) continue
+    writeFileSync(h.sidecar, JSON.stringify({ id: h.id, vector, text_sha: h.text_sha }))
+  }
+  return {
+    highlights_scanned: scanned.length,
+    embedded: stale.length,
+    skipped: scanned.length - stale.length,
+  }
+}
+
+/** Parse a highlight `.md`: id from frontmatter, text = the body after the fence.
+ * Tolerates CRLF — compost writes LF, but a highlight hand-edited on Windows (or
+ * with core.autocrlf) would otherwise fail to match and be silently dropped from
+ * embedding, the exact invisibility this worker exists to fix. */
+function readHighlight(path: string): { id: string; text: string } | null {
+  const content = readFileSync(path, 'utf8')
+  const m = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?/)
+  if (m === null) return null
+  const id = (m[1] ?? '').match(/^id:\s*(\S+)/m)?.[1]
+  const text = content.slice(m[0].length).trim()
+  if (id === undefined || text.length === 0) return null
+  return { id, text }
+}
+
+/** True when a sidecar exists and its text_sha matches — lets re-runs skip it. */
+function sidecarUpToDate(sidecarPath: string, text_sha: string): boolean {
+  if (!existsSync(sidecarPath)) return false
+  try {
+    const j = JSON.parse(readFileSync(sidecarPath, 'utf8')) as {
+      text_sha?: string
+      vector?: unknown
+    }
+    return j.text_sha === text_sha && Array.isArray(j.vector)
+  } catch {
+    return false
   }
 }
 

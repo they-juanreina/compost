@@ -1,6 +1,10 @@
 import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
 import { getLogPath, Logger } from '../logging.js'
-import { type EmbedWorkerDeps, runEmbedWorkerOnce } from './embed_worker.js'
+import {
+  type EmbedWorkerDeps,
+  runEmbedWorkerOnce,
+  runHighlightEmbedWorkerOnce,
+} from './embed_worker.js'
 import { processInbox } from './ingest_watcher.js'
 import { type LegacyWorkerDeps, runLegacyWorkerOnce } from './legacy_worker.js'
 import { runTranscribeWorkerOnce, type WorkerDeps } from './transcribe_worker.js'
@@ -9,7 +13,13 @@ export interface SupervisorResult {
   inbox: { moved: number; unsupported: number }
   transcribe: { processed: number; failed: number }
   legacy: { processed: number; failed: number }
-  embed: { embedded: number; inserted: number; transcripts_scanned: number }
+  embed: {
+    embedded: number
+    inserted: number
+    transcripts_scanned: number
+    /** Highlight sidecars written this pass — the surface the scanner reads (#262). */
+    highlights_embedded: number
+  }
   /** Jobs that exhausted their attempt budget and sit permanently failed in the
    * queue — nothing will pick them up until `compost jobs requeue` (#239). */
   dead_jobs: number
@@ -82,19 +92,33 @@ export async function runSupervisorOnce(
     }
   }
 
-  let embed = { embedded: 0, inserted: 0, transcripts_scanned: 0 }
+  let embed = { embedded: 0, inserted: 0, transcripts_scanned: 0, highlights_embedded: 0 }
   if (deps.skipEmbed !== true) {
+    const embedDeps = {
+      ...(deps.embed ?? {}),
+      ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
+    }
     try {
-      embed = await runEmbedWorkerOnce(seedPath, {
-        ...(deps.embed ?? {}),
-        ...(deps.onProgress ? { onProgress: deps.onProgress } : {}),
-      })
-      await logger.info('embed drained', embed)
+      const t = await runEmbedWorkerOnce(seedPath, embedDeps)
+      embed = { ...t, highlights_embedded: 0 }
+      await logger.info('embed drained', { ...t })
     } catch (err) {
       // Embed failures must not block ingest/transcribe/legacy progress — surface + continue.
       // Common cause: Ollama not running. Surfaced clearly by `compost-setup` (v0.1-07).
       failures.push(`embed: ${String(err)}`)
       await logger.error('embed failed', { error: String(err) })
+    }
+    // Embed highlights into the scanner's sidecar surface (#262). Separate pass:
+    // independent of transcripts, idempotent on text_sha, same surface
+    // `compost rescan` reads — so a highlight created after ingest becomes
+    // visible to the similarity scanner. A failure here is surfaced, not fatal.
+    try {
+      const h = await runHighlightEmbedWorkerOnce(seedPath, embedDeps)
+      embed.highlights_embedded = h.embedded
+      await logger.info('highlights embedded', { ...h })
+    } catch (err) {
+      failures.push(`highlight-embed: ${String(err)}`)
+      await logger.error('highlight embed failed', { error: String(err) })
     }
   }
 
