@@ -12,6 +12,7 @@ import {
   setSecret,
 } from '../lib/secrets.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+import { glyphs } from '../render/glyphs.js'
 
 /** Aliases to also check when resolving a given primary name. */
 function aliasesFor(name: string): string[] {
@@ -183,7 +184,7 @@ export function registerSecrets(program: Command): void {
             )
             const warn = d.secrets_env_secure
               ? ''
-              : `\n⚠ ${d.secrets_env} is group/world-readable and is being ignored — fix: chmod 600 ${d.secrets_env}`
+              : `\n${glyphs().warn} ${d.secrets_env} is group/world-readable and is being ignored — fix: chmod 600 ${d.secrets_env}`
             return `Secrets (name → source; values never shown):\n${lines.join('\n')}${warn}`
           },
         )

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 import { resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
+import { glyphs } from '../render/glyphs.js'
 import { loadConfig, saveConfig, setConfigValue } from './config.js'
 import { diagnoseNativeRuntime, isAppleSilicon } from './nativeRuntime.js'
 import { provisionNativeVenv } from './provisionNative.js'
@@ -87,7 +88,8 @@ function notOk(report: SetupReport, id: string): boolean {
 }
 
 function statusGlyph(c: SetupCheck): string {
-  return c.status === 'ok' ? '✓' : c.status === 'warn' ? '!' : '✗'
+  const g = glyphs()
+  return c.status === 'ok' ? g.ok : c.status === 'warn' ? g.warn : g.fail
 }
 
 function printReport(io: WizardIO, report: SetupReport): void {
@@ -248,10 +250,11 @@ export async function runSetupWizard(deps: WizardDeps): Promise<WizardResult> {
         } catch {
           accepted = false
         }
+        const lg = glyphs()
         io.say(
           accepted
-            ? `  ✓ license accepted: ${repo}`
-            : `  ! license NOT accepted yet: https://huggingface.co/${repo}`,
+            ? `  ${lg.ok} license accepted: ${repo}`
+            : `  ${lg.warn} license NOT accepted yet: https://huggingface.co/${repo}`,
         )
       }
     }
@@ -426,7 +429,9 @@ async function maintainItem(args: {
   }
 
   const result = await runItem(item.id, action.id, deps)
-  const glyph = result.recheck.status === 'ok' ? '✓' : result.recheck.status === 'warn' ? '!' : '✗'
+  const mg = glyphs()
+  const glyph =
+    result.recheck.status === 'ok' ? mg.ok : result.recheck.status === 'warn' ? mg.warn : mg.fail
   io.say(`  ${glyph} ${item.id} ${action.id}: ${result.recheck.detail}`)
   const r = result.result as { remote_action?: { note: string; url: string }; env_note?: string }
   if (r.remote_action) {

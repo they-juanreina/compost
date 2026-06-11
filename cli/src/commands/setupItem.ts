@@ -12,6 +12,7 @@ import {
   validateHfToken,
 } from '../lib/setupItem.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
+import { glyphs } from '../render/glyphs.js'
 
 /** Read all of stdin (the new token value, piped so it never lands in shell
  * history). Returns '' when stdin is an interactive TTY. (mirrors secrets.ts) */
@@ -30,13 +31,17 @@ const NEEDS_VALUE = new Set(['renew', 'set'])
  * Gate a `setup item run` invocation before it mutates anything. Extracted so
  * the (security-relevant) refusal logic is unit-testable without driving
  * commander: renew/set need a value (piped, so it stays out of shell history),
- * and any mutating action run non-interactively (no TTY) requires an explicit
- * --yes. Throws INVALID_INPUT otherwise; returns void when the call may proceed.
+ * and any mutating action run non-interactively requires an explicit --yes.
+ * `interactive` is the REAL terminal signal (`process.stdout.isTTY`), not the
+ * `--human` output flag: `--human` is user/agent-forceable even when piped, so
+ * gating on it would let an automated caller add `--human` to skip the --yes
+ * confirmation. Throws INVALID_INPUT otherwise; returns void when the call may
+ * proceed.
  */
 export function assertRunAllowed(
   id: string,
   action: string,
-  ctx: { human: boolean; yes: boolean; value: string },
+  ctx: { interactive: boolean; yes: boolean; value: string },
 ): void {
   if (NEEDS_VALUE.has(action) && ctx.value === '') {
     throw new CompostError(
@@ -44,7 +49,7 @@ export function assertRunAllowed(
       `Pipe the new value: \`printf %s "$TOKEN" | compost setup item run ${id} ${action}\` (keeps it out of shell history).`,
     )
   }
-  if (!READONLY.has(action) && !ctx.human && ctx.yes !== true) {
+  if (!READONLY.has(action) && !ctx.interactive && ctx.yes !== true) {
     throw new CompostError(
       'INVALID_INPUT',
       `Refusing a mutating action non-interactively without --yes.`,
@@ -53,7 +58,8 @@ export function assertRunAllowed(
 }
 
 function glyph(status: SetupCheck['status']): string {
-  return status === 'ok' ? '✓' : status === 'warn' ? '!' : '✗'
+  const g = glyphs()
+  return status === 'ok' ? g.ok : status === 'warn' ? g.warn : g.fail
 }
 
 /**
@@ -171,7 +177,12 @@ export function registerSetupItem(setup: Command): void {
       const out = getOutputOpts(cmd)
       try {
         const value = NEEDS_VALUE.has(action) ? (await readStdin()).trim() : ''
-        assertRunAllowed(id, action, { human: out.human, yes: flags.yes === true, value })
+        assertRunAllowed(id, action, {
+          // Real terminal, not the forceable --human flag (see assertRunAllowed).
+          interactive: process.stdout.isTTY === true,
+          yes: flags.yes === true,
+          value,
+        })
         const result = await runItem(id, action, value ? { value } : {})
         emit(
           { command: 'setup item run', ...result },

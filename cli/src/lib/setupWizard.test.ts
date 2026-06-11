@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
+import { glyphs } from '../render/glyphs.js'
 import type { SetupCheck, SetupReport } from './setup.js'
 import { LOCAL_CHAT_MODEL, runSetupWizard, type WizardIO } from './setupWizard.js'
 
@@ -97,8 +98,12 @@ describe('runSetupWizard', () => {
     })
     assert.deepEqual(stored, [['HUGGINGFACE_TOKEN', 'hf_secret123']])
     assert.equal(fetched.length, 2)
-    assert.ok(said.some((s) => s.includes('✓ license accepted: pyannote/speaker-diarization-3.1')))
-    assert.ok(said.some((s) => s.includes('! license NOT accepted yet')))
+    assert.ok(
+      said.some((s) =>
+        s.includes(`${glyphs().ok} license accepted: pyannote/speaker-diarization-3.1`),
+      ),
+    )
+    assert.ok(said.some((s) => s.includes(`${glyphs().warn} license NOT accepted yet`)))
   })
 
   it('local chat with no installed model pulls the default and saves routing', async () => {

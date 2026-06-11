@@ -1,5 +1,7 @@
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
+
+import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { eventsToProvO } from '../exporters/prov.js'
@@ -72,7 +74,18 @@ export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupRe
   const stamp = (opts.now ?? (() => new Date()))().toISOString().replace(/[:.]/g, '-')
   const ledgerCopy = join(outDir, `${seedName}-events-${stamp}.sqlite`)
   const provenance = join(outDir, `${seedName}-provenance-${stamp}.jsonld`)
-  copyFileSync(eventsDb, ledgerCopy)
+  // A *consistent* snapshot, not a raw byte copy. `copyFileSync` of a live db can
+  // tear if `compost watch` is emitting events during the backup, and in WAL mode
+  // it omits un-checkpointed frames — exactly the way to corrupt the one ledger
+  // this feature exists to protect. `VACUUM INTO` takes a transactional read
+  // snapshot into a fresh file; it runs on the read-only connection and never
+  // mutates the source. Single-quotes in the path are escaped for the SQL literal.
+  const src = new Database(eventsDb, { readonly: true, fileMustExist: true })
+  try {
+    src.exec(`VACUUM INTO '${ledgerCopy.replace(/'/g, "''")}'`)
+  } finally {
+    src.close()
+  }
   writeFileSync(provenance, JSON.stringify(prov.document, null, 2), 'utf8')
 
   return {

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
+import Database from 'better-sqlite3'
+
 import { CompostError } from '../errors.js'
 import { createHighlight } from './artifacts.js'
 import { backupSeed } from './backup.js'
@@ -43,6 +45,15 @@ describe('backupSeed', () => {
     assert.ok(res.entities >= 1)
     assert.ok(res.ledger_copy && existsSync(res.ledger_copy))
     assert.ok(res.provenance && existsSync(res.provenance))
+    // The snapshot is a consistent, queryable SQLite db (VACUUM INTO, not a raw
+    // byte copy) — opening it and counting events proves it isn't torn.
+    const copy = new Database(res.ledger_copy as string, { readonly: true, fileMustExist: true })
+    try {
+      const n = (copy.prepare('SELECT count(*) AS n FROM events').get() as { n: number }).n
+      assert.ok(n >= 1, 'expected the snapshot to contain the seeded event')
+    } finally {
+      copy.close()
+    }
     // The PROV-O bundle is real JSON with content.
     const doc = JSON.parse(readFileSync(res.provenance, 'utf8'))
     assert.ok(doc && typeof doc === 'object')
