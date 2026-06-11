@@ -27,7 +27,11 @@ export function ingestRoots(
   return [resolve(cwd), ...extra]
 }
 
-/** True when `rawPath` resolves inside one of the allowed ingest roots. */
+/** True when `rawPath` resolves inside one of the allowed ingest roots. The
+ * per-root lexical check is the parallel of cli/src/lib/pathSafe.ts's
+ * `isContainedUnder` — kept inline here because the plugin is a separate package
+ * and this is its only use, but deliberately ALLOWS `target === root` (`rel ===
+ * ''`), unlike the strict CLI twin. Keep the two in sync if the rule changes. */
 export function isIngestPathAllowed(
   rawPath: string,
   env: NodeJS.ProcessEnv = process.env,

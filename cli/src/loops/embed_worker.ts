@@ -173,6 +173,9 @@ async function embedInBatches(
   cap: number,
   onProgress?: (msg: string) => void,
 ): Promise<number[][]> {
+  // Caller guarantee: runEmbedWorkerOnce returns early when there are no chunks,
+  // so `texts` is always non-empty here — the single-batch fast-path never calls
+  // embed([]). Keep this invariant if a second caller is ever added.
   if (texts.length <= cap) {
     onProgress?.(`embedding ${texts.length}/${texts.length} chunks`)
     return embed(texts)
