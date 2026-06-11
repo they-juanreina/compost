@@ -1,8 +1,8 @@
-import { join } from 'node:path'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
 import { computeAgreement, readCodings } from '../lib/agreement.js'
+import { eventsDbPath } from '../lib/events.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -29,7 +29,7 @@ export function registerAgreement(program: Command): void {
         if (!Number.isInteger(minUnits) || minUnits < 1) {
           throw new CompostError('INVALID_INPUT', `--min-units must be a positive integer`)
         }
-        const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+        const eventsDb = eventsDbPath(seedPath)
         const { codings, excludedUnnamedMachineCodes } = readCodings(eventsDb)
         const report = computeAgreement(codings, { minUnits, excludedUnnamedMachineCodes })
         // report.status is 'ok' | 'insufficient' — the command succeeded either way.

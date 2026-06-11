@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { eventsToProvO } from '../exporters/prov.js'
+import { eventsDbPath } from './events.js'
 
 /**
  * Back up a seed's canonical provenance (#236 readiness follow-up).
@@ -45,7 +46,7 @@ export interface BackupResult {
 }
 
 export function backupSeed(seedPath: string, opts: BackupOptions = {}): BackupResult {
-  const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+  const eventsDb = eventsDbPath(seedPath)
   if (!existsSync(eventsDb)) {
     throw new CompostError(
       'FILE_NOT_FOUND',

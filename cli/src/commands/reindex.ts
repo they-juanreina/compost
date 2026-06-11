@@ -1,10 +1,10 @@
 import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { SnapshotStore } from '@they-juanreina/compost-provenance'
 import Database from 'better-sqlite3'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
+import { eventsDbPath } from '../lib/events.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -25,7 +25,7 @@ export function registerReindex(program: Command): void {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-        const eventsDb = join(seedPath, '.compost', 'events.sqlite')
+        const eventsDb = eventsDbPath(seedPath)
         if (!existsSync(eventsDb)) {
           throw new CompostError(
             'FILE_NOT_FOUND',

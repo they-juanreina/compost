@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
@@ -7,10 +8,30 @@ import {
   type EventInput,
   EventWriter,
 } from '@they-juanreina/compost-provenance'
+import Database from 'better-sqlite3'
+
+import { CompostError } from '../errors.js'
+
+/** The canonical path to a seed's append-only event ledger — the single source
+ * of `<seed>/.compost/events.sqlite`, so a future relocation is one edit. */
+export function eventsDbPath(seedPath: string): string {
+  return join(seedPath, '.compost', 'events.sqlite')
+}
+
+/**
+ * Open a seed's event ledger read-only. Throws FILE_NOT_FOUND with the caller's
+ * message (each mutation phrases its own "nothing to endorse/reject/…") when the
+ * ledger doesn't exist yet — surfaced before better-sqlite3's raw open error.
+ */
+export function openReadonlyEvents(seedPath: string, missingMsg: string): Database.Database {
+  const p = eventsDbPath(seedPath)
+  if (!existsSync(p)) throw new CompostError('FILE_NOT_FOUND', missingMsg)
+  return new Database(p, { readonly: true, fileMustExist: true })
+}
 
 /** Open an EventWriter on a seed's .compost/events.sqlite. */
 export function openSeedEvents(seedPath: string): EventWriter {
-  return new EventWriter({ dbPath: join(seedPath, '.compost', 'events.sqlite') })
+  return new EventWriter({ dbPath: eventsDbPath(seedPath) })
 }
 
 /** Content-address an artifact's initial state (SHA256 of canonical JSON). */
