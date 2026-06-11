@@ -118,6 +118,7 @@ interface CodeFlags extends CommonFlags {
   name: string
   definition: string
   evidence?: string
+  codebook?: string
 }
 
 interface ThemeFlags extends CommonFlags {
@@ -184,7 +185,11 @@ export function registerCreate(program: Command): void {
         'Code name (slugified for the id, e.g. distrust-of-automation)',
       )
       .requiredOption('--definition <text>', 'What this code captures')
-      .option('--evidence <ids>', 'Comma-separated highlight ids (e.g. H-001,H-002)'),
+      .option('--evidence <ids>', 'Comma-separated highlight ids (e.g. H-001,H-002)')
+      .option(
+        '--codebook <ref>',
+        'Codebook this code belongs to (name or CB- id; default: primary)',
+      ),
   ).action((flags: CodeFlags, cmd: Command) => {
     try {
       const seedPath = resolveSeedPath(process.cwd(), flags.seed)
@@ -193,6 +198,7 @@ export function registerCreate(program: Command): void {
         name: flags.name,
         definition: flags.definition,
         evidence: parseList(flags.evidence),
+        ...(flags.codebook !== undefined ? { codebookId: flags.codebook } : {}),
         author: resolveAuthor(flags),
         ...(inputs !== undefined ? { inputs } : {}),
       })

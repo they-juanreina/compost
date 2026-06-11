@@ -27,21 +27,35 @@ export type { Chunk, ChunkMetadata, ScoredChunk } from '@they-juanreina/compost-
 export { CompostError, type CompostErrorCode } from './errors.js'
 // ---- artifact writes: create / endorse / reject / update (#119, #121)
 export {
+  CODEBOOK_STANCES,
+  type CodebookStance,
+  type CreateCodebookInput,
   type CreateCodeInput,
   type CreatedArtifact,
   type CreateHighlightInput,
   type CreateThemeInput,
   createCode,
+  createCodebook,
   createHighlight,
   createTheme,
+  DEFAULT_CODEBOOK_ID,
   defaultResearcherId,
   endorseArtifact,
+  ensurePrimaryCodebook,
   HUMAN_REF_RE,
   rejectArtifact,
   updateArtifact,
 } from './lib/artifacts.js'
 // ---- blame: artifact lineage chain (#122)
 export { type BlameEvent, type BlameResult, blame } from './lib/blame.js'
+// ---- codebooks: list + lazy migration (ADR 0001 slice 1)
+export {
+  applyCodebookMigration,
+  type CodebookMigrationPlan,
+  type CodebookMigrationResult,
+  listCodebooks,
+  planCodebookMigration,
+} from './lib/codebooks.js'
 // ---- low-level event helpers (for callers that compose their own writes)
 export {
   type AiInputBundle,

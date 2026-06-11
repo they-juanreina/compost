@@ -5,6 +5,7 @@ import { registerBackup } from './commands/backup.js'
 import { registerBlame } from './commands/blame.js'
 import { registerChat } from './commands/chat.js'
 import { registerCode } from './commands/code.js'
+import { registerCodebook } from './commands/codebook.js'
 import { registerConfig } from './commands/config.js'
 import { registerCreate } from './commands/create.js'
 import { registerEndorse } from './commands/endorse.js'
@@ -85,6 +86,7 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerValidate(program)
   registerTag(program)
   registerCode(program)
+  registerCodebook(program)
   registerRecode(program)
   registerAgreement(program)
   registerRerun(program)

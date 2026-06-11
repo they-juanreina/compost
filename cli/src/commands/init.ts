@@ -8,6 +8,7 @@ interface InitFlags {
   force?: boolean
   fromLegacy?: string
   fromSample?: boolean
+  question?: string
 }
 
 export function registerInit(program: Command): void {
@@ -21,9 +22,10 @@ export function registerInit(program: Command): void {
       'Migrate a legacy folder into the new seed (delegates to compost migrate)',
     )
     .option('--from-sample', 'Unpack the bundled sample seed (a redacted single-session corpus)')
+    .option('--question <text>', 'The research question, written into seed.md')
     .addHelpText(
       'after',
-      '\nExamples:\n  $ compost init my-study\n  $ compost init demo --from-sample',
+      '\nExamples:\n  $ compost init my-study\n  $ compost init demo --from-sample\n  $ compost init edges --question "How does a researcher\'s standpoint shape a corpus reading?"',
     )
     .action((seedName: string, flags: InitFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
@@ -31,6 +33,7 @@ export function registerInit(program: Command): void {
         const result = initSeed(seedName, {
           force: flags.force === true,
           fromSample: flags.fromSample === true,
+          ...(flags.question !== undefined ? { question: flags.question } : {}),
         })
         if (flags.fromLegacy !== undefined) {
           emit(

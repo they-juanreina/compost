@@ -17,6 +17,7 @@ const SEED_DIRECTORIES = [
   'glossary',
   'highlights',
   'codebook',
+  'codebooks',
   'synthesis',
   'exports',
   'legacy',
@@ -25,12 +26,19 @@ const SEED_DIRECTORIES = [
   '.compost/work',
 ] as const
 
+/** Default body for seed.md's "The question" section when --question is not
+ * given. Exported for migrate.ts, which renders the same template. */
+export const QUESTION_PLACEHOLDER =
+  '_Replace this with the research question this seed is set up to answer. One paragraph; less is more._'
+
 export interface InitOptions {
   cwd?: string
   force?: boolean
   now?: () => Date
   /** Unpack the bundled sample seed (a redacted single-session corpus). */
   fromSample?: boolean
+  /** The research question, rendered into seed.md (default: a placeholder). */
+  question?: string
   /** Env for resolving the user-level config overlay (tests pass COMPOST_HOME). */
   env?: NodeJS.ProcessEnv
 }
@@ -74,7 +82,12 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
     createdDirs.push(dir)
   }
 
-  const vars: Record<string, string> = { seed_name: name, created_at: createdAt }
+  const question = opts.question?.trim()
+  const vars: Record<string, string> = {
+    seed_name: name,
+    created_at: createdAt,
+    question: question !== undefined && question.length > 0 ? question : QUESTION_PLACEHOLDER,
+  }
   // The setup wizard's machine-wide answers (model routing, provider tweaks)
   // overlay the template, so a new seed starts with routes that actually
   // resolve on this machine instead of the template's guesses.
@@ -98,6 +111,13 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
   if (opts.fromSample === true) {
     cpSync(SAMPLE_SEED_DIR, seedPath, { recursive: true })
   }
+
+  // The primary codebook (ADR 0001) is materialized lazily — on the first
+  // `compost codebook list`, the first default-codebook `create code`, or
+  // `codebook migrate` — via ensurePrimaryCodebook. init stays a pure
+  // filesystem scaffold that writes no events.sqlite (a fresh seed has no
+  // provenance log until research activity begins); we only pre-create the
+  // empty codebooks/ directory, a sibling of codebook/.
 
   const warnings: string[] = []
   if (basename(cwd) === 'Seeds') {
