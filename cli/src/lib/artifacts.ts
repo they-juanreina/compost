@@ -218,6 +218,60 @@ export function createCodebook(seedPath: string, input: CreateCodebookInput): Cr
   return { id, artifact_id: sha, path, event_id }
 }
 
+export interface CreateCategoryInput {
+  name: string
+  definition: string
+  /** Codebook the category belongs to (name or CB- id). A category is
+   * codebook-internal (ADR 0002) — it groups only codes within one frame.
+   * Default: the seed's primary codebook. */
+  codebookId?: string
+  author: Author
+  inputs?: AiInputBundle
+}
+
+/**
+ * Create a category — the second-cycle / pattern-coding tier (ADR 0002): a
+ * codebook-internal grouping of codes sitting between Code and Theme. Lives in
+ * `categories/<slug>.md` (a sibling of codebook/, so the code-counting readers
+ * never see it). Codes are linked to it via `link(code → category)` events
+ * (see linkCodeToCategory); the category itself just carries name + definition.
+ */
+export function createCategory(seedPath: string, input: CreateCategoryInput): CreatedArtifact {
+  const codebook_id = resolveCodebookId(seedPath, input.codebookId)
+  const dir = join(seedPath, 'categories')
+  mkdirSync(dir, { recursive: true })
+  const name = slug(input.name)
+  const id = `CAT-${name}`
+
+  const initialState = {
+    id,
+    kind: 'category',
+    codebook_id,
+    name,
+    definition: input.definition,
+  }
+  const sha = artifactId(initialState)
+  const body = `${frontmatter({
+    id,
+    name,
+    codebook_id,
+    artifact_id: sha,
+    provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
+  })}\n${input.definition}\n`
+
+  const path = join(dir, `${name}.md`)
+  if (existsSync(path)) {
+    throw new CompostError('INVALID_INPUT', `Category "${id}" already exists at ${path}`)
+  }
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'category',
+    initialState,
+    author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
+  })
+  return { id, artifact_id: sha, path, event_id }
+}
+
 /**
  * Create the primary codebook iff absent — the structural default every code
  * lands in unless created with an explicit codebook. Researcher-authored (a
@@ -397,7 +451,7 @@ interface CreateEventRow {
  * works (#168). The dash and non-hex chars make it unambiguous vs a SHA prefix
  * (`^[a-f0-9]{8,64}$`).
  */
-export const HUMAN_REF_RE = /^(?:CB|[CHT])-[A-Za-z0-9_-]+$/
+export const HUMAN_REF_RE = /^(?:CAT|CB|[CHT])-[A-Za-z0-9_-]+$/
 
 /**
  * Look up a create event by the human id stored in its payload (initialState.id).
