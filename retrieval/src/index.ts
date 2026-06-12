@@ -53,4 +53,5 @@ export {
   INSUFFICIENT_EVIDENCE,
   validateAnswer,
   validateWithRetry,
+  verbatimIncludes,
 } from './validator.js'

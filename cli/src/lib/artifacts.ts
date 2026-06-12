@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-
+import { verbatimIncludes } from '@they-juanreina/compost-retrieval'
 import type Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
@@ -16,6 +16,7 @@ import {
   openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
+import { listArtifacts } from './reads.js'
 
 export interface CreatedArtifact {
   id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug)
@@ -346,6 +347,33 @@ export function resolveCodebookId(seedPath: string, ref: string | undefined): st
   }
 }
 
+/** The declared stance of a codebook. CB-primary is always inductive (and has
+ * no artifact to read); other frames are read from their codebook artifact. */
+function codebookStance(seedPath: string, codebookId: string): CodebookStance {
+  if (codebookId === DEFAULT_CODEBOOK_ID) return 'inductive'
+  // includeArchived: resolveCodebookId resolves a rejected codebook's id from
+  // its create event, so a code can still be created under it — the in_vivo
+  // check must keep enforcing rather than silently degrade to inductive (#268).
+  for (const snap of listArtifacts(seedPath, 'codebook', { includeArchived: true })) {
+    const s = snap.current_state as { id?: string; stance?: string }
+    if (s.id === codebookId && CODEBOOK_STANCES.includes(s.stance as CodebookStance)) {
+      return s.stance as CodebookStance
+    }
+  }
+  return 'inductive'
+}
+
+/** The verbatim body text of a highlight (`highlights/<id>.md` after its
+ * frontmatter). Empty string when the highlight has no file (event-only) or no
+ * body — verbatimIncludes then simply won't match. */
+function readHighlightBody(seedPath: string, highlightId: string): string {
+  const path = join(seedPath, 'highlights', `${highlightId}.md`)
+  if (!existsSync(path)) return ''
+  const content = readFileSync(path, 'utf8')
+  const m = content.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/)
+  return (m === null ? content : content.slice(m[0].length)).trim()
+}
+
 export interface CreateCodeInput {
   name: string
   definition: string
@@ -364,6 +392,27 @@ export function createCode(seedPath: string, input: CreateCodeInput): CreatedArt
   const name = slug(input.name)
   const id = `C-${name}`
   const evidence = input.evidence ?? []
+
+  // In-vivo codes (ADR 0001): the code's name must be the participant's actual
+  // words — so it must appear verbatim in at least one cited evidence highlight.
+  // Only enforced when the code's codebook declares the in_vivo stance.
+  if (codebookStance(seedPath, codebook_id) === 'in_vivo') {
+    if (evidence.length === 0) {
+      throw new CompostError(
+        'INVALID_INPUT',
+        `In-vivo code "${input.name}" needs evidence: its name must be quoted verbatim from a highlight, so at least one --evidence highlight is required.`,
+      )
+    }
+    const found = evidence.some((hid) =>
+      verbatimIncludes(readHighlightBody(seedPath, hid), input.name),
+    )
+    if (!found) {
+      throw new CompostError(
+        'INVALID_INPUT',
+        `In-vivo code name "${input.name}" does not appear verbatim in any of its evidence highlights (${evidence.join(', ')}). An in_vivo code must be the participant's actual words.`,
+      )
+    }
+  }
 
   const initialState = {
     id,
