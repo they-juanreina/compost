@@ -1,5 +1,76 @@
 # Changelog
 
+## v0.2.0 — 2026-06-12
+
+The **codebook & category data model** milestone: codes now live inside declared
+interpretive lenses (codebooks), group into second-cycle categories, and ground
+themes through a heterogeneous evidence model. Two on-disk formats changed — both
+back-compatible for existing seeds (see **Migration** below).
+
+### Added
+
+- **Codebooks — interpretive lenses codes belong to (ADR 0001).** `compost
+  codebook new <name> --stance <inductive|deductive|in_vivo|framework>`, plus
+  `list` and `migrate`. Every code carries a `codebook_id`; the implicit
+  `CB-primary` frame needs no setup. `--codebook` scopes `agreement`, `recode`,
+  and `saturate` so a deductive lens and an inductive lens are measured
+  separately. Exposed through codebook MCP tools and the `/compost-codebook`
+  slash command.
+- **Category tier — second-cycle / pattern coding (ADR 0002).** A `Category`
+  artifact groups codes within one frame via `link(code → category)` events
+  carrying `is_primary` (the coverage-driving home; additional links are axial).
+  `compost category` verbs; AI-proposed categories via code-centroid clustering.
+- **Theme evidence model.** Themes rest on a heterogeneous
+  `evidence[{kind: code | category, ref, codebook_id}]` set rather than a flat
+  code list, so a theme can draw on first-cycle codes, second-cycle categories,
+  or both. **Cross-lens themes** (`--cross-lens`, `codebook_id: null`) bridge two
+  or more codebooks and must cite evidence from ≥2 frames.
+- **Source/author attribution for sourced documents (#270).** A transcript-level
+  `attribution { author, title, year, url, citation }` with a structured
+  CSL-flavored `citation`, so a citation over a published interview / theory text
+  names its author instead of a fabricated speaker. `author`/`year` are
+  filterable in retrieval.
+- **Qualified code ids (#269 foundation).** Codes are namespaced by frame —
+  `C-<codebook>/<code>` on disk at `codebook/<codebook>/<code>.md` — so lenses
+  can each hold a same-named code. `compost codebook migrate-ids` normalizes
+  existing seeds (dry-run first).
+- **`in_vivo` codebook stance enforcement (#268).** An in-vivo code's name must
+  appear verbatim in one of its evidence highlights.
+- **Codebook-filtered retrieval + chunk backfill (#275).** `compost reindex
+  --vectors` (and the embed-worker pass) backfill `code_ids` / `codebook_ids`
+  onto already-embedded chunks, and retrieval can filter by codebook or code.
+- **Legacy-ingest cleanup (#271).** The PDF ingestor strips repeated running
+  headers/footers and splits inline `Name:` turn labels into speaker-attributed
+  utterances.
+
+### Changed
+
+- **BREAKING (theme payload): `codes[]` → `evidence[]`.** New themes write the
+  evidence set; code-only themes also dual-write a legacy `codes[]` during the
+  deprecation window. Existing `codes[]` themes are **lazy-mapped** on read, so
+  no migration is required to keep reading them. `compost saturate` is rewired to
+  resolve evidence (a `category` ref expands to its primary member codes).
+- **BREAKING (code id form): bare `C-<slug>` → `C-<codebook>/<slug>`.** New codes
+  are namespaced. A bare `C-<slug>` still resolves everywhere as a shorthand
+  (unique-or-error across frames), so **existing seeds keep working unchanged**;
+  run `compost codebook migrate-ids` to rewrite ids to the qualified form.
+
+### Fixed
+
+- Post-ingest highlights are embedded into the scanner's sidecars, so codes
+  created after ingest become visible to `rescan` / `code` (#262).
+- `compost saturate` emits an explicit `insufficient` signal on a single session
+  (instead of a bare `pause`), and `export --format prov` writes a file to
+  `exports/` rather than only returning JSON inline (#272, #273).
+
+### Migration
+
+Existing seeds need no action to keep working — both format changes are
+back-compatible (theme `codes[]` lazy-maps; bare code ids resolve via a
+shorthand shim). To adopt the new on-disk forms: run `compost codebook
+migrate-ids` (dry-run first) to namespace code ids, then `compost reindex
+--vectors` to refresh chunk metadata.
+
 ## v0.1.4 — 2026-06-11
 
 ### Added
