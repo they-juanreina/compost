@@ -68,13 +68,47 @@ export interface LanceTable {
   search(vector: number[], k: number): Promise<Array<VectorRecord & { _distance: number }>>
 }
 
+/** A lancedb query builder (the subset we use). `where` narrows by predicate;
+ * `select` projects columns. Both the SHA-projection upsert path and the
+ * metadata-update path read through this. */
+export interface LanceQuery {
+  where(predicate: string): LanceQuery
+  select(cols: string[]): { toArray(): Promise<Array<Record<string, unknown>>> }
+}
+
 /** Subset of the native lancedb table surface our writer needs. Injected in tests. */
 export interface LanceWritableTable {
   add(rows: VectorRecord[]): Promise<void>
   countRows(): Promise<number>
-  /** Project text_sha to filter incoming records for idempotent upserts. */
-  query(): {
-    select(cols: string[]): { toArray(): Promise<Array<{ text_sha: string }>> }
+  query(): LanceQuery
+  /** Set columns on the rows matching `where` (#275 metadata backfill). */
+  update(opts: { where: string; values: Record<string, unknown> }): Promise<void>
+}
+
+/** A backfill patch for one already-embedded chunk (#275). */
+export interface ChunkMetadataPatch {
+  /** Chunk id (the LanceDB row id) to patch. */
+  id: string
+  /** Authoritative code_ids for the chunk — REPLACES the existing set (not a
+   * union), so a recompute after an `unlink` shrinks it rather than growing. */
+  code_ids?: string[]
+  /** Codebook frame to stamp on the chunk. */
+  codebook_id?: string
+}
+
+/** SQL string literal with single-quotes escaped, for a `where` predicate. */
+function sqlString(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`
+}
+
+/** Parse a row's JSON metadata blob into an object; {} on absence/garbage. */
+function parseMetadata(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'string') return {}
+  try {
+    const v: unknown = JSON.parse(raw)
+    return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {}
+  } catch {
+    return {}
   }
 }
 
@@ -92,6 +126,33 @@ export class LanceDBWriter {
     const fresh = records.filter((r) => !have.has(r.text_sha))
     if (fresh.length > 0) await this.table.add(fresh)
     return fresh.length
+  }
+
+  /**
+   * Backfill `code_ids` / `codebook_id` onto already-embedded chunks (#275).
+   * `upsertByTextSha` is add-only — it skips a row whose `text_sha` is already
+   * present — so codes created or linked AFTER the ingest-time embed pass never
+   * reach chunk metadata, leaving codebook-filtered retrieval hollow. This is
+   * the missing update path: a read-modify-write of each row's JSON metadata
+   * blob, keyed by chunk id. Returns the number of rows actually updated
+   * (a patch whose id isn't in the table, or that carries no fields, is a
+   * no-op). `code_ids` are REPLACED so the caller can recompute the
+   * authoritative set from current code evidence each pass.
+   */
+  async updateChunkMetadata(patches: ChunkMetadataPatch[]): Promise<number> {
+    let updated = 0
+    for (const patch of patches) {
+      if (patch.code_ids === undefined && patch.codebook_id === undefined) continue
+      const where = `id = ${sqlString(patch.id)}`
+      const rows = await this.table.query().where(where).select(['metadata']).toArray()
+      if (rows.length === 0) continue
+      const metadata = parseMetadata(rows[0]?.metadata)
+      if (patch.code_ids !== undefined) metadata.code_ids = [...patch.code_ids]
+      if (patch.codebook_id !== undefined) metadata.codebook_id = patch.codebook_id
+      await this.table.update({ where, values: { metadata: JSON.stringify(metadata) } })
+      updated += 1
+    }
+    return updated
   }
 
   async size(): Promise<number> {
