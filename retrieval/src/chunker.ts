@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 
-import type { Chunk, ChunkMetadata } from './types.js'
+import type { Chunk, ChunkMetadata, SourceAttribution } from './types.js'
 
 export const CHUNKER_VERSION = '1'
 
@@ -11,6 +11,8 @@ export const SILENCE_BOUNDARY_MS = 5000
 export interface ChunkerTranscript {
   kind?: 'session' | 'document'
   session_id: string
+  /** Author/citation of a sourced document (#270); absent for recordings. */
+  attribution?: SourceAttribution
   utterances: Array<{
     id: string
     speaker_id: string
@@ -84,6 +86,9 @@ export function chunkTranscript(transcript: ChunkerTranscript, opts: ChunkerOpti
         code_ids: u?.code_ids ?? [],
         actor_type: actorType,
         chunk_type: type,
+        // Sourced-document attribution rides every chunk's metadata so a
+        // retrieval hit over sourced material can name its author (#270).
+        ...(transcript.attribution !== undefined ? { attribution: transcript.attribution } : {}),
         ...extra,
       },
     })

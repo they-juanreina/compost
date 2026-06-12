@@ -97,6 +97,21 @@ describe('HybridRetriever', () => {
     assert.ok(hits.every((h) => h.metadata.actor_type !== 'ai'))
   })
 
+  it('applies source author filters (#270)', async () => {
+    const idx = new BM25Index()
+    idx.addAll([
+      chunk('h1', 'a situated claim about worlds', {
+        attribution: { author: 'Donna Haraway', year: '2007' },
+      }),
+      chunk('r1', 'a coded interview utterance', {}), // recording, no attribution
+    ])
+    const r = new HybridRetriever(idx)
+    const hits = await r.retrieve('claim utterance', { filters: { author: ['Donna Haraway'] } })
+    assert.ok(hits.length > 0)
+    assert.ok(hits.every((h) => h.metadata.attribution?.author === 'Donna Haraway'))
+    assert.ok(!hits.some((h) => h.id === 'r1')) // un-attributed chunk filtered out
+  })
+
   it('fuses dense results when a dense retriever is supplied', async () => {
     const idx = fixtureIndex()
     const dense = {

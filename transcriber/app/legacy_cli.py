@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 
 from .legacy import ingest as ingest_legacy
 
@@ -28,6 +29,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--text-col", default=None)
     p.add_argument("--speaker-col", default=None)
     p.add_argument("--sheet", default=None)
+    # Source/author attribution for sourced documents (#270): standpoint without
+    # a speaker. Any subset; recorded under the transcript's `attribution`.
+    p.add_argument("--author", default=None)
+    p.add_argument("--title", default=None)
+    p.add_argument("--year", default=None)
+    p.add_argument("--url", default=None)
+    # Structured (CSL-flavored) citation (#270). --citation is the free-form raw
+    # fallback; the rest populate the structured citation object.
+    p.add_argument("--citation", default=None, help="Free-form citation (citation.raw)")
+    p.add_argument("--citation-type", default=None, help="CSL type, e.g. interview, book")
+    p.add_argument("--container", default=None, help="Journal/book/anthology title")
+    p.add_argument("--editors", default=None, help="Comma-separated editor names")
+    p.add_argument("--pages", default=None)
+    p.add_argument("--doi", default=None)
     args = p.parse_args(argv)
 
     src = Path(args.source_path)
@@ -39,13 +54,42 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps({"status": "failed", "kind": "invalid_input", "error": f"seed not found: {seed}"}))
         return 1
 
-    kwargs: dict[str, str] = {}
+    kwargs: dict[str, Any] = {}
     if args.text_col is not None:
         kwargs["text_col"] = args.text_col
     if args.speaker_col is not None:
         kwargs["speaker_col"] = args.speaker_col
     if args.sheet is not None:
         kwargs["sheet"] = args.sheet
+    citation: dict[str, Any] = {
+        k: v
+        for k, v in (
+            ("raw", args.citation),
+            ("type", args.citation_type),
+            ("container_title", args.container),
+            ("pages", args.pages),
+            ("doi", args.doi),
+        )
+        if v is not None
+    }
+    if args.editors is not None:
+        eds = [e.strip() for e in args.editors.split(",") if e.strip()]
+        if eds:
+            citation["editors"] = eds
+    attribution: dict[str, Any] = {
+        k: v
+        for k, v in (
+            ("author", args.author),
+            ("title", args.title),
+            ("year", args.year),
+            ("url", args.url),
+        )
+        if v is not None
+    }
+    if citation:
+        attribution["citation"] = citation
+    if attribution:
+        kwargs["attribution"] = attribution
 
     try:
         doc = ingest_legacy(src, **kwargs)

@@ -87,4 +87,26 @@ describe('chunkTranscript', () => {
     const b = chunkTranscript(T, { seed: 'demo' }).map((c) => c.id)
     assert.deepEqual(a, b)
   })
+
+  it('threads source attribution onto every chunk (#270)', () => {
+    const sourced: ChunkerTranscript = {
+      session_id: 'DOC-haraway',
+      kind: 'document',
+      attribution: { author: 'Donna Haraway', year: '2007' },
+      utterances: [
+        u('U-0001', 'S1', 0, 0, 'a situated claim', { source_page: 1 }),
+        u('U-0002', 'S1', 0, 0, 'another claim', { source_page: 2 }),
+      ],
+    }
+    const chunks = chunkTranscript(sourced, { seed: 'demo' })
+    assert.ok(chunks.length > 0)
+    for (const c of chunks) {
+      assert.deepEqual(c.metadata.attribution, { author: 'Donna Haraway', year: '2007' })
+    }
+  })
+
+  it('leaves attribution undefined for a diarized recording', () => {
+    const chunks = chunkTranscript(T, { seed: 'demo' })
+    assert.ok(chunks.every((c) => c.metadata.attribution === undefined))
+  })
 })
