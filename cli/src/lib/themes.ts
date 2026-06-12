@@ -108,7 +108,11 @@ export function evidenceToCodeIds(seedPath: string, evidence: ThemeEvidence[]): 
       // direct id match still works; if nothing matches it contributes no codes.
     }
     for (const link of links) {
-      if (link.category === categoryId && link.is_primary) out.add(link.code)
+      // Canonicalize the link's code too (#269): a pre-migration link stores a
+      // bare id, but the code file it points at may now be qualified.
+      if (link.category === categoryId && link.is_primary) {
+        out.add(tryResolveCodeRef(seedPath, link.code)?.id ?? link.code)
+      }
     }
   }
   return [...out]
