@@ -1,6 +1,6 @@
 {
   "name": "@they-juanreina/compost-retrieval",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Retrieval: chunker, BM25 + dense hybrid with RRF, schema-bound citation validator.",
   "type": "module",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "compost",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Local-first, AI-first research analysis harness for coding agents and humans.",
   "private": true,
   "type": "module",
