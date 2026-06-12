@@ -1,7 +1,9 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join, resolve } from 'node:path'
 
+import { isCompostError } from '../errors.js'
 import { DEFAULT_CODEBOOK_ID, ensurePrimaryCodebook, updateArtifact } from './artifacts.js'
+import { codebookSlugOf, codeMarkdownPaths, parseCodeId, qualifiedCodeId } from './codeRefs.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
 
 /** Current snapshots of the seed's codebooks, newest activity first. */
@@ -28,13 +30,97 @@ export interface CodebookMigrationPlan {
   file_only: string[]
 }
 
-/** Pull `id` / presence-of-codebook_id out of a code markdown's frontmatter. */
-function readCodeFrontmatter(text: string): { id?: string; hasCodebookId: boolean } {
+/** Pull `id` / `codebook_id` / presence-of-codebook_id out of a code
+ * markdown's frontmatter. */
+function readCodeFrontmatter(text: string): {
+  id?: string
+  codebook_id?: string
+  hasCodebookId: boolean
+} {
   if (!text.startsWith('---\n')) return { hasCodebookId: false }
   const close = text.indexOf('\n---', 4)
   const block = close === -1 ? text : text.slice(4, close)
   const id = /^id:\s*(\S+)/m.exec(block)?.[1]
-  return { ...(id !== undefined ? { id } : {}), hasCodebookId: /^codebook_id:/m.test(block) }
+  const codebook_id = /^codebook_id:\s*(\S+)/m.exec(block)?.[1]
+  return {
+    ...(id !== undefined ? { id } : {}),
+    ...(codebook_id !== undefined ? { codebook_id } : {}),
+    hasCodebookId: codebook_id !== undefined,
+  }
+}
+
+// ---------------------------------------------------------------- id qualification (#269)
+
+export interface CodeIdMigrationPlan {
+  /** Codes whose id is not yet the namespaced `C-<cb-slug>/<code-slug>` form
+   * and/or whose file is not under `codebook/<cb-slug>/`. */
+  codes: Array<{ old_id: string; new_id: string; old_path: string; new_path: string }>
+  /** Codes already in the namespaced form — left untouched. */
+  already_qualified: number
+}
+
+/**
+ * Dry-run for `compost codebook migrate-ids` (#269, Option A): which codes
+ * would move from a bare `C-<slug>` (flat `codebook/<slug>.md`) to the
+ * namespaced `C-<cb-slug>/<code-slug>` (`codebook/<cb-slug>/<code-slug>.md`).
+ * The frame is the code's `codebook_id` (default primary). Idempotent: a code
+ * already in the namespaced form is counted, not re-listed.
+ */
+export function planCodeIdMigration(seedPath: string): CodeIdMigrationPlan {
+  const codebookDir = join(seedPath, 'codebook')
+  const codes: CodeIdMigrationPlan['codes'] = []
+  let already = 0
+  for (const path of codeMarkdownPaths(seedPath)) {
+    const fm = readCodeFrontmatter(readFileSync(path, 'utf8'))
+    if (fm.id === undefined) continue
+    const cbId = fm.codebook_id ?? DEFAULT_CODEBOOK_ID
+    const codeSlug = parseCodeId(fm.id).codeSlug
+    const newId = qualifiedCodeId(cbId, codeSlug)
+    const newPath = join(codebookDir, codebookSlugOf(cbId), `${codeSlug}.md`)
+    if (fm.id === newId && resolve(path) === resolve(newPath)) {
+      already += 1
+      continue
+    }
+    codes.push({ old_id: fm.id, new_id: newId, old_path: path, new_path: newPath })
+  }
+  return { codes, already_qualified: already }
+}
+
+export interface CodeIdMigrationResult {
+  migrated: Array<{ old_id: string; new_id: string; event_emitted: boolean }>
+}
+
+/**
+ * Apply the id qualification: per code, record the id change as an
+ * `update{field:id}` event (the human id is a mutable label; the artifact_id /
+ * SHA is the stable identity, so blame lineage is preserved), then rewrite the
+ * file's `id:` frontmatter and move it to the namespaced path. A file-only code
+ * (sample fixture / hand-authored / imported — no create event) gets the file
+ * rewrite only; there is no create event to chain an update onto.
+ */
+export function applyCodeIdMigration(
+  seedPath: string,
+  researcherId: string,
+): CodeIdMigrationResult {
+  const plan = planCodeIdMigration(seedPath)
+  const author = { actorType: 'researcher' as const, actorId: researcherId }
+  const migrated: CodeIdMigrationResult['migrated'] = []
+  for (const c of plan.codes) {
+    let event_emitted = false
+    try {
+      updateArtifact(seedPath, c.old_id, { field: 'id', before: c.old_id, after: c.new_id }, author)
+      event_emitted = true
+    } catch (err) {
+      // No create event behind this code (file-only) → frontmatter rewrite only.
+      if (!(isCompostError(err) && err.code === 'FILE_NOT_FOUND')) throw err
+    }
+    const content = readFileSync(c.old_path, 'utf8').replace(/^id:.*$/m, `id: ${c.new_id}`)
+    mkdirSync(dirname(c.new_path), { recursive: true })
+    writeFileSync(c.new_path, content, 'utf8')
+    if (resolve(c.new_path) !== resolve(c.old_path)) rmSync(c.old_path, { force: true })
+    migrated.push({ old_id: c.old_id, new_id: c.new_id, event_emitted })
+  }
+  return { migrated }
 }
 
 /**

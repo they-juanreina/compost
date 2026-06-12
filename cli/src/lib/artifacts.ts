@@ -571,6 +571,19 @@ export function tryResolveHumanRef(
       .all(ref.slice(2)) as (CreateEventRow & { artifact_id: string })[]
     if (rows.length === 1) return rows[0]
   }
+
+  // Renamed code (#269 migrate-ids): the create event still carries the old
+  // bare id, but an `update{field:id}` renamed it to `ref`. Map the rename
+  // target back to the code's create event so blame/endorse on the new
+  // qualified id resolve.
+  if (ref.startsWith('C-')) {
+    const renamed = db
+      .prepare(
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND artifact_id IN (SELECT artifact_id FROM events WHERE action = 'update' AND json_extract(payload, '$.field') = 'id' AND json_extract(payload, '$.after') = ?) ORDER BY ts, rowid LIMIT 1",
+      )
+      .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
+    if (renamed !== undefined) return renamed
+  }
   return undefined
 }
 
