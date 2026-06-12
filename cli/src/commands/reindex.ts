@@ -6,6 +6,7 @@ import type { Command } from 'commander'
 import { CompostError, isCompostError } from '../errors.js'
 import { eventsDbPath } from '../lib/events.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
+import { runEmbedWorkerOnce } from '../loops/embed_worker.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
 interface ReindexFlags {
@@ -20,8 +21,8 @@ export function registerReindex(program: Command): void {
       'Rebuild derived state in .compost/ — caches, event snapshots, and optionally vectors',
     )
     .option('--seed <name>', 'Target seed (defaults to the only seed under ./Seeds)')
-    .option('--vectors', 'Also rebuild the LanceDB embeddings index')
-    .action((flags: ReindexFlags, cmd: Command) => {
+    .option('--vectors', 'Also rebuild the LanceDB embeddings index + backfill code_ids')
+    .action(async (flags: ReindexFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
@@ -35,54 +36,44 @@ export function registerReindex(program: Command): void {
 
         // Rebuild snapshots from the event log.
         const db = new Database(eventsDb)
+        let snapshotsRebuilt: number
         try {
-          const store = new SnapshotStore(db)
-          const rebuilt = store.rebuildAll()
-
-          const result: {
-            status: 'ok' | 'not_implemented'
-            command: 'reindex'
-            seed: string
-            snapshots_rebuilt: number
-            vectors_rebuilt: number | null
-            vectors_status?: 'not_wired'
-            issue?: number
-            note?: string
-          } = {
-            status: 'ok',
-            command: 'reindex',
-            seed: seedPath,
-            snapshots_rebuilt: rebuilt,
-            vectors_rebuilt: null,
-          }
-
-          if (flags.vectors === true) {
-            // The embed-worker owns the LanceDB write path and rebuilds the index
-            // automatically during `compost watch`. The manual --vectors rebuild
-            // from here isn't wired yet. Snapshots WERE rebuilt, but the user's
-            // explicit intent (rebuild vectors) was not fulfilled — so report a
-            // distinct status and exit non-zero, otherwise a human (or a
-            // JSON-parsing agent keying on `status`) wrongly concludes the vector
-            // index was rebuilt and stops trying to recover it.
-            result.status = 'not_implemented'
-            result.vectors_status = 'not_wired'
-            result.issue = 137
-            result.note =
-              '--vectors is not wired yet; the LanceDB index is rebuilt automatically by `compost watch`. Snapshots were rebuilt.'
-          }
-
-          emit(
-            result,
-            out,
-            (d: { snapshots_rebuilt: number; vectors_status?: string; issue?: number }) =>
-              d.vectors_status === 'not_wired'
-                ? `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s). NOTE: --vectors is not wired yet — the LanceDB index is rebuilt automatically by \`compost watch\`. (#${d.issue})`
-                : `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s).`,
-          )
-          if (flags.vectors === true) process.exitCode = 1
+          snapshotsRebuilt = new SnapshotStore(db).rebuildAll()
         } finally {
           db.close()
         }
+
+        // --vectors: re-run the embed worker (idempotent on text_sha — new
+        // chunks embedded, unchanged ones skipped) and backfill code_ids /
+        // codebook_ids onto already-embedded chunks from current evidence (#275).
+        // Needs the embeddings provider; a missing provider surfaces as an error.
+        let vectorsInserted: number | null = null
+        let backfilled: number | null = null
+        if (flags.vectors === true) {
+          const r = await runEmbedWorkerOnce(seedPath)
+          vectorsInserted = r.inserted
+          backfilled = r.backfilled
+        }
+
+        emit(
+          {
+            status: 'ok' as const,
+            command: 'reindex' as const,
+            seed: seedPath,
+            snapshots_rebuilt: snapshotsRebuilt,
+            vectors_inserted: vectorsInserted,
+            chunks_backfilled: backfilled,
+          },
+          out,
+          (d: {
+            snapshots_rebuilt: number
+            vectors_inserted: number | null
+            chunks_backfilled: number | null
+          }) =>
+            d.vectors_inserted === null
+              ? `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s).`
+              : `reindex: rebuilt ${d.snapshots_rebuilt} snapshot(s); embedded ${d.vectors_inserted} new chunk(s); backfilled code_ids onto ${d.chunks_backfilled} chunk(s).`,
+        )
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err

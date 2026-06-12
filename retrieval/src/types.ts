@@ -43,6 +43,11 @@ export interface ChunkMetadata {
   code_ids: string[]
   actor_type: ActorType
   chunk_type: 'utterance' | 'window' | 'highlight' | 'term' | 'page'
+  /** Codebook frames the chunk's codes belong to (#275). A SET, not a scalar:
+   * an utterance can be coded under several independent lenses (ADR 0001), so a
+   * single codebook_id can't represent it. Empty/absent when uncoded. Drives
+   * codebook-filtered retrieval. */
+  codebook_ids?: string[]
   /** Author/citation of the source text (#270). Present only for sourced
    * documents; absent for diarized session recordings. */
   attribution?: SourceAttribution
