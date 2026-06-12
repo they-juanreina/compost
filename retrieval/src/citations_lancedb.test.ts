@@ -188,6 +188,8 @@ function row(id: string, metadata: Record<string, unknown>): VectorRecord {
     speaker_id: null,
     start_ms: null,
     end_ms: null,
+    author: null,
+    year: null,
     text: id,
     vector: [1, 0],
     metadata: JSON.stringify(metadata),
