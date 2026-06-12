@@ -84,6 +84,27 @@ describe('evidenceToCodeIds', () => {
     ])
     assert.deepEqual([...ids].sort(), ['C-distrust', 'C-override'])
   })
+
+  it('a category resolves to its primary members only, not axial links', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCode(path, { name: 'distrust', definition: 'd', author: RESEARCHER })
+    createCategory(path, { name: 'home', definition: 'h', author: RESEARCHER })
+    createCategory(path, { name: 'axial', definition: 'x', author: RESEARCHER })
+    // C-distrust's first link (CAT-home) is its primary home; the second
+    // (CAT-axial, --no-primary) is a secondary/axial relationship.
+    linkCodeToCategory(path, { code: 'C-distrust', category: 'CAT-home', author: RESEARCHER })
+    linkCodeToCategory(path, {
+      code: 'C-distrust',
+      category: 'CAT-axial',
+      primary: false,
+      author: RESEARCHER,
+    })
+    // Primary home counts it; the axial category does not (ADR 0002 coverage).
+    assert.deepEqual(evidenceToCodeIds(path, [{ kind: 'category', ref: 'CAT-home' }]), [
+      'C-distrust',
+    ])
+    assert.deepEqual(evidenceToCodeIds(path, [{ kind: 'category', ref: 'CAT-axial' }]), [])
+  })
 })
 
 describe('createTheme evidence + cross-lens invariant', () => {
@@ -189,6 +210,43 @@ describe('createTheme evidence + cross-lens invariant', () => {
         e instanceof CompostError &&
         /single-lens theme stays within its frame/.test((e as Error).message),
     )
+  })
+
+  it('errors when evidence spans frames and neither --codebook nor --cross-lens is given', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCodebook(path, { name: 'lens-b', stance: 'deductive', author: RESEARCHER })
+    createCode(path, { name: 'a', definition: 'd', author: RESEARCHER }) // CB-primary
+    createCode(path, { name: 'b', definition: 'd', codebookId: 'CB-lens-b', author: RESEARCHER })
+    assert.throws(
+      () =>
+        createTheme(path, {
+          name: 'x',
+          summary: 's',
+          evidence: [
+            { kind: 'code', ref: 'C-a' },
+            { kind: 'code', ref: 'C-b' },
+          ],
+          // codebookId omitted → must NOT auto-infer cross-lens; require the flag.
+          author: RESEARCHER,
+        }),
+      (e: unknown) => e instanceof CompostError && /spans 2 codebooks/.test((e as Error).message),
+    )
+  })
+
+  it('infers a single-frame scope when all evidence shares one codebook', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCode(path, { name: 'a', definition: 'd', author: RESEARCHER })
+    createCode(path, { name: 'b', definition: 'd', author: RESEARCHER })
+    const theme = createTheme(path, {
+      name: 'scoped',
+      summary: 's',
+      evidence: [
+        { kind: 'code', ref: 'C-a' },
+        { kind: 'code', ref: 'C-b' },
+      ],
+      author: RESEARCHER,
+    })
+    assert.match(readFm(path, theme.id), /codebook_id: CB-primary/)
   })
 
   it('lazy-maps the legacy codes input through createTheme', () => {

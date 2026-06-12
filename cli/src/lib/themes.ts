@@ -78,10 +78,12 @@ export function loadThemeEvidence(fm: ThemeFrontmatter): ThemeEvidence[] {
 
 /**
  * Resolve every evidence entry to the set of first-cycle code ids it stands
- * for. A `code` entry resolves to itself; a `category` entry resolves to all
- * of its currently-linked member codes (`link(code → category)` events). Used
- * by `saturate` to walk evidence → code → highlight → session uniformly across
- * the heterogeneous set.
+ * for. A `code` entry resolves to itself; a `category` entry resolves to its
+ * **primary-linked** member codes only (`link(code → category)` with
+ * `is_primary`) — per ADR 0002, is_primary drives coverage/saturation math, so
+ * an axial (secondary) membership does not inflate a theme's session coverage.
+ * Used by `saturate` to walk evidence → code → highlight → session uniformly
+ * across the heterogeneous set.
  */
 export function evidenceToCodeIds(seedPath: string, evidence: ThemeEvidence[]): string[] {
   let links: ReturnType<typeof listCategoryLinks> | null = null
@@ -102,7 +104,7 @@ export function evidenceToCodeIds(seedPath: string, evidence: ThemeEvidence[]): 
       // direct id match still works; if nothing matches it contributes no codes.
     }
     for (const link of links) {
-      if (link.category === categoryId) out.add(link.code)
+      if (link.category === categoryId && link.is_primary) out.add(link.code)
     }
   }
   return [...out]
@@ -183,7 +185,14 @@ export function resolveThemeEvidence(
     return { evidence: stamped, codebookId: scoped }
   }
 
-  // Inferred: collapse to the sole frame, or mark cross-lens when evidence spans
-  // multiple. (A friendly default; pass --codebook / --cross-lens to be explicit.)
-  return { evidence: stamped, codebookId: frames.size === 1 ? ([...frames][0] ?? null) : null }
+  // Inferred (neither --codebook nor --cross-lens given). A single shared frame
+  // scopes the theme to it; evidence spanning ≥2 frames is NOT silently made
+  // cross-lens — cross-lens is an explicit analytic claim, so require the flag.
+  if (frames.size > 1) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Theme evidence spans ${frames.size} codebooks (${[...frames].join(', ')}). Pass --cross-lens for a theme that spans frames, or --codebook <CB-id> to scope it to one.`,
+    )
+  }
+  return { evidence: stamped, codebookId: [...frames][0] ?? null }
 }
