@@ -18,6 +18,7 @@ const SEED_DIRECTORIES = [
   'highlights',
   'codebook',
   'codebooks',
+  'categories',
   'synthesis',
   'exports',
   'legacy',

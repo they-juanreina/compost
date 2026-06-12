@@ -29,11 +29,13 @@ export { CompostError, type CompostErrorCode } from './errors.js'
 export {
   CODEBOOK_STANCES,
   type CodebookStance,
+  type CreateCategoryInput,
   type CreateCodebookInput,
   type CreateCodeInput,
   type CreatedArtifact,
   type CreateHighlightInput,
   type CreateThemeInput,
+  createCategory,
   createCode,
   createCodebook,
   createHighlight,
@@ -49,6 +51,15 @@ export {
 } from './lib/artifacts.js'
 // ---- blame: artifact lineage chain (#122)
 export { type BlameEvent, type BlameResult, blame } from './lib/blame.js'
+// ---- categories: second-cycle pattern-coding tier (ADR 0002)
+export {
+  type CategoryLink,
+  linkCodeToCategory,
+  listCategories,
+  listCategoryLinks,
+  resolveCategory,
+  unlinkCodeFromCategory,
+} from './lib/categories.js'
 // ---- codebooks: list + lazy migration (ADR 0001 slice 1)
 export {
   applyCodebookMigration,

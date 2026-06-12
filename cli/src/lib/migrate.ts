@@ -12,6 +12,7 @@ const SCAFFOLD_DIRS = [
   'highlights',
   'codebook',
   'codebooks',
+  'categories',
   'exports',
   'legacy',
   'sessions/_inbox',
