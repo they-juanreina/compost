@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import csv
 import os
+import re
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -196,18 +198,198 @@ def ingest_pdf(path: str | Path) -> dict[str, Any]:
 
     path = str(path)
     doc = _base(_session_id(path), path)
-    idx = 1
+    raw_pages: list[str] = []
     with pdfplumber.open(path) as pdf:
-        for page_no, page in enumerate(pdf.pages, start=1):
+        for page in pdf.pages:
             text = page.extract_text() or ""
             # OCR fallback for scanned pages (no extractable text) requires
             # pytesseract + the page raster; attempted best-effort.
             if not text.strip():
                 text = _ocr_page(page)
-            for para in _paragraphs(text):
-                doc["utterances"].append(_utt(idx, para, source_page=page_no))
-                idx += 1
+            raw_pages.append(text)
+
+    # Seam 2 (#271): each page's running header/footer ("…Worlds at UCSC N")
+    # is otherwise absorbed into the first/last paragraph of every page. Strip
+    # lines that recur in the header/footer zone across pages before segmenting.
+    pages = _strip_running_headers(raw_pages)
+
+    # Seam 1 (#271): two-speaker oral histories land under a single speaker with
+    # "Reti:"/"Haraway:" labels inside the paragraph text. Promote a label to a
+    # speaker only when it recurs (≥2 turns), so one-off section labels
+    # ("Abstract:", "Note:") are left as prose. Best-effort, researcher-overridable.
+    paragraphs = [(para, page_no) for page_no, text in enumerate(pages, start=1) for para in _paragraphs(text)]
+    valid_names = _valid_speaker_names([p for p, _ in paragraphs])
+
+    turns: list[tuple[str | None, str, int]] = []
+    for para, page_no in paragraphs:
+        for name, body in _speaker_turns(para, valid_names):
+            turns.append((name, body, page_no))
+
+    doc["speakers"], doc["utterances"] = _build_speaker_utterances(turns)
     return doc
+
+
+# ---------------------------------------------------------------- header/footer
+
+_RUNNING_ZONE = 3  # lines from the top and bottom of a page treated as header/footer
+_DIGITS_RE = re.compile(r"\d+")
+_WS_RE = re.compile(r"\s+")
+
+
+def _normalize_running(line: str) -> str:
+    """Signature for a candidate running-header line: whitespace collapsed and
+    digit runs replaced by `#`, so the page number that varies per page does
+    not defeat the cross-page match."""
+    return _DIGITS_RE.sub("#", _WS_RE.sub(" ", line).strip()).casefold()
+
+
+def _zone_indices(lines: list[str], zone: int) -> set[int]:
+    """Line indices in the top/bottom header/footer band of one page.
+
+    The per-side band is shrunk on short pages so it never covers an *interior*
+    line — one with content both above and below it. That is the guarantee: a
+    sentence legitimately repeated in body text (which by definition sits
+    between other lines) is never mistaken for a running header. A 3-line page
+    keeps its middle line; a 1–2-line page has no interior to protect, so its
+    top/bottom line can still be stripped if it recurs.
+    """
+    nonempty = [i for i, ln in enumerate(lines) if ln.strip()]
+    if not nonempty:
+        return set()
+    # eff <= (N-1)//2 guarantees an interior line survives whenever N >= 3.
+    eff = min(zone, max(1, (len(nonempty) - 1) // 2))
+    return set(nonempty[:eff]) | set(nonempty[-eff:])
+
+
+def _strip_running_headers(pages: list[str], zone: int = _RUNNING_ZONE) -> list[str]:
+    """Remove lines that recur in the top/bottom `zone` of a majority of pages.
+
+    Only the header/footer band (see `_zone_indices`) is considered, so a
+    sentence legitimately repeated in body text is never stripped. A no-op for
+    single-page inputs.
+    """
+    if len(pages) < 2:
+        return pages
+    page_lines = [p.splitlines() for p in pages]
+
+    counts: Counter[str] = Counter()
+    for lines in page_lines:
+        for sig in {_normalize_running(lines[i]) for i in _zone_indices(lines, zone)}:
+            if sig:
+                counts[sig] += 1
+
+    threshold = max(2, (len(pages) + 1) // 2)
+    running = {sig for sig, c in counts.items() if c >= threshold}
+    if not running:
+        return pages
+
+    out: list[str] = []
+    for lines in page_lines:
+        zone_idx = _zone_indices(lines, zone)
+        kept = [ln for i, ln in enumerate(lines) if not (i in zone_idx and _normalize_running(ln) in running)]
+        out.append("\n".join(kept))
+    return out
+
+
+# ---------------------------------------------------------------- speaker labels
+
+# A leading turn label: an initial-capitalized name (internal apostrophes/hyphens
+# allowed, e.g. "O'Brien", "Smith-Jones") followed by a colon and whitespace.
+# Start (`^`/lookbehind) and trailing-space (lookahead) are zero-width so that
+# `finditer` — which is non-overlapping — still matches a second label that
+# immediately follows the first ("Reti: Haraway: …") instead of the first
+# match's trailing space cannibalizing the second's separator.
+_TURN_LABEL_RE = re.compile(r"(?:^|(?<=\s))([A-Z][A-Za-z.'\-]{1,20}):(?=\s)")
+
+# Labels that look like names but introduce a section/field, not a speaker turn.
+_LABEL_STOPWORDS = frozenset({
+    "abstract", "note", "notes", "see", "figure", "fig", "table", "page",
+    "vol", "no", "example", "source", "sources", "keywords", "introduction",
+    "conclusion", "summary", "ibid", "http", "https", "www",
+})
+
+
+def _is_plausible_label(name: str) -> bool:
+    return len(name) >= 2 and name.casefold() not in _LABEL_STOPWORDS
+
+
+def _collect_label_counts(paragraphs: Any) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for para in paragraphs:
+        for m in _TURN_LABEL_RE.finditer(para):
+            if _is_plausible_label(m.group(1)):
+                counts[m.group(1)] += 1
+    return counts
+
+
+# A label is promoted to a speaker only if it recurs. A one-off label — a stray
+# "Smith:" or a section heading the stopword list missed — appears once and so
+# stays as unattributed prose. This >=2 threshold is the heuristic's safety rail
+# against minting phantom speakers from incidental colon-prefixed words.
+_SPEAKER_RECURRENCE_MIN = 2
+
+
+def _valid_speaker_names(paragraphs: list[str]) -> set[str]:
+    counts = _collect_label_counts(paragraphs)
+    return {name for name, count in counts.items() if count >= _SPEAKER_RECURRENCE_MIN}
+
+
+def _speaker_turns(text: str, valid_names: set[str]) -> list[tuple[str | None, str]]:
+    """Split a paragraph into (speaker|None, body) turns on recurring labels.
+
+    Conservative: only splits when the paragraph *begins* with a recognized
+    label (honoring the issue's "leading Name: turn label"); otherwise the
+    paragraph is returned whole as an unattributed turn.
+    """
+    matches = [m for m in _TURN_LABEL_RE.finditer(text) if m.group(1) in valid_names]
+    if not matches or matches[0].start() != 0:
+        return [(None, text)]
+    turns: list[tuple[str | None, str]] = []
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[m.end():end].strip()
+        if body:
+            turns.append((m.group(1), body))
+    return turns
+
+
+def _build_speaker_utterances(
+    turns: list[tuple[str | None, str, int]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Map (name|None, text, page) turns to schema speakers + utterances.
+
+    Unattributed turns share the reserved `document` speaker (S1); each distinct
+    label gets the next Sn id. Speaker-from-label utterances are annotated so a
+    researcher can see — and override — the heuristic attribution.
+    """
+    has_unlabeled = any(name is None for name, _, _ in turns)
+    speakers: list[dict[str, Any]] = []
+    name_to_id: dict[str, str] = {}
+    next_n = 1
+    if has_unlabeled or not turns:
+        speakers.append(dict(DOC_SPEAKER))  # S1 = document
+        next_n = 2
+
+    utterances: list[dict[str, Any]] = []
+    for idx, (name, body, page_no) in enumerate(turns, start=1):
+        if name is None:
+            speaker_id = DOC_SPEAKER["id"]
+            annotation = None
+        else:
+            if name not in name_to_id:
+                speaker_id = f"S{next_n}"
+                next_n += 1
+                name_to_id[name] = speaker_id
+                speakers.append({"id": speaker_id, "name": name, "type": "other"})
+            speaker_id = name_to_id[name]
+            annotation = f"[speaker-from-label: {name}]"
+        u = _utt(idx, body, source_page=page_no, annotation=annotation)
+        u["speaker_id"] = speaker_id
+        utterances.append(u)
+
+    if not speakers:
+        speakers.append(dict(DOC_SPEAKER))
+    return speakers, utterances
 
 
 def _paragraphs(text: str) -> list[str]:

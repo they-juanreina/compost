@@ -11,7 +11,18 @@ from pathlib import Path
 
 import pytest
 
-from app.legacy import ingest, ingest_csv, ingest_docx, ingest_pdf, ingest_pptx
+from app.legacy import (
+    _build_speaker_utterances,
+    _collect_label_counts,
+    _speaker_turns,
+    _strip_running_headers,
+    _valid_speaker_names,
+    ingest,
+    ingest_csv,
+    ingest_docx,
+    ingest_pdf,
+    ingest_pptx,
+)
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schema" / "transcript.schema.json"
 
@@ -149,3 +160,171 @@ def test_csv_explicit_text_col_overrides_autodetect(tmp_path: Path):
     doc = ingest_csv(csv_path, text_col="answer")
     assert doc["provenance"]["text_col_resolved"] == "answer"
     assert doc["utterances"][0]["text"] == "real answer"
+
+
+# #271 seam 2: strip repeated PDF running headers/footers before segmentation.
+
+
+def test_strip_running_headers_removes_repeated_zone_lines():
+    # The header recurs on every page, varying only by trailing page number.
+    pages = [
+        "Edges and Ecotones: Worlds at UCSC 1\n\nFirst real paragraph of the interview.",
+        "Edges and Ecotones: Worlds at UCSC 2\n\nSecond real paragraph continues here.",
+        "Edges and Ecotones: Worlds at UCSC 3\n\nThird real paragraph wraps up.",
+    ]
+    out = _strip_running_headers(pages)
+    joined = "\n".join(out)
+    assert "Worlds at UCSC" not in joined
+    assert "First real paragraph" in joined
+    assert "Third real paragraph" in joined
+
+
+def test_strip_running_headers_keeps_repeated_body_text():
+    # An identical sentence in the *body* (outside the top/bottom 3-line zone)
+    # must survive even though it recurs across pages.
+    pages = [
+        "Header A 1\nb\nc\nd\nThe refrain repeats.\ne\nf\ng\nFooter Z 1",
+        "Header A 2\nb2\nc2\nd2\nThe refrain repeats.\ne2\nf2\ng2\nFooter Z 2",
+    ]
+    out = _strip_running_headers(pages)
+    joined = "\n".join(out)
+    assert joined.count("The refrain repeats.") == 2  # body refrain kept
+    assert "Header A" not in joined
+    assert "Footer Z" not in joined
+
+
+def test_strip_running_headers_noop_single_page():
+    pages = ["Only one page here 1\n\nBody."]
+    assert _strip_running_headers(pages) == pages
+
+
+def test_strip_running_headers_keeps_body_on_sparse_pages():
+    # Review finding: on short pages (<= 2*zone non-empty lines) the top and
+    # bottom bands must not overlap and swallow a recurring *body* sentence.
+    # Header + recurring middle body line + footer, only 3 lines per page.
+    pages = [
+        "Worlds at UCSC 1\nWe studied worlds.\nfooter alpha 1",
+        "Worlds at UCSC 2\nWe studied worlds.\nfooter alpha 2",
+    ]
+    out = _strip_running_headers(pages)
+    joined = "\n".join(out)
+    assert joined.count("We studied worlds.") == 2  # body survives
+    assert "Worlds at UCSC" not in joined  # header still stripped
+    assert "footer alpha" not in joined  # footer still stripped
+
+
+# #271 seam 1: split leading "Name:" turn labels into speaker-attributed turns.
+
+
+def test_speaker_turns_splits_leading_labels():
+    valid = {"Reti", "Haraway"}
+    turns = _speaker_turns("Reti: So tell me. Haraway: Well, it began in the lab.", valid)
+    assert turns == [("Reti", "So tell me."), ("Haraway", "Well, it began in the lab.")]
+
+
+def test_speaker_turns_unattributed_when_no_leading_label():
+    turns = _speaker_turns("A plain paragraph with Haraway: midway through.", {"Haraway"})
+    assert turns == [(None, "A plain paragraph with Haraway: midway through.")]
+
+
+def test_collect_label_counts_filters_stopwords_keeps_raw_counts():
+    paras = [
+        "Reti: question one",
+        "Haraway: answer one",
+        "Reti: question two",
+        "Abstract: this is a section heading",
+        "Note: an aside",
+    ]
+    counts = _collect_label_counts(paras)
+    assert counts["Reti"] == 2
+    assert counts["Haraway"] == 1  # raw count; promotion gate is tested separately
+    assert "Abstract" not in counts  # stopword
+    assert "Note" not in counts  # stopword
+
+
+def test_valid_speaker_names_excludes_singletons():
+    # The >=2 recurrence gate is the heuristic's central safety rail: a label
+    # seen once stays prose. Mutating the threshold to >=1 must fail here.
+    paras = [
+        "Reti: question one",
+        "Haraway: answer one",
+        "Reti: question two",
+        "Smith: a one-off aside that is not a recurring speaker",
+    ]
+    assert _valid_speaker_names(paras) == {"Reti"}
+
+
+def test_speaker_turns_handles_adjacent_labels():
+    # Review finding: a second label immediately following the first must not be
+    # cannibalized by the first match's separator. Reti has no body, Haraway does.
+    turns = _speaker_turns("Reti: Haraway: the actual content here", {"Reti", "Haraway"})
+    assert turns == [("Haraway", "the actual content here")]
+
+
+def test_pdf_singleton_label_stays_prose(tmp_path: Path):
+    pytest.importorskip("reportlab")
+    from reportlab.pdfgen import canvas  # type: ignore
+
+    p = tmp_path / "mostly-prose.pdf"
+    c = canvas.Canvas(str(p))
+    # Only "Reti" recurs; "Smith" appears once and must NOT become a speaker.
+    lines = ["Reti: opening question", "Reti: a follow-up question", "Smith: a single stray label"]
+    for line in lines:
+        c.drawString(72, 700, line)
+        c.showPage()
+    c.save()
+
+    doc = ingest_pdf(p)
+    names = {s.get("name") for s in doc["speakers"]}
+    assert "Reti" in names
+    assert "Smith" not in names  # one-off label not promoted
+    # The Smith line survives verbatim somewhere as document-speaker prose.
+    assert any("Smith: a single stray label" in u["text"] for u in doc["utterances"])
+
+
+def test_build_speaker_utterances_assigns_ids_and_annotates():
+    turns = [
+        ("Reti", "question one", 1),
+        ("Haraway", "answer one", 1),
+        (None, "stray unlabeled prose", 2),
+        ("Reti", "question two", 2),
+    ]
+    speakers, utts = _build_speaker_utterances(turns)
+    by_name = {s.get("name"): s["id"] for s in speakers}
+    assert by_name["document"] == "S1"  # reserved for unlabeled
+    assert utts[0]["speaker_id"] == by_name["Reti"]
+    assert utts[0]["speaker_id"] != by_name["Haraway"]
+    assert utts[3]["speaker_id"] == by_name["Reti"]  # stable across turns
+    assert utts[2]["speaker_id"] == "S1"  # unlabeled → document
+    assert utts[2].get("annotation") is None
+    assert utts[0]["annotation"] == "[speaker-from-label: Reti]"
+    assert all(s["type"] in ("moderator", "participant", "other") for s in speakers)
+
+
+def test_pdf_strips_headers_and_attributes_speakers(tmp_path: Path):
+    pytest.importorskip("reportlab")
+    from reportlab.pdfgen import canvas  # type: ignore
+
+    p = tmp_path / "interview.pdf"
+    c = canvas.Canvas(str(p))
+    # Each speaker recurs (≥2 turns) so both clear the recurrence gate.
+    dialogue = [
+        ("Reti", "How did the program begin?"),
+        ("Haraway", "It began with a question about worlds."),
+        ("Reti", "And what came next?"),
+        ("Haraway", "Then the worlds multiplied."),
+    ]
+    for page_no, (name, line) in enumerate(dialogue, start=1):
+        c.drawString(72, 760, f"Edges and Ecotones: Worlds at UCSC {page_no}")  # running header
+        c.drawString(72, 700, f"{name}: {line}")
+        c.showPage()
+    c.save()
+
+    doc = ingest_pdf(p)
+    full = " ".join(u["text"] for u in doc["utterances"])
+    assert "Worlds at UCSC" not in full  # running header stripped
+    names = {s.get("name") for s in doc["speakers"]}
+    assert {"Reti", "Haraway"} <= names  # both speakers recovered
+    speaker_ids = {u["speaker_id"] for u in doc["utterances"]}
+    assert len(speaker_ids) >= 2  # not all under one speaker
+    _validate(doc)
