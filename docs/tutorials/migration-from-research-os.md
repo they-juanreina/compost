@@ -43,6 +43,6 @@ missing compost dirs and `.compost/` (config.toml, AGENTS.md).
 - **An existing `seed.md` is preserved**; one is written from template only if
   absent.
 - After migrating, the vector index builds automatically the first time you run
-  `compost watch` (or `compost watch --once`). Note: `compost reindex --vectors`
-  is **not wired yet** — it reports a `not_implemented` status and exits non-zero
-  rather than rebuilding the index (#137). Use `compost watch` for the index.
+  `compost watch` (or `compost watch --once`). `compost reindex --vectors` also
+  rebuilds the LanceDB index on demand and backfills code/codebook metadata onto
+  existing chunks.
