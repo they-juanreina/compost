@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { CompostError } from '../errors.js'
 import { listCanonicalSessionIds } from './canonicalSessions.js'
 import { resolveSeedPath, seedNameOf } from './seedResolve.js'
+import { evidenceToCodeIds, loadThemeEvidence } from './themes.js'
 
 export interface SessionWithThemes {
   id: string
@@ -22,9 +23,10 @@ export interface GatherOptions {
 
 /**
  * Walk a seed's coded corpus and return, per session in chronological order,
- * the themes it contributed to. The join is theme.codes → code.evidence
- * (highlight ids) → highlight.session_id. A theme is "from" a session if any
- * of its codes is evidenced by a highlight in that session.
+ * the themes it contributed to. The join is theme.evidence → code ids (a
+ * `category` entry expands to its member codes) → code.evidence (highlight ids)
+ * → highlight.session_id (#266). A theme is "from" a session if any of its
+ * evidence codes is evidenced by a highlight in that session.
  *
  * Sessions are ordered by directory name (S001, S002 …) — compost's session
  * ids are assigned sequentially at ingest, so lexicographic order is also
@@ -37,7 +39,7 @@ export function gatherSessionsWithThemes(opts: GatherOptions = {}): SessionWithT
 
   const highlightToSession = readHighlightSessions(join(seedPath, 'highlights'))
   const codeToHighlights = readCodeEvidence(join(seedPath, 'codebook'), opts.codebookId)
-  const themeToCodes = readThemeCodes(join(seedPath, 'synthesis', 'themes'))
+  const themeToCodes = readThemeCodes(seedPath, join(seedPath, 'synthesis', 'themes'))
 
   const sessionToThemes = new Map<string, Set<string>>()
   // Single source of truth (#166): the same canonical-session predicate
@@ -101,12 +103,26 @@ function readCodeEvidence(dir: string, codebookId?: string): Map<string, string[
   return out
 }
 
-function readThemeCodes(dir: string): Map<string, string[]> {
+/**
+ * Theme → contributing code ids, evidence-kind-aware (#266). A theme's support
+ * is now a heterogeneous `evidence[{kind: code|category}]` set: a `code` entry
+ * resolves to itself, a `category` entry expands to its member codes via
+ * `link(code → category)` events. Legacy `codes[]`-only themes are lazy-mapped
+ * to `evidence` (kind=code) so the deprecation window is transparent here.
+ */
+function readThemeCodes(seedPath: string, dir: string): Map<string, string[]> {
   const out = new Map<string, string[]>()
   for (const fm of readFrontmatters(dir)) {
     const id = fm.scalars.get('id')
-    const codes = fm.arrays.get('codes')
-    if (id !== undefined && codes !== undefined) out.set(id, codes)
+    if (id === undefined) continue
+    const evidenceTokens = fm.arrays.get('evidence')
+    const codeTokens = fm.arrays.get('codes')
+    const evidence = loadThemeEvidence({
+      ...(evidenceTokens !== undefined ? { evidence: evidenceTokens } : {}),
+      ...(codeTokens !== undefined ? { codes: codeTokens } : {}),
+    })
+    if (evidence.length === 0) continue
+    out.set(id, evidenceToCodeIds(seedPath, evidence))
   }
   return out
 }

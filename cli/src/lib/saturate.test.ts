@@ -60,6 +60,30 @@ describe('gatherSessionsWithThemes', () => {
     ])
   })
 
+  it('reads the new evidence[] theme format (#266)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/S001'))
+    mkdirSync(join(path, 'sessions/S002'))
+
+    writeFrontmatter(join(path, 'highlights/H-001.md'), { id: 'H-001', session_id: 'S001' })
+    writeFrontmatter(join(path, 'highlights/H-002.md'), { id: 'H-002', session_id: 'S002' })
+    writeFrontmatter(join(path, 'codebook/distrust.md'), { id: 'C-distrust', evidence: '[H-001]' })
+    writeFrontmatter(join(path, 'codebook/control.md'), { id: 'C-control', evidence: '[H-002]' })
+
+    mkdirSync(join(path, 'synthesis/themes'), { recursive: true })
+    // Heterogeneous evidence tokens (kind:ref:codebook_id), as createTheme writes.
+    writeFrontmatter(join(path, 'synthesis/themes/trust.md'), {
+      id: 'T-trust',
+      evidence: '[code:C-distrust:CB-primary, code:C-control:CB-primary]',
+      codebook_id: 'CB-primary',
+    })
+
+    assert.deepEqual(gatherSessionsWithThemes({ cwd: work, seed: 'demo' }), [
+      { id: 'S001', themes: ['T-trust'] },
+      { id: 'S002', themes: ['T-trust'] },
+    ])
+  })
+
   it('scopes to one codebook — out-of-frame codes contribute no coverage (#264)', () => {
     const { path } = initSeed('demo', { cwd: work })
     mkdirSync(join(path, 'sessions/S001'))
