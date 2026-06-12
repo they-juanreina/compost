@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 import { type Event, reduce, type Snapshot } from '@they-juanreina/compost-provenance'
 import Database from 'better-sqlite3'
 
+import { tryResolveHumanRef } from './artifacts.js'
 import { eventsDbPath } from './events.js'
 
 /** A current snapshot plus the timestamp of its latest event, so callers can
@@ -115,13 +116,10 @@ export function getArtifact(seedPath: string, kind: string, ref: string): Snapsh
   if (db === null) return null
   try {
     let artifactId: string | undefined
-    // Human id stored in the create event payload.
-    const byHuman = db
-      .prepare(
-        "SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1",
-      )
-      .get(kind, ref) as { artifact_id: string } | undefined
-    if (byHuman !== undefined) {
+    // Human id resolution, including the #269 shim: a bare `C-<slug>` resolves
+    // to its qualified code, and a renamed code resolves by its new id.
+    const byHuman = tryResolveHumanRef(db, ref)
+    if (byHuman !== undefined && byHuman.artifact_kind === kind) {
       artifactId = byHuman.artifact_id
     } else if (/^[a-f0-9]{8,64}$/i.test(ref)) {
       const bySha = db
