@@ -378,6 +378,33 @@ describe('endorseArtifact', () => {
       assert.equal(res.parent_event_id, code.event_id)
     })
 
+    it('endorses a qualified code by its BARE shorthand (#269 shim)', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      // Stored id is qualified C-primary/clarity; user refers to it bare.
+      const code = createCode(path, { name: 'clarity', definition: 'x', author: AI })
+      assert.equal(code.id, 'C-primary/clarity')
+
+      const res = endorseArtifact(path, 'C-clarity', 'juan@example.com') // bare
+      assert.equal(res.artifact_id, code.artifact_id)
+      // blame round-trips on the bare ref too.
+      assert.equal(blame('C-clarity', { cwd: work, seed: 'demo' }).events.length, 2)
+    })
+
+    it('refuses a BARE ref ambiguous across two frames (#269 shim)', () => {
+      const { path } = initSeed('demo', { cwd: work })
+      createCodebook(path, { name: 'epistemology', stance: 'framework', author: RESEARCHER })
+      // `clarity` now exists in two frames — only qualified paths make this possible.
+      createCode(path, { name: 'clarity', definition: 'x', author: AI }) // C-primary/clarity
+      createCode(path, {
+        name: 'clarity',
+        definition: 'x',
+        codebookId: 'CB-epistemology',
+        author: AI,
+      }) // C-epistemology/clarity
+      // Bare `C-clarity` is ambiguous → the LIKE branch returns 2 rows → no match.
+      assert.throws(() => endorseArtifact(path, 'C-clarity', 'juan@example.com'))
+    })
+
     it('endorses a highlight by its H-NNN id', () => {
       const { path } = initSeed('demo', { cwd: work })
       const hl = createHighlight(path, {
