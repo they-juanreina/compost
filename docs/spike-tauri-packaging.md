@@ -49,7 +49,9 @@ Electron bundles Chromium + a Node main process; the engine runs in the main pro
 | Bundle weight | Node + 2 `.node` + WKWebView | lightest *in theory*, not in practice | + full Chromium |
 | Where the fiddliness lives | codesigning sidecar/addons | rewriting + IPC + still a sidecar | mature, heaviest |
 
-## Recommendation (maintainer to ratify)
+## Recommendation (presented; decision held)
+
+> **Status (2026-06-12):** the maintainer is **reconsidering** rather than ratifying — Option A below is the spike's lean, not a settled decision. Static-export+IPC and Electron remain on the table pending further evaluation; this note stays an open spike. The throwaway PoC is deferred until milestone #8 (data model) closes regardless.
 
 **Option A — Node sidecar.** The deciding fact is that `web/` is server-runtime-and-native-addon bound by construction: both reads and writes need a live Node process with arm64 `.node` addons. Option B's promise (a thin static shell) collapses because the engine is Node, not Rust, so even "static export" must host the engine in a Node sidecar — making B *a superset* of A's work plus a full rewrite of the data layer, taken on during the exact schema churn ADR 0003 says to avoid. Option C buys frictionless Node at the cost of the Chromium weight ADR 0003 explicitly rejected.
 
