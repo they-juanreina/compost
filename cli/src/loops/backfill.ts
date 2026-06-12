@@ -8,6 +8,7 @@ import {
 } from '@they-juanreina/compost-retrieval'
 
 import { DEFAULT_CODEBOOK_ID } from '../lib/artifacts.js'
+import { codeMarkdownPaths } from '../lib/codeRefs.js'
 
 /**
  * Chunk-metadata backfill (#275). `upsertByTextSha` is add-only, so codes
@@ -66,12 +67,10 @@ function stripQuotes(s: string): string {
 }
 
 function readCodes(seedPath: string): CodeRow[] {
-  const dir = join(seedPath, 'codebook')
-  if (!existsSync(dir)) return []
   const out: CodeRow[] = []
-  for (const entry of readdirSync(dir)) {
-    if (!entry.endsWith('.md')) continue
-    const fm = readFrontmatter(readFileSync(join(dir, entry), 'utf8'))
+  // Both code layouts (#269): legacy flat + namespaced codebook/<cb>/.
+  for (const path of codeMarkdownPaths(seedPath)) {
+    const fm = readFrontmatter(readFileSync(path, 'utf8'))
     const id = fm.scalar('id')
     if (id === undefined) continue
     out.push({

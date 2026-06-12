@@ -112,8 +112,8 @@ describe('createCode / createTheme', () => {
       evidence: ['H-001'],
       author: RESEARCHER,
     })
-    assert.equal(created.id, 'C-distrust-of-automation')
-    assert.ok(created.path.endsWith('codebook/distrust-of-automation.md'))
+    assert.equal(created.id, 'C-primary/distrust-of-automation')
+    assert.ok(created.path.endsWith('codebook/primary/distrust-of-automation.md'))
     const md = readFileSync(created.path, 'utf8')
     assert.match(md, /evidence: \[H-001\]/)
   })
@@ -175,7 +175,7 @@ describe('in-vivo code-name enforcement (#268)', () => {
       codebookId: 'voices',
       author: RESEARCHER,
     })
-    assert.equal(created.id, 'C-answerable-for-what-we-learn-how-to-see')
+    assert.equal(created.id, 'C-voices/answerable-for-what-we-learn-how-to-see')
   })
 
   it('matches verbatim case-insensitively / whitespace-normalized', () => {
@@ -291,7 +291,7 @@ describe('create is atomic — no orphaned markdown (#165)', () => {
         promptHash: 'a'.repeat(64),
       },
     })
-    assert.equal(ok.id, 'C-retry')
+    assert.equal(ok.id, 'C-primary/retry')
     assert.ok(existsSync(ok.path))
   })
 
@@ -371,7 +371,7 @@ describe('endorseArtifact', () => {
     it('endorses a code by its C-slug', () => {
       const { path } = initSeed('demo', { cwd: work })
       const code = createCode(path, { name: 'access-model-clarity', definition: 'x', author: AI })
-      assert.equal(code.id, 'C-access-model-clarity')
+      assert.equal(code.id, 'C-primary/access-model-clarity')
 
       const res = endorseArtifact(path, code.id, 'juan@example.com')
       assert.equal(res.artifact_id, code.artifact_id)

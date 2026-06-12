@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
 import { listCanonicalSessionIds } from './canonicalSessions.js'
+import { codeMarkdownPaths } from './codeRefs.js'
 import { resolveSeedPath, seedNameOf } from './seedResolve.js'
 import { evidenceToCodeIds, loadThemeEvidence } from './themes.js'
 
@@ -38,7 +39,7 @@ export function gatherSessionsWithThemes(opts: GatherOptions = {}): SessionWithT
   const seedPath = resolveSeedPath(cwd, opts.seed)
 
   const highlightToSession = readHighlightSessions(join(seedPath, 'highlights'))
-  const codeToHighlights = readCodeEvidence(join(seedPath, 'codebook'), opts.codebookId)
+  const codeToHighlights = readCodeEvidence(seedPath, opts.codebookId)
   const themeToCodes = readThemeCodes(seedPath, join(seedPath, 'synthesis', 'themes'))
 
   const sessionToThemes = new Map<string, Set<string>>()
@@ -86,9 +87,12 @@ function readHighlightSessions(dir: string): Map<string, string> {
   return out
 }
 
-function readCodeEvidence(dir: string, codebookId?: string): Map<string, string[]> {
+function readCodeEvidence(seedPath: string, codebookId?: string): Map<string, string[]> {
   const out = new Map<string, string[]>()
-  for (const fm of readFrontmatters(dir)) {
+  // Walk both code layouts (#269): legacy flat + namespaced codebook/<cb>/.
+  for (const path of codeMarkdownPaths(seedPath)) {
+    const fm = parseFrontmatter(readFileSync(path, 'utf8'))
+    if (fm === null) continue
     const id = fm.scalars.get('id')
     const evidence = fm.arrays.get('evidence')
     // Scope to one frame when asked: a code's codebook_id (default CB-primary

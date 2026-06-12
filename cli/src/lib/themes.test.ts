@@ -82,7 +82,7 @@ describe('evidenceToCodeIds', () => {
       { kind: 'code', ref: 'C-distrust' },
       { kind: 'category', ref: 'CAT-agency' },
     ])
-    assert.deepEqual([...ids].sort(), ['C-distrust', 'C-override'])
+    assert.deepEqual([...ids].sort(), ['C-primary/distrust', 'C-primary/override'])
   })
 
   it('a category resolves to its primary members only, not axial links', () => {
@@ -101,7 +101,7 @@ describe('evidenceToCodeIds', () => {
     })
     // Primary home counts it; the axial category does not (ADR 0002 coverage).
     assert.deepEqual(evidenceToCodeIds(path, [{ kind: 'category', ref: 'CAT-home' }]), [
-      'C-distrust',
+      'C-primary/distrust',
     ])
     assert.deepEqual(evidenceToCodeIds(path, [{ kind: 'category', ref: 'CAT-axial' }]), [])
   })

@@ -1,6 +1,7 @@
 import { CompostError } from '../errors.js'
 import { DEFAULT_CODEBOOK_ID, resolveCodebookId } from './artifacts.js'
 import { listCategoryLinks, resolveCategory } from './categories.js'
+import { tryResolveCodeRef } from './codeRefs.js'
 import { listArtifacts } from './reads.js'
 
 /**
@@ -90,7 +91,10 @@ export function evidenceToCodeIds(seedPath: string, evidence: ThemeEvidence[]): 
   const out = new Set<string>()
   for (const e of evidence) {
     if (e.kind === 'code') {
-      out.add(e.ref)
+      // Canonicalize to the qualified code id (#269) so a bare-or-qualified
+      // theme ref joins the same code files saturate reads, and matches the
+      // qualified ids category links now store.
+      out.add(tryResolveCodeRef(seedPath, e.ref)?.id ?? e.ref)
       continue
     }
     // category → member codes. Resolve the ref to a canonical CAT- id first so

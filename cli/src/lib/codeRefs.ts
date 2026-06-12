@@ -1,3 +1,6 @@
+import { existsSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
+
 import { CompostError } from '../errors.js'
 import { DEFAULT_CODEBOOK_ID } from './artifacts.js'
 import { listArtifacts } from './reads.js'
@@ -116,4 +119,40 @@ export function resolveCodeRef(seedPath: string, ref: string): ResolvedCode {
     'INVALID_INPUT',
     `Code "${ref}" is ambiguous across codebooks: ${candidates.map((c) => c.id).join(', ')}. Qualify it as C-<codebook>/<code>.`,
   )
+}
+
+/**
+ * Every code markdown path under `codebook/`, across BOTH layouts (#269): the
+ * legacy flat `codebook/<slug>.md` and the namespaced `codebook/<cb>/<slug>.md`.
+ * The file-scanning readers (saturate, backfill, status) walk this so a code
+ * created post-flip — which lives in a per-frame subdir — is still seen during
+ * the migration window. Returns absolute paths; `codebooks/` (the frame
+ * artifacts, a sibling dir) is never reached.
+ */
+export function codeMarkdownPaths(seedPath: string): string[] {
+  const dir = join(seedPath, 'codebook')
+  if (!existsSync(dir)) return []
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isFile() && entry.name.endsWith('.md')) {
+      out.push(join(dir, entry.name)) // legacy flat code
+    } else if (entry.isDirectory()) {
+      const sub = join(dir, entry.name)
+      for (const f of readdirSync(sub)) {
+        if (f.endsWith('.md')) out.push(join(sub, f)) // namespaced code
+      }
+    }
+  }
+  return out
+}
+
+/** Non-throwing `resolveCodeRef`: returns undefined for an unknown or ambiguous
+ * ref instead of throwing. For callers that tolerate an unresolved code (e.g. a
+ * link to an event-only scanner draft that has no create event yet). */
+export function tryResolveCodeRef(seedPath: string, ref: string): ResolvedCode | undefined {
+  try {
+    return resolveCodeRef(seedPath, ref)
+  } catch {
+    return undefined
+  }
 }
