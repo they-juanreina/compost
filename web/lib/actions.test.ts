@@ -60,7 +60,7 @@ describe('createArtifact', () => {
 
   it('creates an AI code as a draft (not human_approved)', () => {
     const res = createArtifact('demo', 'code', AI, { name: 'Distrust', definition: 'd' })
-    assert.equal(res.id, 'C-distrust')
+    assert.equal(res.id, 'C-primary/distrust') // namespaced by frame (#269)
     assert.equal(res.snapshot?.human_approved, false)
   })
 

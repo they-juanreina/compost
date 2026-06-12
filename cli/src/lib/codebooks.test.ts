@@ -14,7 +14,14 @@ import {
   rejectArtifact,
 } from './artifacts.js'
 import { blame } from './blame.js'
-import { applyCodebookMigration, listCodebooks, planCodebookMigration } from './codebooks.js'
+import {
+  applyCodebookMigration,
+  applyCodeIdMigration,
+  listCodebooks,
+  planCodebookMigration,
+  planCodeIdMigration,
+} from './codebooks.js'
+import { resolveCodeRef } from './codeRefs.js'
 import { emitAgentCreate, emitCreate, openSeedEvents } from './events.js'
 import { initSeed } from './seed.js'
 
@@ -315,5 +322,151 @@ describe('codebook migration (plan/apply)', () => {
     assert.ok(!result.file_only_stamped.includes(join('codebook', 'legacy.md')))
     // The rejected code's file is left exactly as it was — not resurrected.
     assert.equal(readFileSync(join(path, 'codebook', 'legacy.md'), 'utf8'), before)
+  })
+})
+
+describe('code-id qualification (#269)', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-migrate-ids-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  /** A legacy flat bare-id code `C-legacy` (codebook_id=CB-epistemology) with a
+   * real create event — the pre-#269 on-disk shape. */
+  function legacyCodeSeed(): string {
+    const { path } = initSeed('demo', { cwd: work })
+    const events = openSeedEvents(path)
+    try {
+      emitCreate(events, {
+        artifactKind: 'code',
+        initialState: {
+          id: 'C-legacy',
+          kind: 'code',
+          codebook_id: 'CB-epistemology',
+          name: 'legacy',
+          definition: 'd',
+          evidence: [],
+        },
+        author: RESEARCHER,
+      })
+    } finally {
+      events.close()
+    }
+    writeFileSync(
+      join(path, 'codebook', 'legacy.md'),
+      '---\nid: C-legacy\nname: legacy\ncodebook_id: CB-epistemology\nevidence: []\n---\nd\n',
+      'utf8',
+    )
+    return path
+  }
+
+  it('plans a legacy flat code → namespaced, and counts already-qualified codes', () => {
+    const path = legacyCodeSeed()
+    // A code created the new way is already namespaced.
+    createCode(path, { name: 'fresh', definition: 'd', author: RESEARCHER })
+
+    const plan = planCodeIdMigration(path)
+    assert.deepEqual(
+      plan.codes.map((c) => ({ from: c.old_id, to: c.new_id })),
+      [{ from: 'C-legacy', to: 'C-epistemology/legacy' }],
+    )
+    assert.equal(plan.already_qualified, 1) // C-primary/fresh
+  })
+
+  it('applies: moves the file, qualifies the id, and records a rename event', () => {
+    const path = legacyCodeSeed()
+    const res = applyCodeIdMigration(path, 'juan@example.com')
+    assert.deepEqual(res.migrated, [
+      { old_id: 'C-legacy', new_id: 'C-epistemology/legacy', event_emitted: true },
+    ])
+
+    // File moved to the namespaced path with the qualified id; flat one gone.
+    assert.ok(!existsSync(join(path, 'codebook', 'legacy.md')))
+    const moved = readFileSync(join(path, 'codebook', 'epistemology', 'legacy.md'), 'utf8')
+    assert.match(moved, /id: C-epistemology\/legacy/)
+
+    // Resolves by BOTH the new qualified id and the old bare shorthand.
+    assert.equal(resolveCodeRef(path, 'C-epistemology/legacy').id, 'C-epistemology/legacy')
+    assert.equal(resolveCodeRef(path, 'C-legacy').id, 'C-epistemology/legacy')
+
+    // Provenance preserved: blame on the qualified id shows create → update(id).
+    const lineage = blame('C-epistemology/legacy', { cwd: work, seed: 'demo' })
+    assert.equal(lineage.events.length, 2)
+    assert.deepEqual(
+      lineage.events.map((e) => e.action),
+      ['create', 'update'],
+    )
+  })
+
+  it('is idempotent — a second apply migrates nothing', () => {
+    const path = legacyCodeSeed()
+    applyCodeIdMigration(path, 'juan@example.com')
+    assert.deepEqual(applyCodeIdMigration(path, 'juan@example.com').migrated, [])
+    assert.deepEqual(planCodeIdMigration(path).codes, [])
+  })
+
+  it('migrates a file-only code (no create event) without an event', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    // Hand-authored flat code, no create event behind it.
+    writeFileSync(
+      join(path, 'codebook', 'orphan.md'),
+      '---\nid: C-orphan\nname: orphan\nevidence: []\n---\nd\n',
+      'utf8',
+    )
+    const res = applyCodeIdMigration(path, 'juan@example.com')
+    assert.deepEqual(res.migrated, [
+      { old_id: 'C-orphan', new_id: 'C-primary/orphan', event_emitted: false },
+    ])
+    assert.ok(existsSync(join(path, 'codebook', 'primary', 'orphan.md')))
+    assert.ok(!existsSync(join(path, 'codebook', 'orphan.md')))
+  })
+
+  it('a file-only code never renames an unrelated same-slug namespaced code (#269 review)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCodebook(path, { name: 'epistemology', stance: 'framework', author: RESEARCHER })
+    // A real, event-backed code C-epistemology/orphan...
+    const sibling = createCode(path, {
+      name: 'orphan',
+      definition: 'real',
+      codebookId: 'epistemology',
+      author: RESEARCHER,
+    })
+    // ...and a hand-authored flat file-only C-orphan (no create event).
+    writeFileSync(
+      join(path, 'codebook', 'orphan.md'),
+      '---\nid: C-orphan\nname: orphan\nevidence: []\n---\nd\n',
+      'utf8',
+    )
+    const res = applyCodeIdMigration(path, 'juan@example.com')
+    // The file-only code migrates WITHOUT emitting an event (no own create event)…
+    assert.deepEqual(res.migrated, [
+      { old_id: 'C-orphan', new_id: 'C-primary/orphan', event_emitted: false },
+    ])
+    // …and the sibling's provenance + id are untouched (only its create event).
+    assert.deepEqual(
+      blame(sibling.id, { cwd: work, seed: 'demo' }).events.map((e) => e.action),
+      ['create'],
+    )
+    assert.equal(resolveCodeRef(path, 'C-epistemology/orphan').id, 'C-epistemology/orphan')
+  })
+
+  it('refuses to migrate when a target would overwrite an existing code (#269 review)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    // An already-namespaced code at codebook/primary/distrust.md.
+    createCode(path, { name: 'distrust', definition: 'KEEP-ME', author: RESEARCHER })
+    // A legacy flat code that would target the SAME path (frame primary, slug distrust).
+    writeFileSync(
+      join(path, 'codebook', 'distrust.md'),
+      '---\nid: C-distrust\nname: distrust\nevidence: []\n---\nlegacy\n',
+      'utf8',
+    )
+    assert.equal(planCodeIdMigration(path).conflicts.length, 1)
+    assert.throws(
+      () => applyCodeIdMigration(path, 'juan@example.com'),
+      (e: unknown) => e instanceof CompostError && /overwrite an existing code/.test(e.message),
+    )
+    // Nothing was clobbered: the original namespaced code's body survives.
+    assert.match(readFileSync(join(path, 'codebook', 'primary', 'distrust.md'), 'utf8'), /KEEP-ME/)
   })
 })

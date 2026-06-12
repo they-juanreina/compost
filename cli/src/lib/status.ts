@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
 import { isCanonicalSession } from './canonicalSessions.js'
+import { codeMarkdownPaths } from './codeRefs.js'
 import { JobQueue, stateDbPath } from './queue.js'
 
 export interface SessionCounts {
@@ -102,7 +103,7 @@ function readSeed(name: string, path: string): SeedStatus {
     counts: {
       sessions: countSessions(join(path, 'sessions'), warnings),
       highlights: countMarkdown(join(path, 'highlights')),
-      codes: countMarkdown(join(path, 'codebook')),
+      codes: codeMarkdownPaths(path).length, // both layouts (#269)
       themes: countMarkdown(join(path, 'synthesis', 'themes')),
       insights: countMarkdown(join(path, 'synthesis', 'insights')),
       frames: countFrames(join(path, 'sessions')),

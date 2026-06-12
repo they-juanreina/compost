@@ -4,6 +4,7 @@ import { verbatimIncludes } from '@they-juanreina/compost-retrieval'
 import type Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
+import { codebookSlugOf, qualifiedCodeId } from './codeRefs.js'
 import {
   type AiInputBundle,
   type Author,
@@ -388,10 +389,13 @@ export interface CreateCodeInput {
 
 export function createCode(seedPath: string, input: CreateCodeInput): CreatedArtifact {
   const codebook_id = resolveCodebookId(seedPath, input.codebookId)
-  const dir = join(seedPath, 'codebook')
-  mkdirSync(dir, { recursive: true })
   const name = slug(input.name)
-  const id = `C-${name}`
+  // Codes are namespaced by frame on disk (#269, Option A): the id carries the
+  // codebook slug and the file lives under codebook/<cb-slug>/, so two lenses
+  // can each hold a `distrust` without colliding.
+  const dir = join(seedPath, 'codebook', codebookSlugOf(codebook_id))
+  mkdirSync(dir, { recursive: true })
+  const id = qualifiedCodeId(codebook_id, name)
   const evidence = input.evidence ?? []
 
   // In-vivo codes (ADR 0001): the code's name must be the participant's actual
@@ -536,7 +540,7 @@ interface CreateEventRow {
  * works (#168). The dash and non-hex chars make it unambiguous vs a SHA prefix
  * (`^[a-f0-9]{8,64}$`).
  */
-export const HUMAN_REF_RE = /^(?:CAT|CB|[CHT])-[A-Za-z0-9_-]+$/
+export const HUMAN_REF_RE = /^(?:CAT|CB|[CHT])-[A-Za-z0-9_/-]+$/
 
 /**
  * Look up a create event by the human id stored in its payload (initialState.id).
@@ -548,11 +552,39 @@ export function tryResolveHumanRef(
   ref: string,
 ): (CreateEventRow & { artifact_id: string }) | undefined {
   if (!HUMAN_REF_RE.test(ref)) return undefined
-  return db
+  const exact = db
     .prepare(
       "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1",
     )
     .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
+  if (exact !== undefined) return exact
+
+  // Bare code shorthand (#269): a `C-<slug>` with no frame resolves to the
+  // qualified `C-<cb>/<slug>` when exactly one codebook holds that slug. Two
+  // frames sharing the slug stay ambiguous (undefined → caller's not-found),
+  // matching resolveCodeRef's error-and-list posture.
+  if (/^C-[^/]+$/.test(ref)) {
+    const rows = db
+      .prepare(
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND json_extract(payload, '$.id') LIKE 'C-%/' || ? ORDER BY ts, rowid",
+      )
+      .all(ref.slice(2)) as (CreateEventRow & { artifact_id: string })[]
+    if (rows.length === 1) return rows[0]
+  }
+
+  // Renamed code (#269 migrate-ids): the create event still carries the old
+  // bare id, but an `update{field:id}` renamed it to `ref`. Map the rename
+  // target back to the code's create event so blame/endorse on the new
+  // qualified id resolve.
+  if (ref.startsWith('C-')) {
+    const renamed = db
+      .prepare(
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND artifact_id IN (SELECT artifact_id FROM events WHERE action = 'update' AND json_extract(payload, '$.field') = 'id' AND json_extract(payload, '$.after') = ?) ORDER BY ts, rowid LIMIT 1",
+      )
+      .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
+    if (renamed !== undefined) return renamed
+  }
+  return undefined
 }
 
 /**

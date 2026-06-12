@@ -84,6 +84,26 @@ describe('gatherSessionsWithThemes', () => {
     ])
   })
 
+  it('finds namespaced codes created via createCode (#269 dual-layout)', async () => {
+    const { createCode, createTheme } = await import('./artifacts.js')
+    const RESEARCHER = { actorType: 'researcher' as const, actorId: 'juan@example.com' }
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/S001'))
+    writeFrontmatter(join(path, 'highlights/H-001.md'), { id: 'H-001', session_id: 'S001' })
+    // Real createCode → codebook/primary/distrust.md (nested), id
+    // C-primary/distrust. A flat-only reader would miss it entirely.
+    createCode(path, { name: 'distrust', definition: 'd', evidence: ['H-001'], author: RESEARCHER })
+    createTheme(path, {
+      name: 'trust',
+      summary: 's',
+      evidence: [{ kind: 'code', ref: 'C-distrust' }],
+      author: RESEARCHER,
+    })
+    assert.deepEqual(gatherSessionsWithThemes({ cwd: work, seed: 'demo' }), [
+      { id: 'S001', themes: ['T-trust'] },
+    ])
+  })
+
   it('scopes to one codebook — out-of-frame codes contribute no coverage (#264)', () => {
     const { path } = initSeed('demo', { cwd: work })
     mkdirSync(join(path, 'sessions/S001'))

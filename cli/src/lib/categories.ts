@@ -1,5 +1,5 @@
 import { CompostError } from '../errors.js'
-import { DEFAULT_CODEBOOK_ID } from './artifacts.js'
+import { tryResolveCodeRef } from './codeRefs.js'
 import type { Author } from './events.js'
 import { artifactId, openSeedEvents } from './events.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
@@ -86,17 +86,6 @@ export function listCategoryLinks(seedPath: string): CategoryLink[] {
   return out
 }
 
-/** A code's frame (codebook_id), or undefined when the code has no artifact yet
- * (event-only scanner draft, or not created). Used to keep a category's
- * membership within one frame (ADR 0002). */
-function resolveCodeCodebook(seedPath: string, codeId: string): string | undefined {
-  for (const snap of listArtifacts(seedPath, 'code')) {
-    const s = snap.current_state as { id?: string; codebook_id?: string }
-    if (s.id === codeId) return s.codebook_id ?? DEFAULT_CODEBOOK_ID
-  }
-  return undefined
-}
-
 export interface LinkResult {
   code: string
   category: string
@@ -117,22 +106,29 @@ export function linkCodeToCategory(
   seedPath: string,
   input: { code: string; category: string; primary?: boolean; codebookId?: string; author: Author },
 ): LinkResult {
+  // Resolve the code ref to its canonical (qualified) id once (#269), so the
+  // link payload references the same id the code is stored under and bare
+  // shorthand works. Unresolved codes (event-only drafts / not yet created) are
+  // allowed through with the ref unchanged.
+  const resolved = tryResolveCodeRef(seedPath, input.code)
+  const code = resolved?.id ?? input.code
+
   // A category groups codes within ONE frame (ADR 0002). If the code exists and
   // its frame differs from the category's, refuse — silently mixing frames is
-  // exactly what codebook scoping (ADR 0001) exists to prevent. Unresolved codes
-  // (event-only drafts / not yet created) are allowed through.
-  if (input.codebookId !== undefined) {
-    const codeFrame = resolveCodeCodebook(seedPath, input.code)
-    if (codeFrame !== undefined && codeFrame !== input.codebookId) {
-      throw new CompostError(
-        'INVALID_INPUT',
-        `Code "${input.code}" is in codebook ${codeFrame}, but category "${input.category}" is in ${input.codebookId}. A category groups codes within one frame.`,
-      )
-    }
+  // exactly what codebook scoping (ADR 0001) exists to prevent.
+  if (
+    input.codebookId !== undefined &&
+    resolved !== undefined &&
+    resolved.codebookId !== input.codebookId
+  ) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Code "${input.code}" is in codebook ${resolved.codebookId}, but category "${input.category}" is in ${input.codebookId}. A category groups codes within one frame.`,
+    )
   }
 
   const links = listCategoryLinks(seedPath)
-  const existingPrimary = links.find((l) => l.code === input.code && l.is_primary)
+  const existingPrimary = links.find((l) => l.code === code && l.is_primary)
   const isPrimary = input.primary === true || (input.primary === undefined && !existingPrimary)
 
   // Uphold "exactly one primary per code": --no-primary may not strip a code's
@@ -140,7 +136,7 @@ export function linkCodeToCategory(
   // already exists to carry it.
   if (input.primary === false) {
     const otherPrimary = links.find(
-      (l) => l.code === input.code && l.is_primary && l.category !== input.category,
+      (l) => l.code === code && l.is_primary && l.category !== input.category,
     )
     if (otherPrimary === undefined) {
       throw new CompostError(
@@ -164,7 +160,7 @@ export function linkCodeToCategory(
         actor_type: input.author.actorType,
         actor_id: input.author.actorId,
         payload: {
-          code: input.code,
+          code,
           category: existingPrimary.category,
           ...(existingPrimary.codebook_id !== undefined
             ? { codebook_id: existingPrimary.codebook_id }
@@ -176,19 +172,19 @@ export function linkCodeToCategory(
     }
     events.appendEvent({
       artifact_kind: CATEGORY_LINK_KIND,
-      artifact_id: linkId(input.code, input.category),
+      artifact_id: linkId(code, input.category),
       action: 'link',
       actor_type: input.author.actorType,
       actor_id: input.author.actorId,
       payload: {
-        code: input.code,
+        code,
         category: input.category,
         ...(input.codebookId !== undefined ? { codebook_id: input.codebookId } : {}),
         is_primary: isPrimary,
       },
     })
     return {
-      code: input.code,
+      code,
       category: input.category,
       is_primary: isPrimary,
       ...(demoted !== undefined ? { demoted } : {}),
@@ -203,7 +199,10 @@ export function unlinkCodeFromCategory(
   seedPath: string,
   input: { code: string; category: string; author: Author },
 ): { unlinked: boolean } {
-  const id = linkId(input.code, input.category)
+  // Canonicalize the code ref so unlinking by bare shorthand finds the link
+  // stored under the qualified id (#269).
+  const code = tryResolveCodeRef(seedPath, input.code)?.id ?? input.code
+  const id = linkId(code, input.category)
   // The active snapshot carries last_event — unlink MUST chain to it
   // (schema: endorse/reject/update/unlink reference the event being acted on).
   const snap = listArtifacts(seedPath, CATEGORY_LINK_KIND).find((s) => s.artifact_id === id)
@@ -217,7 +216,7 @@ export function unlinkCodeFromCategory(
       actor_type: input.author.actorType,
       actor_id: input.author.actorId,
       parent_event: snap.last_event,
-      payload: { code: input.code, category: input.category },
+      payload: { code, category: input.category },
     })
     return { unlinked: true }
   } finally {

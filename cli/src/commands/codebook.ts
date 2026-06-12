@@ -1,6 +1,7 @@
+import { execFileSync } from 'node:child_process'
 import type { Command } from 'commander'
 
-import { isCompostError } from '../errors.js'
+import { CompostError, isCompostError } from '../errors.js'
 import {
   CODEBOOK_STANCES,
   type CodebookStance,
@@ -8,10 +9,30 @@ import {
   DEFAULT_CODEBOOK_ID,
   defaultResearcherId,
 } from '../lib/artifacts.js'
-import { applyCodebookMigration, listCodebooks, planCodebookMigration } from '../lib/codebooks.js'
+import {
+  applyCodebookMigration,
+  applyCodeIdMigration,
+  listCodebooks,
+  planCodebookMigration,
+  planCodeIdMigration,
+} from '../lib/codebooks.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { stubAction, stubDescription } from './_stub.js'
+
+/** Whether the git working tree containing `seedPath` has uncommitted changes;
+ * null when `seedPath` isn't inside a git repo (no undo point to protect). */
+function gitTreeDirty(seedPath: string): boolean | null {
+  try {
+    const out = execFileSync('git', ['-C', seedPath, 'status', '--porcelain'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+    return out.trim().length > 0
+  } catch {
+    return null // not a git repo / git unavailable
+  }
+}
 
 interface NewFlags {
   stance: string
@@ -26,6 +47,12 @@ interface SeedFlags {
 interface MigrateFlags {
   seed?: string
   apply?: boolean
+}
+
+interface MigrateIdsFlags {
+  seed?: string
+  apply?: boolean
+  force?: boolean
 }
 
 export function registerCodebook(program: Command): void {
@@ -158,6 +185,67 @@ export function registerCodebook(program: Command): void {
             file_only_stamped: result.file_only_stamped,
           },
           out,
+        )
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
+
+  codebook
+    .command('migrate-ids')
+    .description(
+      'Qualify legacy code ids to C-<codebook>/<code> + namespace their files (#269; dry-run unless --apply)',
+    )
+    .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
+    .option('--apply', 'Rewrite ids + move files + emit rename events (default: preview)')
+    .option('--force', 'Apply even when the git working tree is dirty (skips the undo-point guard)')
+    .addHelpText(
+      'after',
+      '\nUniform Option A (ADR 0001): every code gets a frame-qualified id. Existing bare `C-<slug>` refs keep resolving via the shorthand shim, so this is a normalization — run it when you want the namespaced form on disk. After applying, run `compost reindex --vectors` to refresh chunk code_ids.',
+    )
+    .action((flags: MigrateIdsFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        if (flags.apply !== true) {
+          const plan = planCodeIdMigration(seedPath)
+          emit(
+            {
+              status: 'ok',
+              command: 'codebook migrate-ids',
+              dry_run: true,
+              already_qualified: plan.already_qualified,
+              codes: plan.codes.map((c) => ({ from: c.old_id, to: c.new_id })),
+              conflicts: plan.conflicts,
+            },
+            out,
+            (d: { codes: unknown[]; already_qualified: number; conflicts: unknown[] }) =>
+              `codebook migrate-ids (dry-run): ${d.codes.length} code(s) would be qualified, ${d.already_qualified} already namespaced${
+                d.conflicts.length > 0 ? `, ${d.conflicts.length} CONFLICT(s) block --apply` : ''
+              }. Re-run with --apply.`,
+          )
+          return
+        }
+        // Refuse to mutate files on a dirty tree (so `git restore` is an undo
+        // point), unless the seed isn't under git or --force is given.
+        if (flags.force !== true && gitTreeDirty(seedPath) === true) {
+          throw new CompostError(
+            'INVALID_INPUT',
+            'Refusing --apply: the git working tree has uncommitted changes. Commit or stash first so you have an undo point, or pass --force.',
+          )
+        }
+        const result = applyCodeIdMigration(seedPath, defaultResearcherId())
+        emit(
+          {
+            status: 'ok',
+            command: 'codebook migrate-ids',
+            dry_run: false,
+            migrated: result.migrated,
+          },
+          out,
+          (d: { migrated: unknown[] }) =>
+            `codebook migrate-ids: qualified ${d.migrated.length} code(s). Run \`compost reindex --vectors\` to refresh chunk code_ids.`,
         )
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
