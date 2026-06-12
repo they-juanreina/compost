@@ -1,10 +1,9 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { type EmbeddedItem, suggestCodeClusters } from '@they-juanreina/compost-retrieval'
+import { suggestCodeClusters } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
 import { defaultResearcherId } from '../lib/artifacts.js'
+import { loadEmbeddedHighlights } from '../lib/embeddedHighlights.js'
 import { type Regenerator, rerunEvent } from '../lib/rerun.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -13,23 +12,6 @@ interface RerunFlags {
   seed?: string
   apply?: boolean
   model?: string
-}
-
-function loadEmbeddedHighlights(seedPath: string): EmbeddedItem[] {
-  const dir = join(seedPath, 'highlights')
-  if (!existsSync(dir)) return []
-  const out: EmbeddedItem[] = []
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.json')) continue
-    try {
-      const j = JSON.parse(readFileSync(join(dir, f), 'utf8')) as { id?: string; vector?: number[] }
-      if (typeof j.id === 'string' && Array.isArray(j.vector))
-        out.push({ id: j.id, vector: j.vector })
-    } catch {
-      // skip malformed
-    }
-  }
-  return out
 }
 
 /**
@@ -47,6 +29,15 @@ function makeDefaultRegenerator(seedPath: string): Regenerator {
         'Automatic LLM regeneration is not wired yet (needs model-routed provider access). ' +
           'The inputs are intact and reconstructable — `compost rerun <event>` (verify) confirms it; ' +
           '--apply currently regenerates deterministic agent artifacts only.',
+      )
+    }
+    // The deterministic regenerator only knows the similarity-scanner's code
+    // clusters. Refuse other agent artifacts (e.g. category-scanner drafts,
+    // artifact_kind=category) rather than mis-regenerating them as code clusters.
+    if (ctx.artifactKind !== 'code') {
+      throw new CompostError(
+        'CONFIG_ERROR',
+        `--apply regeneration is wired only for similarity-scanner code clusters, not ${ctx.artifactKind} drafts. The inputs are intact — \`compost rerun <event>\` (verify) confirms reconstructability.`,
       )
     }
     const highlights = loadEmbeddedHighlights(seedPath)

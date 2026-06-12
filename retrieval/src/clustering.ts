@@ -91,7 +91,10 @@ export function saturationPulse(
   return { per_session: per, recommendation, rationale }
 }
 
-function meanVector(vectors: number[][]): number[] {
+/** Component-wise mean of equal-length vectors (the centroid). Exported so the
+ * CLI can build a code's centroid from its evidence-highlight embeddings before
+ * clustering codes into categories (ADR 0002). [] when given no vectors. */
+export function meanVector(vectors: number[][]): number[] {
   if (vectors.length === 0) return []
   // biome-ignore lint/style/noNonNullAssertion: vectors is non-empty (length checked on prior line), so vectors[0] is defined
   const dim = vectors[0]!.length

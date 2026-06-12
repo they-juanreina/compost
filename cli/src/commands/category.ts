@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
-import { createCategory, defaultResearcherId } from '../lib/artifacts.js'
+import { createCategory, DEFAULT_CODEBOOK_ID, defaultResearcherId } from '../lib/artifacts.js'
 import {
   linkCodeToCategory,
   listCategories,
@@ -9,7 +9,10 @@ import {
   resolveCategory,
   unlinkCodeFromCategory,
 } from '../lib/categories.js'
+import { loadHighlightVectorMap } from '../lib/embeddedHighlights.js'
+import { listArtifacts } from '../lib/reads.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
+import { type CodeForCategorizing, suggestCategoriesOnce } from '../loops/synthesis.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
 interface NewFlags {
@@ -24,6 +27,10 @@ interface LinkFlags {
   seed?: string
   primary?: boolean
   noPrimary?: boolean
+}
+interface SuggestFlags {
+  seed?: string
+  threshold?: string
 }
 
 export function registerCategory(program: Command): void {
@@ -82,17 +89,28 @@ export function registerCategory(program: Command): void {
             name?: string
             codebook_id?: string
             definition?: string
+            status?: string
+            members?: string[]
           }
-          const members = links
-            .filter((l) => l.category === s.id)
+          // Named (created) categories carry committed links; AI [draft]
+          // categories (from `category suggest`) carry no id/name yet — their
+          // proposed grouping lives in members[] until a researcher endorses.
+          const id = s.id ?? snap.artifact_id
+          const committed = links
+            .filter((l) => l.category === id)
             .map((l) => ({ code: l.code, is_primary: l.is_primary }))
+          const isDraft = s.status === 'draft'
           return {
-            id: s.id,
+            id,
             name: s.name,
             codebook_id: s.codebook_id,
             artifact_id: snap.artifact_id,
             human_approved: snap.human_approved,
-            members,
+            ...(isDraft ? { status: 'draft' as const } : {}),
+            members: committed,
+            // The AI's proposed member codes (drafts only) — surfaced so the
+            // suggestion isn't inert; endorsing materializes committed links.
+            ...(isDraft && Array.isArray(s.members) ? { proposed_members: s.members } : {}),
           }
         })
         emit({ status: 'ok', command: 'category list', count: categories.length, categories }, out)
@@ -128,6 +146,53 @@ export function registerCategory(program: Command): void {
           author: { actorType: 'researcher', actorId: defaultResearcherId() },
         })
         emit({ status: 'ok', command: 'category link', ...result }, out)
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
+
+  category
+    .command('suggest')
+    .description(
+      'Cluster codes by the centroid of their evidence embeddings (within each codebook) and draft AI [draft] categories. Requires embedded highlights (run `compost watch --once`). Drafts await researcher endorsement.',
+    )
+    .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
+    .option('--threshold <n>', 'Cosine similarity threshold for clustering', '0.75')
+    .action((flags: SuggestFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        const highlightVectors = loadHighlightVectorMap(seedPath)
+        const codes: CodeForCategorizing[] = listArtifacts(seedPath, 'code')
+          .map((snap) => {
+            const s = snap.current_state as {
+              id?: string
+              evidence?: string[]
+              codebook_id?: string
+            }
+            return {
+              id: typeof s.id === 'string' ? s.id : snap.artifact_id,
+              evidence: Array.isArray(s.evidence) ? s.evidence : [],
+              codebook_id: typeof s.codebook_id === 'string' ? s.codebook_id : DEFAULT_CODEBOOK_ID,
+            }
+          })
+          .filter((c) => c.evidence.length > 0)
+        const suggestions = suggestCategoriesOnce(seedPath, codes, highlightVectors, {
+          threshold: Number(flags.threshold ?? 0.75),
+        })
+        emit(
+          {
+            status: 'ok',
+            command: 'category suggest',
+            embedded_highlights: highlightVectors.size,
+            codes_positioned: codes.filter((c) => c.evidence.some((h) => highlightVectors.has(h)))
+              .length,
+            suggested: suggestions.length,
+            suggestions,
+          },
+          out,
+        )
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err
