@@ -54,24 +54,38 @@ Storage stays flat (`codebook/<slug>.md` keyed by a content hash or a per-frame 
 
 ## Verb semantics (proposed, pending the ref decision)
 
-- **fork `<source>` `<new-name>`** — create codebook `CB-<new-name>` (copy stance/description), then for each non-archived code in `<source>` emit `create(code, …, codebook_id=CB-<new-name>)` with a fresh artifact id (the SHA changes with the frame) and an `inputs`/note linking the origin code for `blame` lineage. Category links within the source are **not** copied (a fork is a fresh second-cycle pass). Open: does fork copy codes at all, or create an empty sibling lens? (ADR 0001 says "new lens over the same seed" — ambiguous between "branch" and "blank".)
+- **fork `<source>` `<new-name>`** — create codebook `CB-<new-name>` (copy stance/description), then for each non-archived code in `<source>` emit `create(code, …, codebook_id=CB-<new-name>)` with a fresh artifact id (the SHA changes with the frame) and an `inputs`/note linking the origin code for `blame` lineage. Category links within the source are **not** copied (a fork is a fresh second-cycle pass). *(Decided: fork branch-copies the codes.)*
 - **merge `<from>` `<into>`** — re-emit each of `<from>`'s codes as belonging to `<into>` (an `update(codebook_id)` event, preserving artifact identity + history), then **reject-archive** `<from>` (never delete — `reject` archives, ADR 0001). Colliding names resolve via the chosen compound ref; coverage math (saturate, agreement) must treat the two as distinct until/unless the researcher explicitly de-dupes.
-- **import `<seed>` `<codebook>`** — copy the codebook artifact + its codes' create events into this seed as a new frame, preserving their original `codebook_id` lineage in `inputs` for citation. Cross-seed highlight evidence does **not** travel (the highlights live in the other seed) — an imported code arrives as a *definition-bearing frame*, evidence re-attached locally. Open: is an evidence-less imported code valid, or must import also bring (read-only) highlights?
+- **import `<seed>` `<codebook>`** — copy the codebook artifact + its codes' create events into this seed as a new frame, preserving their original `codebook_id` lineage in `inputs` for citation. Cross-seed highlight evidence does **not** travel (the highlights live in the other seed) — an imported code arrives as a *definition-bearing frame*, evidence re-attached locally. *(Decided: frame + definitions only; an evidence-less imported code is valid.)*
 
-## Recommendation
+## Decisions (maintainer, 2026-06-12)
 
-**Option B (qualify-on-collision) for the ref, with the resolver accepting both forms.** It matches #269's intent, keeps every existing seed and ref untouched (no migration of the whole corpus mid-milestone, consistent with ADR 0003's "don't churn during schema change"), and confines the new naming convention to the codes that actually collide. The cost — two id forms — is bounded and local, where Options A/C impose a seed-wide ref migration for a feature most single-lens studies never hit.
+| # | Question | Decision |
+|---|---|---|
+| 1 | Ref scheme | **A — namespaced id + path.** Codes live at `codebook/<CB-slug>/<code-slug>.md`; canonical id is `C-<cb-slug>/<code-slug>`. A bare `C-<slug>` is accepted as shorthand and resolved against its frame. |
+| 2 | `fork` | **Branch** — copy the source codebook's codes into the new frame (fresh ids, origin linked for `blame`). |
+| 3 | `import` | **Frame + definitions only** — evidence stays in the origin seed; re-attached locally. |
+| 4 | `merge` | **Keep distinct** — same-named codes are never silently fused; de-dup is a later explicit action. |
+| 5 | Bare-`C-slug` tie-break | **Error-and-list** when a bare ref is ambiguous across frames (mirrors `resolveCategory`). |
 
-Concretely, if the maintainer agrees, the build order is: (1) a `resolveCodeRef(seed, ref)` helper that accepts `C-<slug>`, `C-<slug>__<cb>`, and `CB-<cb>:C-<slug>`, returning `{id, codebook_id}` — the single choke point every consumer routes through; (2) `import` (lowest risk — cross-seed, no same-seed collision unless names clash, errors clearly until the resolver lands); (3) `fork`; (4) `merge` (highest risk — touches coverage math). Each verb gets the same adversarial review + regression tests as the rest of the milestone.
+Option A is the cleanest end state — the id is self-describing, collisions are impossible *across* frames by construction, and the filesystem mirrors the frame structure — at the cost of a **seed-wide migration** of every existing `C-<slug>` ref. That migration is the bulk of the work and is why this lands as a dedicated effort, not inline.
 
-## Open questions for the maintainer
+### The merge wrinkle Option A does not erase
 
-1. **Ref scheme: A, B, or C?** (Recommend **B**.) This gates all three verbs.
-2. **Does `fork` copy codes, or create an empty sibling lens?** (ADR 0001 wording is ambiguous.)
-3. **Does `import` bring evidence/highlights, or only the definition-bearing frame?** (Recommend: frame only; re-attach evidence locally.)
-4. **After `merge`, are two same-named codes auto-deduped or kept distinct?** (Recommend: kept distinct; de-dup is a separate, explicit researcher action with its own provenance.)
-5. **Bare-`C-slug` tie-break:** when a bare ref is ambiguous across frames, error-and-list, or resolve against the primary/only frame? (Recommend: error-and-list, mirroring `resolveCategory`.)
+Option A removes cross-frame collisions, but **`merge` collapses two frames into one**, and within a single frame `codebook/<cb>/<slug>.md` is still one-slug-per-dir. So merging `CB-a` and `CB-b` when both coded `distrust` produces two codes that must coexist *in the same frame* — which the flat per-frame dir can't hold. With **keep-distinct**, `merge` must rename one on the way in (e.g. `distrust` ← from `CB-a`, `distrust-from-b` ← from `CB-b`) and record the rename in the event log so `blame` shows it. `merge` therefore remains the highest-risk verb: it touches coverage math (saturate/agreement see two distinct codes) and needs the within-frame disambiguation rule.
 
-## Why a design note, not code
+## Build plan (dedicated follow-up — seed-wide ref migration)
 
-Un-stubbing these verbs without settling the ref scheme would bake a guess into every code-referencing consumer (themes, categories, recode, agreement, blame, retrieval) — the exact "genuinely ambiguous data-model decision" that warrants the maintainer's call before implementation. This PR delivers the spec + recommendation; the verbs land in follow-ups once Q1–Q5 are answered.
+This is effectively its own mini-milestone; sequencing to keep each step reviewable:
+
+1. **`resolveCodeRef(seed, ref) → {id, codebook_id, path}`** — the single choke point. Accepts the qualified `C-<cb>/<slug>` and the bare `C-<slug>` (error-and-list when ambiguous). *Every* consumer that today builds `codebook/<slug>.md` or parses `C-<slug>` routes through it: `createCode`, `saturate`, `categories`, `recode`, `agreement`, `blame`, `embeddedHighlights`, retrieval `code_ids`, web, MCP.
+2. **Storage migration** — move existing flat `codebook/<slug>.md` → `codebook/CB-primary/<slug>.md`, stamp the qualified id, emit update events; extend `compost codebook migrate`. Bare-ref shorthand keeps old refs (themes `evidence`/`codes`, category links, retrieval `code_ids`) resolving without a rewrite.
+3. **`import`** (lowest risk — different seed, different frame dir, no collision).
+4. **`fork`** (branch-copy into a new frame dir).
+5. **`merge`** (highest risk — within-frame disambiguation + coverage math).
+
+Each step gets the same adversarial review + regression tests as the rest of the milestone. Note left in place as the spec of record; PRs reference it.
+
+## Why this stayed a design note until now
+
+Un-stubbing these verbs without settling the ref scheme would have baked a guess into every code-referencing consumer (themes, categories, recode, agreement, blame, retrieval) — the genuinely ambiguous data-model decision that warranted the maintainer's call. With Option A chosen, the build plan above is unblocked.
