@@ -17,6 +17,7 @@ import {
   openSeedEvents,
 } from './events.js'
 import { listArtifacts } from './reads.js'
+import { encodeEvidence, resolveThemeEvidence, type ThemeEvidence } from './themes.js'
 
 export interface CreatedArtifact {
   id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug)
@@ -448,7 +449,16 @@ export function createCode(seedPath: string, input: CreateCodeInput): CreatedArt
 export interface CreateThemeInput {
   name: string
   summary: string
+  /** @deprecated Pass `evidence` instead. Legacy code-only support; lazy-mapped
+   * to `evidence: codes.map(c => ({kind:'code', ref:c}))` (ADR 0002 §1, #266). */
   codes?: string[]
+  /** Heterogeneous {code|category} support set (#266). Takes precedence over
+   * `codes` when both are given. */
+  evidence?: ThemeEvidence[]
+  /** Theme frame. A CB- id (or name) scopes the theme to one lens; explicit
+   * `null` marks a cross-lens theme (must cite ≥2 distinct codebooks); omitted
+   * is inferred from the evidence frames. */
+  codebookId?: string | null
   author: Author
   inputs?: AiInputBundle
 }
@@ -458,15 +468,41 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
   mkdirSync(dir, { recursive: true })
   const name = slug(input.name)
   const id = `T-${name}`
-  const codes = input.codes ?? []
 
-  const initialState = { id, kind: 'theme', name, summary: input.summary, codes }
+  // Normalize codes[] → evidence[] (kind=code), then resolve frames + the
+  // theme's codebook_id and enforce the cross-lens invariant (ADR 0002 §1).
+  const rawEvidence: ThemeEvidence[] =
+    input.evidence ?? (input.codes ?? []).map((ref) => ({ kind: 'code' as const, ref }))
+  const { evidence, codebookId } = resolveThemeEvidence(seedPath, rawEvidence, input.codebookId)
+
+  // SHA-addressed identity carries the structured evidence + frame. Field name
+  // `codebook_id` matches the on-disk frontmatter; null = cross-lens.
+  const evidenceState = evidence.map((e) => ({
+    kind: e.kind,
+    ref: e.ref,
+    codebook_id: e.codebookId,
+  }))
+  const initialState = {
+    id,
+    kind: 'theme',
+    name,
+    summary: input.summary,
+    evidence: evidenceState,
+    codebook_id: codebookId,
+  }
   const sha = artifactId(initialState)
   const title = input.name.trim()
+
+  // Dual-write a legacy `codes[]` for the deprecation window: when every
+  // evidence entry is a code, old readers that have not yet learned `evidence`
+  // still resolve the theme. Omitted once any category/cross-lens enters.
+  const codeOnly = evidence.every((e) => e.kind === 'code')
   const body = `${frontmatter({
     id,
     name,
-    codes,
+    evidence: evidence.map(encodeEvidence),
+    ...(codeOnly ? { codes: evidence.map((e) => e.ref) } : {}),
+    codebook_id: codebookId,
     artifact_id: sha,
     provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
   })}\n# ${title}\n\n${input.summary}\n`

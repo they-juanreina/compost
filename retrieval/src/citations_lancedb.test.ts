@@ -92,6 +92,8 @@ describe('LanceDB (#43)', () => {
             speaker_id: 'S1',
             start_ms: 0,
             end_ms: 1,
+            author: null,
+            year: null,
             text: 'one',
             vector: [1, 0],
             metadata: '{}',
@@ -105,6 +107,34 @@ describe('LanceDB (#43)', () => {
     const hits = await retriever.search('q', 5)
     assert.equal(hits[0]?.id, 'a')
     assert.ok(Math.abs((hits[0]?.score ?? 0) - 0.9) < 1e-9)
+  })
+
+  it('surfaces source attribution columns onto dense hits for filtering (#270)', async () => {
+    const table = {
+      async search(_v: number[], _k: number) {
+        return [
+          {
+            id: 'doc',
+            kind: 'legacy_chunk',
+            seed: 'demo',
+            session: 'DOC-haraway',
+            speaker_id: null,
+            start_ms: null,
+            end_ms: null,
+            author: 'Donna Haraway',
+            year: '2007',
+            text: 'a situated claim',
+            vector: [1, 0],
+            metadata: '{}',
+            text_sha: 'sha-doc',
+            _distance: 0.2,
+          },
+        ]
+      },
+    }
+    const retriever = new LanceDBRetriever(table, async () => [1, 0])
+    const hits = await retriever.search('q', 5)
+    assert.deepEqual(hits[0]?.metadata.attribution, { author: 'Donna Haraway', year: '2007' })
   })
 })
 

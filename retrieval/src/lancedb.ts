@@ -15,6 +15,11 @@ export interface VectorRecord {
   speaker_id: string | null
   start_ms: number | null
   end_ms: number | null
+  /** Source author/year promoted to columns so retrieval can filter sourced
+   * documents by attribution (#270), the way speaker_id is filterable. Null for
+   * diarized recordings. The rest of the citation rides the metadata blob. */
+  author: string | null
+  year: string | null
   text: string
   vector: number[]
   metadata: string // JSON
@@ -29,6 +34,8 @@ export interface IndexableArtifact {
   speaker_id?: string | null
   start_ms?: number | null
   end_ms?: number | null
+  author?: string | null
+  year?: string | null
   text: string
   text_sha: string
   vector: number[]
@@ -54,6 +61,8 @@ export function buildVectorRecords(artifacts: IndexableArtifact[]): VectorRecord
       speaker_id: a.speaker_id ?? null,
       start_ms: a.start_ms ?? null,
       end_ms: a.end_ms ?? null,
+      author: a.author ?? null,
+      year: a.year ?? null,
       text: a.text,
       vector: a.vector,
       metadata: JSON.stringify(a.metadata ?? {}),
@@ -200,6 +209,8 @@ export async function openLanceDBForWrite(uri: string, vectorDim: number): Promi
       speaker_id: '',
       start_ms: 0,
       end_ms: 0,
+      author: '',
+      year: '',
       text: '',
       vector: new Array(vectorDim).fill(0),
       metadata: '{}',
@@ -273,6 +284,16 @@ export class LanceDBRetriever implements DenseRetriever {
         code_ids: [],
         actor_type: 'agent',
         chunk_type: 'utterance',
+        // Surface the attribution columns so a sourced-document filter (#270)
+        // matches dense hits, not just BM25 ones.
+        ...(r.author || r.year
+          ? {
+              attribution: {
+                ...(r.author ? { author: r.author } : {}),
+                ...(r.year ? { year: r.year } : {}),
+              },
+            }
+          : {}),
       },
     }))
   }

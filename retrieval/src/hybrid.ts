@@ -7,6 +7,9 @@ export interface RetrievalFilters {
   session?: string
   speaker_id?: string[]
   actor_type?: ChunkMetadata['actor_type'][]
+  /** Restrict to sourced documents by author (#270). A chunk matches if its
+   * attribution.author is one of these. */
+  author?: string[]
 }
 
 /** A dense retriever (vectors) — implemented by the LanceDB/BGE path (#43,#44).
@@ -31,6 +34,10 @@ function matchesFilters(c: Chunk, f?: RetrievalFilters): boolean {
   )
     return false
   if (f.actor_type !== undefined && !f.actor_type.includes(c.metadata.actor_type)) return false
+  if (f.author !== undefined) {
+    const author = c.metadata.attribution?.author
+    if (author === undefined || !f.author.includes(author)) return false
+  }
   return true
 }
 

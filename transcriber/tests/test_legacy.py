@@ -122,6 +122,81 @@ def test_unsupported_extension_raises(tmp_path: Path):
         ingest(tmp_path / "x.rtf")
 
 
+# #270: source/author attribution for sourced documents (standpoint w/o speaker).
+
+
+def test_attribution_attached_via_ingest(tmp_path: Path):
+    csv_path = tmp_path / "essay.csv"
+    csv_path.write_text("text\nA situated claim about worlds.\n")
+    doc = ingest(
+        csv_path,
+        text_col="text",
+        attribution={"author": "Donna Haraway", "year": "2007", "title": "Edges & Ecotones"},
+    )
+    assert doc["attribution"] == {
+        "author": "Donna Haraway",
+        "year": "2007",
+        "title": "Edges & Ecotones",
+    }
+    _validate(doc)
+
+
+def test_attribution_drops_empty_and_unknown_keys(tmp_path: Path):
+    csv_path = tmp_path / "q.csv"
+    csv_path.write_text("text\nhello\n")
+    doc = ingest(
+        csv_path,
+        text_col="text",
+        attribution={"author": "  ", "year": "1990", "speaker": "should be ignored"},
+    )
+    # Empty author dropped, unknown 'speaker' dropped, year kept.
+    assert doc["attribution"] == {"year": "1990"}
+    _validate(doc)
+
+
+def test_no_attribution_when_all_empty_or_absent(tmp_path: Path):
+    csv_path = tmp_path / "q.csv"
+    csv_path.write_text("text\nhello\n")
+    assert "attribution" not in ingest(csv_path, text_col="text")
+    assert "attribution" not in ingest(csv_path, text_col="text", attribution={"author": ""})
+
+
+def test_attribution_structured_citation(tmp_path: Path):
+    csv_path = tmp_path / "essay.csv"
+    csv_path.write_text("text\nA situated claim.\n")
+    doc = ingest(
+        csv_path,
+        text_col="text",
+        attribution={
+            "author": "Donna Haraway",
+            "citation": {
+                "type": "interview",
+                "container_title": "Edges & Ecotones",
+                "editors": ["Irene Reti", ""],
+                "pages": "12-40",
+                "doi": "",  # empty dropped
+                "unknown": "ignored",  # unknown key dropped
+            },
+        },
+    )
+    assert doc["attribution"]["citation"] == {
+        "type": "interview",
+        "container_title": "Edges & Ecotones",
+        "pages": "12-40",
+        "editors": ["Irene Reti"],  # empty editor dropped
+    }
+    _validate(doc)
+
+
+def test_attribution_citation_string_folds_to_raw(tmp_path: Path):
+    csv_path = tmp_path / "q.csv"
+    csv_path.write_text("text\nhello\n")
+    # Back-compat: a bare citation string becomes {raw: ...}.
+    doc = ingest(csv_path, text_col="text", attribution={"citation": "Haraway 2007, p.12"})
+    assert doc["attribution"]["citation"] == {"raw": "Haraway 2007, p.12"}
+    _validate(doc)
+
+
 # v0.1-02 review feedback: auto-detect column name when text_col is None.
 
 

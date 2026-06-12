@@ -10,6 +10,7 @@ import {
 } from '../lib/artifacts.js'
 import type { AiInputBundle, Author } from '../lib/events.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
+import type { ThemeEvidence, ThemeEvidenceKind } from '../lib/themes.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
 interface CommonFlags {
@@ -125,6 +126,9 @@ interface ThemeFlags extends CommonFlags {
   name: string
   summary: string
   codes?: string
+  evidence?: string
+  codebook?: string
+  crossLens?: boolean
 }
 
 function addAuthorFlags(c: Command): Command {
@@ -212,18 +216,41 @@ export function registerCreate(program: Command): void {
   addAuthorFlags(
     create
       .command('theme')
-      .description('Create a theme grouping codes under a summary')
+      .description('Create a theme over a heterogeneous {code|category} evidence set')
       .requiredOption('--name <name>', 'Theme name (slugified for the id)')
       .requiredOption('--summary <text>', 'The theme statement')
-      .option('--codes <ids>', 'Comma-separated code ids (e.g. C-distrust,C-override)'),
+      .option('--codes <ids>', 'Comma-separated code ids (shorthand for code evidence)')
+      .option(
+        '--evidence <refs>',
+        'Comma-separated kind:ref evidence (e.g. code:C-distrust,category:CAT-trust)',
+      )
+      .option('--codebook <ref>', 'Scope the theme to one codebook frame (CB- id or name)')
+      .option('--cross-lens', 'Mark a cross-lens theme spanning ≥2 codebooks (codebook_id=null)')
+      .addHelpText(
+        'after',
+        '\nA theme is single-lens by default (inferred from its evidence frames). Pass --cross-lens for a theme that cites evidence from two or more codebooks; it must reference ≥2 distinct frames (ADR 0002 §1).',
+      ),
   ).action((flags: ThemeFlags, cmd: Command) => {
     try {
+      if (flags.crossLens === true && flags.codebook !== undefined) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          '--cross-lens and --codebook are mutually exclusive.',
+        )
+      }
       const seedPath = resolveSeedPath(process.cwd(), flags.seed)
       const inputs = loadInputs(flags)
+      const evidence =
+        flags.evidence !== undefined
+          ? parseEvidence(flags.evidence)
+          : parseList(flags.codes).map((ref) => ({ kind: 'code' as const, ref }))
+      // undefined = infer frame; null = cross-lens; CB-id = scoped.
+      const codebookId: string | null | undefined = flags.crossLens === true ? null : flags.codebook
       const created = createTheme(seedPath, {
         name: flags.name,
         summary: flags.summary,
-        codes: parseList(flags.codes),
+        evidence,
+        ...(codebookId !== undefined ? { codebookId } : {}),
         author: resolveAuthor(flags),
         ...(inputs !== undefined ? { inputs } : {}),
       })
@@ -232,6 +259,29 @@ export function registerCreate(program: Command): void {
       if (isCompostError(err)) emitError(err, getOutputOpts(cmd))
       throw err
     }
+  })
+}
+
+const EVIDENCE_KINDS: readonly ThemeEvidenceKind[] = ['code', 'category']
+
+/** Parse `--evidence code:C-foo,category:CAT-bar` into structured refs. A bare
+ * token (no `kind:` prefix) defaults to a code, so `--evidence C-foo` works. */
+function parseEvidence(s: string): ThemeEvidence[] {
+  return parseList(s).map((token) => {
+    const idx = token.indexOf(':')
+    if (idx === -1) return { kind: 'code', ref: token }
+    const kind = token.slice(0, idx)
+    const ref = token.slice(idx + 1)
+    if (!EVIDENCE_KINDS.includes(kind as ThemeEvidenceKind)) {
+      throw new CompostError(
+        'INVALID_INPUT',
+        `Evidence kind must be ${EVIDENCE_KINDS.join(' | ')}; got "${kind}" in "${token}".`,
+      )
+    }
+    if (ref.length === 0) {
+      throw new CompostError('INVALID_INPUT', `Evidence ref is empty in "${token}".`)
+    }
+    return { kind: kind as ThemeEvidenceKind, ref }
   })
 }
 
