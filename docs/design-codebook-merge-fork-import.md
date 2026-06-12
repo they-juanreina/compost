@@ -67,6 +67,8 @@ Storage stays flat (`codebook/<slug>.md` keyed by a content hash or a per-frame 
 | 3 | `import` | **Frame + definitions only** — evidence stays in the origin seed; re-attached locally. |
 | 4 | `merge` | **Keep distinct** — same-named codes are never silently fused; de-dup is a later explicit action. |
 | 5 | Bare-`C-slug` tie-break | **Error-and-list** when a bare ref is ambiguous across frames (mirrors `resolveCategory`). |
+| 6 | Id uniformity | **Uniform — qualify everything.** Even the primary frame's codes become `C-primary/<slug>` at `codebook/primary/<slug>.md`. One id shape everywhere; requires a one-shot rewrite of every existing `C-<slug>` id (themes, category links, retrieval `code_ids`, events), dry-run-first, with the bare-`C-slug` shorthand shim covering anything not yet rewritten. |
+| 7 | Foundation packaging | **Foundation + migration in one PR** (resolveCodeRef + consumer threading + the dry-run-first migration), then separate verb PRs (import → fork → merge). |
 
 Option A is the cleanest end state — the id is self-describing, collisions are impossible *across* frames by construction, and the filesystem mirrors the frame structure — at the cost of a **seed-wide migration** of every existing `C-<slug>` ref. That migration is the bulk of the work and is why this lands as a dedicated effort, not inline.
 
