@@ -13,6 +13,11 @@ export interface SessionWithThemes {
 export interface GatherOptions {
   cwd?: string
   seed?: string
+  /** Scope to one codebook (CB- id): only codes in that frame count toward
+   * a theme's session coverage. Saturation is frame-relative (ADR 0001) —
+   * a deductive lens and an inductive lens saturate differently. Default
+   * (undefined) counts every code, preserving single-codebook behavior. */
+  codebookId?: string
 }
 
 /**
@@ -31,7 +36,7 @@ export function gatherSessionsWithThemes(opts: GatherOptions = {}): SessionWithT
   const seedPath = resolveSeedPath(cwd, opts.seed)
 
   const highlightToSession = readHighlightSessions(join(seedPath, 'highlights'))
-  const codeToHighlights = readCodeEvidence(join(seedPath, 'codebook'))
+  const codeToHighlights = readCodeEvidence(join(seedPath, 'codebook'), opts.codebookId)
   const themeToCodes = readThemeCodes(join(seedPath, 'synthesis', 'themes'))
 
   const sessionToThemes = new Map<string, Set<string>>()
@@ -79,11 +84,18 @@ function readHighlightSessions(dir: string): Map<string, string> {
   return out
 }
 
-function readCodeEvidence(dir: string): Map<string, string[]> {
+function readCodeEvidence(dir: string, codebookId?: string): Map<string, string[]> {
   const out = new Map<string, string[]>()
   for (const fm of readFrontmatters(dir)) {
     const id = fm.scalars.get('id')
     const evidence = fm.arrays.get('evidence')
+    // Scope to one frame when asked: a code's codebook_id (default CB-primary
+    // for pre-codebook codes) must match. Drop codes outside the frame so they
+    // contribute no session coverage.
+    if (codebookId !== undefined) {
+      const codeFrame = fm.scalars.get('codebook_id') ?? 'CB-primary'
+      if (codeFrame !== codebookId) continue
+    }
     if (id !== undefined && evidence !== undefined) out.set(id, evidence)
   }
   return out

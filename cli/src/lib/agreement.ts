@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs'
 
 import Database from 'better-sqlite3'
-
 import { CompostError } from '../errors.js'
+import { DEFAULT_CODEBOOK_ID } from './artifacts.js'
 
 /**
  * Human↔machine intercoder agreement (§4).
@@ -23,11 +23,14 @@ import { CompostError } from '../errors.js'
 
 export type Coder = 'human' | 'machine'
 
-/** One coder asserting one code applies to one unit (highlight). */
+/** One coder asserting one code applies to one unit (highlight), within a frame.
+ * `codebook` is a CB- id (default CB-primary) — agreement is scoped per frame
+ * (ADR 0001), so codings from different lenses are never pooled. */
 export interface Coding {
   coder: Coder
   unit: string
   code: string
+  codebook: string
 }
 
 export interface KappaResult {
@@ -164,6 +167,27 @@ export interface AgreementOptions {
  * coded by BOTH coders count (the doubly-coded set); the codebook is the union of
  * codes either coder used on those units.
  */
+/**
+ * Agreement WITHIN one codebook (ADR 0001 §6): filter codings to the frame —
+ * κ across frames is undefined by construction, so lenses are never pooled —
+ * and scope the excluded-unnamed-cluster count to that frame too. The filtering
+ * lives here (not in the command) so the event-log tests exercise the real
+ * scoping path, and a dropped filter fails a test rather than silently shipping
+ * pooled κ.
+ */
+export function computeAgreementForFrame(
+  codings: Coding[],
+  excludedUnnamedByCodebook: Record<string, number>,
+  codebookId: string,
+  opts: AgreementOptions = {},
+): AgreementReport {
+  const inFrame = codings.filter((c) => c.codebook === codebookId)
+  return computeAgreement(inFrame, {
+    ...opts,
+    excludedUnnamedMachineCodes: excludedUnnamedByCodebook[codebookId] ?? 0,
+  })
+}
+
 export function computeAgreement(codings: Coding[], opts: AgreementOptions = {}): AgreementReport {
   const minUnits = opts.minUnits ?? 10
   const excluded = opts.excludedUnnamedMachineCodes ?? 0
@@ -262,7 +286,9 @@ interface CreateRow {
  */
 export function readCodings(eventsDbPath: string): {
   codings: Coding[]
-  excludedUnnamedMachineCodes: number
+  /** Unnamed similarity-scanner clusters, counted per codebook so a per-frame
+   * report tallies only its own frame's excluded codes (#264). */
+  excludedUnnamedMachineCodes: Record<string, number>
 } {
   if (!existsSync(eventsDbPath)) {
     throw new CompostError('FILE_NOT_FOUND', `No events.sqlite at ${eventsDbPath}`)
@@ -278,7 +304,7 @@ export function readCodings(eventsDbPath: string): {
     )
 
     const codings: Coding[] = []
-    let excludedUnnamed = 0
+    const excludedUnnamed: Record<string, number> = {}
 
     const machineRows = db
       .prepare(
@@ -290,13 +316,17 @@ export function readCodings(eventsDbPath: string): {
       const p = safeParse(row.payload)
       const code = typeof p.name === 'string' ? p.name : undefined
       const units = (p.evidence ?? p.members) as unknown
+      const codebook = typeof p.codebook_id === 'string' ? p.codebook_id : DEFAULT_CODEBOOK_ID
       if (code === undefined) {
-        if (Array.isArray(units) && units.length > 0) excludedUnnamed++
+        // Unnamed cluster — tallied (never silently dropped) under its own frame.
+        if (Array.isArray(units) && units.length > 0) {
+          excludedUnnamed[codebook] = (excludedUnnamed[codebook] ?? 0) + 1
+        }
         continue
       }
       if (!Array.isArray(units)) continue
       for (const u of units) {
-        if (typeof u === 'string') codings.push({ coder: 'machine', unit: u, code })
+        if (typeof u === 'string') codings.push({ coder: 'machine', unit: u, code, codebook })
       }
     }
 
@@ -310,7 +340,8 @@ export function readCodings(eventsDbPath: string): {
       const p = safeParse(row.payload)
       if (p.blind !== true) continue
       if (typeof p.code === 'string' && typeof p.highlight === 'string') {
-        codings.push({ coder: 'human', unit: p.highlight, code: p.code })
+        const codebook = typeof p.codebook === 'string' ? p.codebook : DEFAULT_CODEBOOK_ID
+        codings.push({ coder: 'human', unit: p.highlight, code: p.code, codebook })
       }
     }
 

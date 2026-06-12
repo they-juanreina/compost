@@ -60,6 +60,61 @@ describe('gatherSessionsWithThemes', () => {
     ])
   })
 
+  it('scopes to one codebook — out-of-frame codes contribute no coverage (#264)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/S001'))
+    mkdirSync(join(path, 'sessions/S002'))
+
+    writeFrontmatter(join(path, 'highlights/H-001.md'), { id: 'H-001', session_id: 'S001' })
+    writeFrontmatter(join(path, 'highlights/H-002.md'), { id: 'H-002', session_id: 'S002' })
+
+    // C-epi in the epistemology frame (S001); C-just in pluriversal-justice (S002).
+    writeFrontmatter(join(path, 'codebook/epi.md'), {
+      id: 'C-epi',
+      codebook_id: 'CB-epistemology',
+      evidence: '[H-001]',
+    })
+    writeFrontmatter(join(path, 'codebook/just.md'), {
+      id: 'C-just',
+      codebook_id: 'CB-pluriversal-justice',
+      evidence: '[H-002]',
+    })
+    mkdirSync(join(path, 'synthesis/themes'), { recursive: true })
+    writeFrontmatter(join(path, 'synthesis/themes/t.md'), {
+      id: 'T-x',
+      codes: '[C-epi, C-just]',
+    })
+
+    // Scoped to epistemology: only S001 (via C-epi) carries the theme.
+    assert.deepEqual(
+      gatherSessionsWithThemes({ cwd: work, seed: 'demo', codebookId: 'CB-epistemology' }),
+      [
+        { id: 'S001', themes: ['T-x'] },
+        { id: 'S002', themes: [] },
+      ],
+    )
+    // Unscoped: both frames' codes count.
+    assert.deepEqual(gatherSessionsWithThemes({ cwd: work, seed: 'demo' }), [
+      { id: 'S001', themes: ['T-x'] },
+      { id: 'S002', themes: ['T-x'] },
+    ])
+  })
+
+  it('treats a code without codebook_id as CB-primary when scoping (#264)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'sessions/S001'))
+    writeFrontmatter(join(path, 'highlights/H-001.md'), { id: 'H-001', session_id: 'S001' })
+    // Pre-codebook code: no codebook_id frontmatter → defaults to CB-primary.
+    writeFrontmatter(join(path, 'codebook/legacy.md'), { id: 'C-legacy', evidence: '[H-001]' })
+    mkdirSync(join(path, 'synthesis/themes'), { recursive: true })
+    writeFrontmatter(join(path, 'synthesis/themes/t.md'), { id: 'T-x', codes: '[C-legacy]' })
+
+    assert.deepEqual(
+      gatherSessionsWithThemes({ cwd: work, seed: 'demo', codebookId: 'CB-primary' }),
+      [{ id: 'S001', themes: ['T-x'] }],
+    )
+  })
+
   it('returns sessions with empty themes when no synthesis exists yet', () => {
     const { path } = initSeed('demo', { cwd: work })
     mkdirSync(join(path, 'sessions/S001'))

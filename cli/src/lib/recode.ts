@@ -20,7 +20,13 @@ export interface BlindRecodeResult {
  */
 export function blindRecode(
   seedPath: string,
-  input: { assignments: Record<string, string[]>; researcherId: string },
+  input: {
+    assignments: Record<string, string[]>
+    researcherId: string
+    /** Codebook (frame) these codings are under — agreement is scoped per frame
+     * (ADR 0001). Resolved to a CB- id at the command layer (default CB-primary). */
+    codebookId: string
+  },
 ): BlindRecodeResult {
   const events = openSeedEvents(seedPath)
   const batchId = `blind-recode:${new Date().toISOString()}`
@@ -30,11 +36,18 @@ export function blindRecode(
       for (const code of new Set(codes)) {
         rows.push({
           artifact_kind: 'coding',
-          artifact_id: artifactId({ coder: 'researcher-blind', highlight, code }),
+          // codebook is part of the address so the same (highlight, code) coded
+          // under two frames is two distinct codings, not a collision.
+          artifact_id: artifactId({
+            coder: 'researcher-blind',
+            highlight,
+            code,
+            codebook: input.codebookId,
+          }),
           action: 'link',
           actor_type: 'researcher',
           actor_id: input.researcherId,
-          payload: { code, highlight, blind: true },
+          payload: { code, highlight, blind: true, codebook: input.codebookId },
         })
       }
     }

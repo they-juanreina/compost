@@ -243,14 +243,15 @@ export function ensurePrimaryCodebook(seedPath: string): {
 }
 
 /**
- * Resolve the codebook a new code lands in. `CB-primary` is the implicit
- * default frame — it needs no artifact, so the default path is a pure string
- * stamp with no event side-effect (one `createCode` = one event). Explicit
- * non-primary refs accept a name (`epistemology`) or CB- id and must already
- * exist — a typo creating an orphan codebook_id would silently corrupt frame
- * scoping, so unknown refs fail listing what is available.
+ * Resolve a codebook reference to its `CB-` id. `CB-primary` is the implicit
+ * default frame — it needs no artifact, so `undefined` / `primary` resolve
+ * without a side-effect or existence check. Explicit non-primary refs accept a
+ * name (`epistemology`) or CB- id and must already exist — a typo would
+ * silently corrupt frame scoping (codes stamped, codings/agreement/saturate
+ * filtered to a frame that doesn't exist), so unknown refs fail listing what is
+ * available. Shared by `create code`, `recode`, `agreement`, and `saturate`.
  */
-function resolveCodebookForCode(seedPath: string, ref: string | undefined): string {
+export function resolveCodebookId(seedPath: string, ref: string | undefined): string {
   if (ref === undefined) return DEFAULT_CODEBOOK_ID
   const id = ref.startsWith('CB-') ? ref : `CB-${slug(ref)}`
   if (id === DEFAULT_CODEBOOK_ID) return DEFAULT_CODEBOOK_ID
@@ -303,7 +304,7 @@ export interface CreateCodeInput {
 }
 
 export function createCode(seedPath: string, input: CreateCodeInput): CreatedArtifact {
-  const codebook_id = resolveCodebookForCode(seedPath, input.codebookId)
+  const codebook_id = resolveCodebookId(seedPath, input.codebookId)
   const dir = join(seedPath, 'codebook')
   mkdirSync(dir, { recursive: true })
   const name = slug(input.name)

@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { defaultResearcherId } from '../lib/artifacts.js'
+import { defaultResearcherId, resolveCodebookId } from '../lib/artifacts.js'
 import { blindRecode } from '../lib/recode.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -11,6 +11,7 @@ interface RecodeFlags {
   seed?: string
   assignments: string
   coder?: string
+  codebook?: string
 }
 
 /** Validate the assignments file is { "H-001": ["code-a", ...], ... }. */
@@ -59,16 +60,22 @@ export function registerRecode(program: Command): void {
     )
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--coder <id>', 'Researcher id for these codings (default: $COMPOST_USER)')
+    .option(
+      '--codebook <ref>',
+      'Codebook (frame) these codings are under; agreement is scoped per frame (default: primary)',
+    )
     .action((flags: RecodeFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const assignments = parseAssignments(flags.assignments)
+        const codebookId = resolveCodebookId(seedPath, flags.codebook)
         const result = blindRecode(seedPath, {
           assignments,
           researcherId: flags.coder ?? defaultResearcherId(),
+          codebookId,
         })
-        emit({ status: 'ok', command: 'recode', blind: true, ...result }, out)
+        emit({ status: 'ok', command: 'recode', blind: true, codebook: codebookId, ...result }, out)
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err
