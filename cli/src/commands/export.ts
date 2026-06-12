@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 
 import type { Command } from 'commander'
 
@@ -52,8 +53,16 @@ export function registerExport(program: Command): void {
             )
             return
           }
+          // No explicit --out: write the PROV-O document to exports/ so a
+          // researcher gets a file (not just inline content). Agents piping
+          // JSON still get `content` in the --json payload.
+          const defaultOut = join(seedPath, 'exports', 'provenance.jsonld')
+          mkdirSync(dirname(defaultOut), { recursive: true })
+          writeFileSync(defaultOut, content, 'utf8')
           if (out.human) {
-            process.stdout.write(content)
+            process.stdout.write(
+              `Wrote ${defaultOut} (${prov.entities} entities, ${prov.activities} activities, ${prov.agents} agents).\n`,
+            )
           } else {
             emit(
               {
@@ -64,6 +73,7 @@ export function registerExport(program: Command): void {
                 activities: prov.activities,
                 agents: prov.agents,
                 inputs: prov.inputs,
+                out: defaultOut,
                 content,
               },
               out,

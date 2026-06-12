@@ -12,6 +12,9 @@ interface SaturateFlags {
   codebook?: string
 }
 
+/** Below this, a saturation curve can't be read — report `insufficient`. */
+const MIN_SESSIONS = 2
+
 export function registerSaturate(program: Command): void {
   program
     .command('saturate')
@@ -39,6 +42,10 @@ export function registerSaturate(program: Command): void {
         const pulse = saturationPulse(sessions, {
           dryStreakToConclude: Number(flags.dryStreak ?? 2),
         })
+        // A novelty curve needs at least two sessions to read; below that,
+        // report `insufficient` (mirroring `agreement`'s minimum-sample gate)
+        // rather than a bare `pause` that implies a measurement was made.
+        const insufficient = sessions.length < MIN_SESSIONS
         emit(
           {
             status: 'ok',
@@ -46,6 +53,12 @@ export function registerSaturate(program: Command): void {
             codebook: codebookId,
             sessions: sessions.length,
             ...pulse,
+            ...(insufficient
+              ? {
+                  recommendation: 'insufficient',
+                  rationale: `Saturation needs at least ${MIN_SESSIONS} sessions to read a novelty curve; this ${codebookId} frame has ${sessions.length}. Code more sessions before drawing a conclusion.`,
+                }
+              : {}),
           },
           out,
         )
