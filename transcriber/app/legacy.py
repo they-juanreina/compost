@@ -509,29 +509,53 @@ def ingest_xlsx(
     return doc
 
 
+# Source/author attribution fields (#270). A sourced document (published
+# interview, theory text, archival doc) carries the provenance of the *text* —
+# the author's standpoint — since there is no diarized participant to attach it
+# to. Kept to the schema's `attribution` shape; extra/empty keys are dropped.
+ATTRIBUTION_FIELDS = ("author", "title", "year", "citation", "url")
+
+
+def _attribution(raw: Any) -> dict[str, str] | None:
+    """Pick the known attribution fields with non-empty string values, or None.
+    Best-effort and researcher-overridable: an unknown key is ignored rather
+    than failing the ingest, and an all-empty mapping yields no field at all."""
+    if not isinstance(raw, dict):
+        return None
+    out = {k: str(raw[k]).strip() for k in ATTRIBUTION_FIELDS if str(raw.get(k, "")).strip()}
+    return out or None
+
+
 def ingest(path: str | Path, **kwargs: Any) -> dict[str, Any]:
     """Dispatch by extension. `text_col=None` (the default) triggers
-    auto-detect on CSV/XLSX inputs."""
+    auto-detect on CSV/XLSX inputs. `attribution={author, title, year,
+    citation, url}` (any subset) records the source text's provenance (#270)."""
     ext = Path(path).suffix.lower()
     if ext == ".csv":
-        return ingest_csv(
+        doc = ingest_csv(
             path,
             text_col=kwargs.get("text_col"),
             speaker_col=kwargs.get("speaker_col"),
         )
-    if ext == ".docx":
-        return ingest_docx(path)
-    if ext == ".pptx":
-        return ingest_pptx(path, thumbnails_dir=kwargs.get("thumbnails_dir"))
-    if ext == ".pdf":
-        return ingest_pdf(path)
-    if ext in (".txt", ".md", ".markdown"):
-        return ingest_text(path)
-    if ext == ".xlsx":
-        return ingest_xlsx(
+    elif ext == ".docx":
+        doc = ingest_docx(path)
+    elif ext == ".pptx":
+        doc = ingest_pptx(path, thumbnails_dir=kwargs.get("thumbnails_dir"))
+    elif ext == ".pdf":
+        doc = ingest_pdf(path)
+    elif ext in (".txt", ".md", ".markdown"):
+        doc = ingest_text(path)
+    elif ext == ".xlsx":
+        doc = ingest_xlsx(
             path,
             text_col=kwargs.get("text_col"),
             speaker_col=kwargs.get("speaker_col"),
             sheet=kwargs.get("sheet"),
         )
-    raise ValueError(f"Unsupported legacy asset: {ext}")
+    else:
+        raise ValueError(f"Unsupported legacy asset: {ext}")
+
+    attribution = _attribution(kwargs.get("attribution"))
+    if attribution is not None:
+        doc["attribution"] = attribution
+    return doc

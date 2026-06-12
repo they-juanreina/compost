@@ -1,5 +1,22 @@
 export type ActorType = 'researcher' | 'agent' | 'ai'
 
+/**
+ * Provenance of the *text* for sourced-document corpora (#270). When a corpus
+ * is a published interview, theory text, or archival document, standpoint is
+ * the author's — there is no diarized participant to attach it to (ADR 0001).
+ * This rides retrieval metadata so a citation over sourced material names the
+ * source instead of fabricating a speaker. Distinct from `speaker_id`
+ * (utterance-level diarization) and from the on-disk `source` file path.
+ */
+export interface SourceAttribution {
+  author?: string
+  title?: string
+  /** Publication/creation year as a string (allows ranges, "n.d."). */
+  year?: string
+  citation?: string
+  url?: string
+}
+
 export interface ChunkMetadata {
   seed: string
   session: string
@@ -11,6 +28,9 @@ export interface ChunkMetadata {
   code_ids: string[]
   actor_type: ActorType
   chunk_type: 'utterance' | 'window' | 'highlight' | 'term' | 'page'
+  /** Author/citation of the source text (#270). Present only for sourced
+   * documents; absent for diarized session recordings. */
+  attribution?: SourceAttribution
 }
 
 export interface Chunk {

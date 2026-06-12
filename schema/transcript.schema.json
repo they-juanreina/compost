@@ -82,9 +82,22 @@
       "items": { "$ref": "#/$defs/sessionGlossaryRef" },
       "description": "Optional session-level rollup of glossary term mentions; derivable from utterances[].glossary_refs."
     },
-    "provenance": { "$ref": "#/$defs/provenance" }
+    "provenance": { "$ref": "#/$defs/provenance" },
+    "attribution": { "$ref": "#/$defs/attribution" }
   },
   "$defs": {
+    "attribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Provenance of the *text* for sourced-document corpora (#270): a published interview, theory text, or archival document whose standpoint is the author's, not a diarized participant's (ADR 0001). Distinct from `source` (the on-disk file path) and `speakers` (utterance-level diarization). Surfaced in retrieval metadata so a citation over sourced material names the source instead of fabricating a speaker. All fields optional; researcher-overridable.",
+      "properties": {
+        "author": { "type": "string", "description": "Author / creator of the source text." },
+        "title": { "type": "string", "description": "Title of the work." },
+        "year": { "type": "string", "description": "Publication/creation year as a string (allows ranges, \"n.d.\")." },
+        "citation": { "type": "string", "description": "Free-form citation string." },
+        "url": { "type": "string", "description": "Canonical URL / DOI of the source." }
+      }
+    },
     "speaker": {
       "type": "object",
       "required": ["id", "type"],
