@@ -117,6 +117,9 @@ export async function runEmbedWorkerOnce(
         speaker_id: c.metadata.speaker_id,
         start_ms: c.metadata.start_ms,
         end_ms: c.metadata.end_ms,
+        // Source attribution → filterable columns (#270); null for recordings.
+        author: c.metadata.attribution?.author ?? null,
+        year: c.metadata.attribution?.year ?? null,
         text: c.text,
         text_sha: c.text_sha,
         vector: vectors[i] as number[],
@@ -126,6 +129,8 @@ export async function runEmbedWorkerOnce(
           code_ids: c.metadata.code_ids,
           actor_type: c.metadata.actor_type,
           chunk_type: c.metadata.chunk_type,
+          // Full attribution (incl. structured citation) rides the blob for display.
+          ...(c.metadata.attribution !== undefined ? { attribution: c.metadata.attribution } : {}),
         },
       }),
     ),

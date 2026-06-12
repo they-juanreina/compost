@@ -94,8 +94,21 @@
         "author": { "type": "string", "description": "Author / creator of the source text." },
         "title": { "type": "string", "description": "Title of the work." },
         "year": { "type": "string", "description": "Publication/creation year as a string (allows ranges, \"n.d.\")." },
-        "citation": { "type": "string", "description": "Free-form citation string." },
+        "citation": { "$ref": "#/$defs/citation" },
         "url": { "type": "string", "description": "Canonical URL / DOI of the source." }
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Structured (CSL-JSON-flavored) citation for a sourced document (#270). `raw` is the free-form fallback; the structured fields enable bibliography export later. All optional.",
+      "properties": {
+        "type": { "type": "string", "description": "CSL type, e.g. book, article-journal, interview, chapter." },
+        "container_title": { "type": "string", "description": "Containing work — journal, book, or anthology title." },
+        "editors": { "type": "array", "items": { "type": "string" } },
+        "pages": { "type": "string" },
+        "doi": { "type": "string" },
+        "raw": { "type": "string", "description": "Free-form citation string when the structured fields aren't supplied." }
       }
     },
     "speaker": {

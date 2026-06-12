@@ -513,16 +513,45 @@ def ingest_xlsx(
 # interview, theory text, archival doc) carries the provenance of the *text* —
 # the author's standpoint — since there is no diarized participant to attach it
 # to. Kept to the schema's `attribution` shape; extra/empty keys are dropped.
-ATTRIBUTION_FIELDS = ("author", "title", "year", "citation", "url")
+ATTRIBUTION_FIELDS = ("author", "title", "year", "url")
+# Structured (CSL-JSON-flavored) citation sub-fields (#270). `editors` is a list;
+# the rest are scalars. `raw` is the free-form fallback.
+CITATION_FIELDS = ("type", "container_title", "pages", "doi", "raw")
 
 
-def _attribution(raw: Any) -> dict[str, str] | None:
-    """Pick the known attribution fields with non-empty string values, or None.
-    Best-effort and researcher-overridable: an unknown key is ignored rather
-    than failing the ingest, and an all-empty mapping yields no field at all."""
+def _citation(raw: Any) -> dict[str, Any] | None:
+    """Normalize the citation into the structured shape. A bare string becomes
+    `{raw: <string>}` (back-compat); a dict is filtered to the known fields,
+    with `editors` kept as a non-empty list of strings."""
+    if isinstance(raw, str):
+        return {"raw": raw.strip()} if raw.strip() else None
     if not isinstance(raw, dict):
         return None
-    out = {k: str(raw[k]).strip() for k in ATTRIBUTION_FIELDS if str(raw.get(k, "")).strip()}
+    out: dict[str, Any] = {
+        k: str(raw[k]).strip() for k in CITATION_FIELDS if str(raw.get(k, "")).strip()
+    }
+    editors = raw.get("editors")
+    if isinstance(editors, list):
+        eds = [str(e).strip() for e in editors if str(e).strip()]
+        if eds:
+            out["editors"] = eds
+    return out or None
+
+
+def _attribution(raw: Any) -> dict[str, Any] | None:
+    """Pick the known attribution fields with non-empty values, or None.
+    Best-effort and researcher-overridable: an unknown key is ignored rather
+    than failing the ingest, and an all-empty mapping yields no field at all.
+    `citation` is normalized to the structured shape (a bare string folds to
+    `{raw: ...}`)."""
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, Any] = {
+        k: str(raw[k]).strip() for k in ATTRIBUTION_FIELDS if str(raw.get(k, "")).strip()
+    }
+    citation = _citation(raw.get("citation"))
+    if citation is not None:
+        out["citation"] = citation
     return out or None
 
 

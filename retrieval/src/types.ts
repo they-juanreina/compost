@@ -8,12 +8,27 @@ export type ActorType = 'researcher' | 'agent' | 'ai'
  * source instead of fabricating a speaker. Distinct from `speaker_id`
  * (utterance-level diarization) and from the on-disk `source` file path.
  */
+/** A structured (CSL-JSON-flavored) citation for a sourced document (#270).
+ * `raw` is the free-form fallback; the structured fields enable a real
+ * bibliography export later. All optional. */
+export interface CitationMeta {
+  /** CSL type, e.g. book, article-journal, interview, chapter. */
+  type?: string
+  /** Containing work — journal, book, or anthology title. */
+  container_title?: string
+  editors?: string[]
+  pages?: string
+  doi?: string
+  /** Free-form citation string when the structured fields aren't supplied. */
+  raw?: string
+}
+
 export interface SourceAttribution {
   author?: string
   title?: string
   /** Publication/creation year as a string (allows ranges, "n.d."). */
   year?: string
-  citation?: string
+  citation?: CitationMeta
   url?: string
 }
 
