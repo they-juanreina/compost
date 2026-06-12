@@ -421,4 +421,52 @@ describe('code-id qualification (#269)', () => {
     assert.ok(existsSync(join(path, 'codebook', 'primary', 'orphan.md')))
     assert.ok(!existsSync(join(path, 'codebook', 'orphan.md')))
   })
+
+  it('a file-only code never renames an unrelated same-slug namespaced code (#269 review)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCodebook(path, { name: 'epistemology', stance: 'framework', author: RESEARCHER })
+    // A real, event-backed code C-epistemology/orphan...
+    const sibling = createCode(path, {
+      name: 'orphan',
+      definition: 'real',
+      codebookId: 'epistemology',
+      author: RESEARCHER,
+    })
+    // ...and a hand-authored flat file-only C-orphan (no create event).
+    writeFileSync(
+      join(path, 'codebook', 'orphan.md'),
+      '---\nid: C-orphan\nname: orphan\nevidence: []\n---\nd\n',
+      'utf8',
+    )
+    const res = applyCodeIdMigration(path, 'juan@example.com')
+    // The file-only code migrates WITHOUT emitting an event (no own create event)…
+    assert.deepEqual(res.migrated, [
+      { old_id: 'C-orphan', new_id: 'C-primary/orphan', event_emitted: false },
+    ])
+    // …and the sibling's provenance + id are untouched (only its create event).
+    assert.deepEqual(
+      blame(sibling.id, { cwd: work, seed: 'demo' }).events.map((e) => e.action),
+      ['create'],
+    )
+    assert.equal(resolveCodeRef(path, 'C-epistemology/orphan').id, 'C-epistemology/orphan')
+  })
+
+  it('refuses to migrate when a target would overwrite an existing code (#269 review)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    // An already-namespaced code at codebook/primary/distrust.md.
+    createCode(path, { name: 'distrust', definition: 'KEEP-ME', author: RESEARCHER })
+    // A legacy flat code that would target the SAME path (frame primary, slug distrust).
+    writeFileSync(
+      join(path, 'codebook', 'distrust.md'),
+      '---\nid: C-distrust\nname: distrust\nevidence: []\n---\nlegacy\n',
+      'utf8',
+    )
+    assert.equal(planCodeIdMigration(path).conflicts.length, 1)
+    assert.throws(
+      () => applyCodeIdMigration(path, 'juan@example.com'),
+      (e: unknown) => e instanceof CompostError && /overwrite an existing code/.test(e.message),
+    )
+    // Nothing was clobbered: the original namespaced code's body survives.
+    assert.match(readFileSync(join(path, 'codebook', 'primary', 'distrust.md'), 'utf8'), /KEEP-ME/)
+  })
 })

@@ -217,10 +217,13 @@ export function registerCodebook(program: Command): void {
               dry_run: true,
               already_qualified: plan.already_qualified,
               codes: plan.codes.map((c) => ({ from: c.old_id, to: c.new_id })),
+              conflicts: plan.conflicts,
             },
             out,
-            (d: { codes: unknown[]; already_qualified: number }) =>
-              `codebook migrate-ids (dry-run): ${d.codes.length} code(s) would be qualified, ${d.already_qualified} already namespaced. Re-run with --apply.`,
+            (d: { codes: unknown[]; already_qualified: number; conflicts: unknown[] }) =>
+              `codebook migrate-ids (dry-run): ${d.codes.length} code(s) would be qualified, ${d.already_qualified} already namespaced${
+                d.conflicts.length > 0 ? `, ${d.conflicts.length} CONFLICT(s) block --apply` : ''
+              }. Re-run with --apply.`,
           )
           return
         }

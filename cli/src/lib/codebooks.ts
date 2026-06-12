@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
-import { isCompostError } from '../errors.js'
+import { CompostError } from '../errors.js'
 import { DEFAULT_CODEBOOK_ID, ensurePrimaryCodebook, updateArtifact } from './artifacts.js'
 import { codebookSlugOf, codeMarkdownPaths, parseCodeId, qualifiedCodeId } from './codeRefs.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
@@ -57,6 +57,9 @@ export interface CodeIdMigrationPlan {
   codes: Array<{ old_id: string; new_id: string; old_path: string; new_path: string }>
   /** Codes already in the namespaced form — left untouched. */
   already_qualified: number
+  /** Targets that would overwrite an existing un-migrated file, or that two
+   * codes map to — the migration refuses rather than clobber (#269 review). */
+  conflicts: Array<{ new_id: string; new_path: string }>
 }
 
 /**
@@ -83,7 +86,22 @@ export function planCodeIdMigration(seedPath: string): CodeIdMigrationPlan {
     }
     codes.push({ old_id: fm.id, new_id: newId, old_path: path, new_path: newPath })
   }
-  return { codes, already_qualified: already }
+
+  // Collision guard: a target that already exists as an un-migrated file, or
+  // that two codes map to, would silently overwrite/destroy data on --apply.
+  const targetCount = new Map<string, number>()
+  for (const c of codes)
+    targetCount.set(resolve(c.new_path), (targetCount.get(resolve(c.new_path)) ?? 0) + 1)
+  const movingFrom = new Set(codes.map((c) => resolve(c.old_path)))
+  const conflicts: CodeIdMigrationPlan['conflicts'] = []
+  for (const c of codes) {
+    const np = resolve(c.new_path)
+    const dupTarget = (targetCount.get(np) ?? 0) > 1
+    const overwrites = existsSync(c.new_path) && np !== resolve(c.old_path) && !movingFrom.has(np)
+    if (dupTarget || overwrites) conflicts.push({ new_id: c.new_id, new_path: c.new_path })
+  }
+
+  return { codes, already_qualified: already, conflicts }
 }
 
 export interface CodeIdMigrationResult {
@@ -103,16 +121,34 @@ export function applyCodeIdMigration(
   researcherId: string,
 ): CodeIdMigrationResult {
   const plan = planCodeIdMigration(seedPath)
+  if (plan.conflicts.length > 0) {
+    // Refuse before touching anything — overwriting/destroying a code is never
+    // the right migration outcome; the researcher resolves the duplicate first.
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Refusing migrate-ids: ${plan.conflicts.length} target(s) would overwrite an existing code — ${plan.conflicts
+        .map((c) => `${c.new_id} (${c.new_path})`)
+        .join(', ')}. Resolve the duplicate code names first.`,
+    )
+  }
+
   const author = { actorType: 'researcher' as const, actorId: researcherId }
+  // Emit a rename event ONLY for a code that has its OWN create event (exact id
+  // match) — never via updateArtifact's bare-shorthand resolution, which would
+  // fan out to an unrelated same-slug namespaced code and corrupt it (#269
+  // review). A file-only code (no create event) gets the file rewrite only.
+  const eventBackedIds = new Set(
+    listArtifacts(seedPath, 'code')
+      .map((s) => (s.current_state as { id?: string }).id)
+      .filter((id): id is string => typeof id === 'string'),
+  )
+
   const migrated: CodeIdMigrationResult['migrated'] = []
   for (const c of plan.codes) {
     let event_emitted = false
-    try {
+    if (eventBackedIds.has(c.old_id)) {
       updateArtifact(seedPath, c.old_id, { field: 'id', before: c.old_id, after: c.new_id }, author)
       event_emitted = true
-    } catch (err) {
-      // No create event behind this code (file-only) → frontmatter rewrite only.
-      if (!(isCompostError(err) && err.code === 'FILE_NOT_FOUND')) throw err
     }
     const content = readFileSync(c.old_path, 'utf8').replace(/^id:.*$/m, `id: ${c.new_id}`)
     mkdirSync(dirname(c.new_path), { recursive: true })
