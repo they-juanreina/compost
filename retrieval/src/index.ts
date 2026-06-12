@@ -11,6 +11,7 @@ export {
   type Cluster,
   clusterByEmbedding,
   type EmbeddedItem,
+  meanVector,
   type SaturationPulse,
   saturationPulse,
   suggestCodeClusters,

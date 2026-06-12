@@ -101,7 +101,7 @@ export function diffPayload(before: unknown, after: unknown): PayloadDiff {
  * mockable; the CLI wires a default that calls the LLM adapter for `ai` bundles. */
 export type Regenerator = (
   inputs: AiInputRow,
-  ctx: { actorType: string; modelOverride?: string },
+  ctx: { actorType: string; artifactKind: string; modelOverride?: string },
 ) => Promise<Record<string, unknown>>
 
 export interface RerunOptions {
@@ -185,6 +185,7 @@ export async function rerunEvent(seedPath: string, opts: RerunOptions): Promise<
 
     const newPayload = await opts.regenerate(inputs, {
       actorType: target.actor_type,
+      artifactKind: target.artifact_kind,
       ...(opts.modelOverride !== undefined ? { modelOverride: opts.modelOverride } : {}),
     })
     const appliedModel = opts.modelOverride ?? inputs.model
