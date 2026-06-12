@@ -18,6 +18,7 @@ import { CompostError } from '../errors.js'
 import { loadConfig, parseRoute } from '../lib/config.js'
 import { seedNameOf } from '../lib/seedResolve.js'
 import { LLMAdapter } from '../llm/adapter.js'
+import { backfillCodeIds } from './backfill.js'
 
 /**
  * Embed-worker: discovers chunkable artifacts under a seed, embeds new ones
@@ -53,6 +54,8 @@ export interface EmbedWorkerResult {
   embedded: number
   inserted: number
   transcripts_scanned: number
+  /** Chunk rows whose code_ids/codebook_ids were backfilled this pass (#275). */
+  backfilled: number
 }
 
 export async function runEmbedWorkerOnce(
@@ -62,7 +65,7 @@ export async function runEmbedWorkerOnce(
   const seedName = seedNameOf(seedPath)
   const transcripts = findTranscripts(seedPath)
   if (transcripts.length === 0) {
-    return { embedded: 0, inserted: 0, transcripts_scanned: 0 }
+    return { embedded: 0, inserted: 0, transcripts_scanned: 0, backfilled: 0 }
   }
 
   // Resolve embeddings provider + dimension.
@@ -77,7 +80,7 @@ export async function runEmbedWorkerOnce(
   }
 
   if (allChunks.length === 0) {
-    return { embedded: 0, inserted: 0, transcripts_scanned: transcripts.length }
+    return { embedded: 0, inserted: 0, transcripts_scanned: transcripts.length, backfilled: 0 }
   }
 
   // Open / create the LanceDB table, then filter for new SHAs before embedding
@@ -137,10 +140,16 @@ export async function runEmbedWorkerOnce(
   )
 
   const inserted = await writer.upsertByTextSha(records)
+  // Auto-backfill (#275): stamp code_ids/codebook_ids onto already-embedded
+  // chunks from current code evidence. Runs every pass — `watch` fires the
+  // worker after creates, so codes attached post-ingest become filterable
+  // without a manual step. `reindex --vectors` calls the same path as a backstop.
+  const backfilled = await backfillCodeIds(seedPath, writer)
   return {
     embedded: allChunks.length,
     inserted,
     transcripts_scanned: transcripts.length,
+    backfilled,
   }
 }
 

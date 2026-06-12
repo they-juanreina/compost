@@ -97,6 +97,28 @@ describe('HybridRetriever', () => {
     assert.ok(hits.every((h) => h.metadata.actor_type !== 'ai'))
   })
 
+  it('applies codebook + code filters (#275)', async () => {
+    const idx = new BM25Index()
+    idx.addAll([
+      chunk('c1', 'distrust the alert', { code_ids: ['C-distrust'], codebook_ids: ['CB-primary'] }),
+      chunk('c2', 'power and the alert', { code_ids: ['C-power'], codebook_ids: ['CB-critical'] }),
+      chunk('c3', 'the alert is uncoded', {}),
+    ])
+    const r = new HybridRetriever(idx)
+
+    const byCodebook = await r.retrieve('alert', { filters: { codebook_id: 'CB-primary' } })
+    assert.deepEqual(
+      byCodebook.map((h) => h.id),
+      ['c1'],
+    )
+    const byCode = await r.retrieve('alert', { filters: { code_ids: ['C-power'] } })
+    assert.deepEqual(
+      byCode.map((h) => h.id),
+      ['c2'],
+    )
+    assert.ok(!byCodebook.some((h) => h.id === 'c3')) // uncoded never matches
+  })
+
   it('applies source author filters (#270)', async () => {
     const idx = new BM25Index()
     idx.addAll([

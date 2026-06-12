@@ -10,6 +10,11 @@ export interface RetrievalFilters {
   /** Restrict to sourced documents by author (#270). A chunk matches if its
    * attribution.author is one of these. */
   author?: string[]
+  /** Restrict to one codebook frame (#275): a chunk matches if its
+   * codebook_ids set contains this CB- id. */
+  codebook_id?: string
+  /** Restrict to chunks covering any of these codes (#275). */
+  code_ids?: string[]
 }
 
 /** A dense retriever (vectors) — implemented by the LanceDB/BGE path (#43,#44).
@@ -37,6 +42,13 @@ function matchesFilters(c: Chunk, f?: RetrievalFilters): boolean {
   if (f.author !== undefined) {
     const author = c.metadata.attribution?.author
     if (author === undefined || !f.author.includes(author)) return false
+  }
+  if (f.codebook_id !== undefined && !(c.metadata.codebook_ids ?? []).includes(f.codebook_id)) {
+    return false
+  }
+  if (f.code_ids !== undefined) {
+    const have = new Set(c.metadata.code_ids)
+    if (!f.code_ids.some((id) => have.has(id))) return false
   }
   return true
 }

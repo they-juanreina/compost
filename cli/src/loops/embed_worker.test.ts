@@ -52,6 +52,9 @@ class FakeWriter {
     this.inserted.push(...fresh)
     return fresh.length
   }
+  async updateChunkMetadata(): Promise<number> {
+    return 0 // no codes/highlights in these fixtures → backfill is a no-op
+  }
   async size(): Promise<number> {
     return this.inserted.length
   }
@@ -73,7 +76,7 @@ describe('runEmbedWorkerOnce', () => {
       writer: writer as unknown as LanceDBWriter,
       embed: async () => [],
     })
-    assert.deepEqual(result, { embedded: 0, inserted: 0, transcripts_scanned: 0 })
+    assert.deepEqual(result, { embedded: 0, inserted: 0, transcripts_scanned: 0, backfilled: 0 })
     assert.equal(writer.inserted.length, 0)
   })
 

@@ -2,7 +2,14 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
 import { parseAnthropicCitations, toDocumentBlocks } from './citations_anthropic.js'
-import { buildVectorRecords, type IndexableArtifact, LanceDBRetriever } from './lancedb.js'
+import {
+  buildVectorRecords,
+  type IndexableArtifact,
+  LanceDBRetriever,
+  LanceDBWriter,
+  type LanceWritableTable,
+  type VectorRecord,
+} from './lancedb.js'
 
 describe('Anthropic citations (#42)', () => {
   it('formats chunks as document blocks with citations enabled', () => {
@@ -128,5 +135,157 @@ describe('LanceDB (#43)', () => {
     const retriever = new LanceDBRetriever(table, async () => [1, 0])
     const hits = await retriever.search('q', 5)
     assert.deepEqual(hits[0]?.metadata.attribution, { author: 'Donna Haraway', year: '2007' })
+  })
+
+  it('parses the stored metadata blob onto dense hits (#275)', async () => {
+    // The backfill writes code_ids/codebook_ids into the metadata JSON blob;
+    // the retriever must surface them or code/codebook filters drop every
+    // dense hit (it used to hardcode code_ids: []).
+    const table = {
+      async search(_v: number[], _k: number) {
+        return [
+          {
+            id: 'utterance:abc',
+            kind: 'utterance',
+            seed: 'demo',
+            session: 'S001',
+            speaker_id: 'S1',
+            start_ms: 0,
+            end_ms: 1,
+            author: null,
+            year: null,
+            text: 'coded text',
+            vector: [1, 0],
+            metadata: JSON.stringify({
+              source_page: 3,
+              highlight_ids: ['H-1'],
+              code_ids: ['C-distrust'],
+              codebook_ids: ['CB-primary'],
+              actor_type: 'researcher',
+              chunk_type: 'utterance',
+            }),
+            text_sha: 'sha-abc',
+            _distance: 0.1,
+          },
+        ]
+      },
+    }
+    const retriever = new LanceDBRetriever(table, async () => [1, 0])
+    const m = (await retriever.search('q', 5))[0]?.metadata
+    assert.deepEqual(m?.code_ids, ['C-distrust'])
+    assert.deepEqual(m?.codebook_ids, ['CB-primary'])
+    assert.deepEqual(m?.highlight_ids, ['H-1'])
+    assert.equal(m?.source_page, 3)
+    assert.equal(m?.actor_type, 'researcher')
+  })
+})
+
+// A stateful fake of the lancedb writable surface, keyed by id. Enough to
+// exercise the metadata-update read-modify-write without the native binary.
+class FakeWritableTable implements LanceWritableTable {
+  rows = new Map<string, VectorRecord>()
+  constructor(seed: VectorRecord[] = []) {
+    for (const r of seed) this.rows.set(r.id, r)
+  }
+  async add(rows: VectorRecord[]): Promise<void> {
+    for (const r of rows) this.rows.set(r.id, r)
+  }
+  async countRows(): Promise<number> {
+    return this.rows.size
+  }
+  // Minimal predicate support: `id = '<x>'` (the only shape the writer emits).
+  private match(predicate?: string): VectorRecord[] {
+    if (predicate === undefined) return [...this.rows.values()]
+    const m = /id = '(.*)'/.exec(predicate)
+    if (m === null) return []
+    const id = (m[1] ?? '').replace(/''/g, "'")
+    const row = this.rows.get(id)
+    return row !== undefined ? [row] : []
+  }
+  query() {
+    const self = this
+    const build = (predicate?: string) => ({
+      where: (p: string) => build(p),
+      select: (_cols: string[]) => ({
+        async toArray() {
+          return self.match(predicate).map((r) => ({ ...r }) as Record<string, unknown>)
+        },
+      }),
+    })
+    return build()
+  }
+  async update(opts: { where: string; values: Record<string, unknown> }): Promise<void> {
+    for (const r of this.match(opts.where)) {
+      this.rows.set(r.id, { ...r, ...opts.values } as VectorRecord)
+    }
+  }
+}
+
+function row(id: string, metadata: Record<string, unknown>): VectorRecord {
+  return {
+    id,
+    kind: 'utterance',
+    seed: 'demo',
+    session: 'S001',
+    speaker_id: null,
+    start_ms: null,
+    end_ms: null,
+    author: null,
+    year: null,
+    text: id,
+    vector: [1, 0],
+    metadata: JSON.stringify(metadata),
+    text_sha: `sha-${id}`,
+  }
+}
+
+describe('LanceDBWriter.updateChunkMetadata (#275)', () => {
+  it('backfills code_ids + codebook_ids onto an existing chunk by id', async () => {
+    const table = new FakeWritableTable([row('utterance:abc', { session: 'S001', code_ids: [] })])
+    const writer = new LanceDBWriter(table)
+    const n = await writer.updateChunkMetadata([
+      {
+        id: 'utterance:abc',
+        code_ids: ['C-distrust', 'C-control'],
+        codebook_ids: ['CB-primary', 'CB-lens-b'],
+      },
+    ])
+    assert.equal(n, 1)
+    const meta = JSON.parse(table.rows.get('utterance:abc')?.metadata ?? '{}')
+    assert.deepEqual(meta.code_ids, ['C-distrust', 'C-control'])
+    assert.deepEqual(meta.codebook_ids, ['CB-primary', 'CB-lens-b'])
+    assert.equal(meta.session, 'S001') // untouched fields preserved
+  })
+
+  it('REPLACES code_ids (recompute shrinks, not unions)', async () => {
+    const table = new FakeWritableTable([
+      row('utterance:x', { code_ids: ['C-stale-a', 'C-stale-b'] }),
+    ])
+    const writer = new LanceDBWriter(table)
+    await writer.updateChunkMetadata([{ id: 'utterance:x', code_ids: ['C-kept'] }])
+    const meta = JSON.parse(table.rows.get('utterance:x')?.metadata ?? '{}')
+    assert.deepEqual(meta.code_ids, ['C-kept'])
+  })
+
+  it('skips ids not in the table and empty patches', async () => {
+    const table = new FakeWritableTable([row('utterance:x', { code_ids: [] })])
+    const writer = new LanceDBWriter(table)
+    const n = await writer.updateChunkMetadata([
+      { id: 'utterance:missing', code_ids: ['C-a'] }, // no such row
+      { id: 'utterance:x' }, // no fields to set
+    ])
+    assert.equal(n, 0)
+    assert.deepEqual(JSON.parse(table.rows.get('utterance:x')?.metadata ?? '{}').code_ids, [])
+  })
+
+  it('only updates the targeted row, leaving siblings untouched', async () => {
+    const table = new FakeWritableTable([
+      row('utterance:a', { code_ids: [] }),
+      row('utterance:b', { code_ids: [] }),
+    ])
+    const writer = new LanceDBWriter(table)
+    await writer.updateChunkMetadata([{ id: 'utterance:a', code_ids: ['C-a'] }])
+    assert.deepEqual(JSON.parse(table.rows.get('utterance:a')?.metadata ?? '{}').code_ids, ['C-a'])
+    assert.deepEqual(JSON.parse(table.rows.get('utterance:b')?.metadata ?? '{}').code_ids, [])
   })
 })

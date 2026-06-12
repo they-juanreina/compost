@@ -1,5 +1,5 @@
 import type { DenseRetriever } from './hybrid.js'
-import type { ScoredChunk } from './types.js'
+import type { ChunkMetadata, ScoredChunk, SourceAttribution } from './types.js'
 
 // LanceDB embeddings store (#43). Table schema + record builder are pure and
 // tested; the actual lancedb connection is lazily imported so the workspace
@@ -77,13 +77,48 @@ export interface LanceTable {
   search(vector: number[], k: number): Promise<Array<VectorRecord & { _distance: number }>>
 }
 
+/** A lancedb query builder (the subset we use). `where` narrows by predicate;
+ * `select` projects columns. Both the SHA-projection upsert path and the
+ * metadata-update path read through this. */
+export interface LanceQuery {
+  where(predicate: string): LanceQuery
+  select(cols: string[]): { toArray(): Promise<Array<Record<string, unknown>>> }
+}
+
 /** Subset of the native lancedb table surface our writer needs. Injected in tests. */
 export interface LanceWritableTable {
   add(rows: VectorRecord[]): Promise<void>
   countRows(): Promise<number>
-  /** Project text_sha to filter incoming records for idempotent upserts. */
-  query(): {
-    select(cols: string[]): { toArray(): Promise<Array<{ text_sha: string }>> }
+  query(): LanceQuery
+  /** Set columns on the rows matching `where` (#275 metadata backfill). */
+  update(opts: { where: string; values: Record<string, unknown> }): Promise<void>
+}
+
+/** A backfill patch for one already-embedded chunk (#275). */
+export interface ChunkMetadataPatch {
+  /** Chunk id (the LanceDB row id) to patch. */
+  id: string
+  /** Authoritative code_ids for the chunk — REPLACES the existing set (not a
+   * union), so a recompute after an `unlink` shrinks it rather than growing. */
+  code_ids?: string[]
+  /** Codebook frames the chunk's codes belong to — REPLACES the existing set
+   * (a set, since an utterance may be coded under several lenses; #275). */
+  codebook_ids?: string[]
+}
+
+/** SQL string literal with single-quotes escaped, for a `where` predicate. */
+function sqlString(s: string): string {
+  return `'${s.replace(/'/g, "''")}'`
+}
+
+/** Parse a row's JSON metadata blob into an object; {} on absence/garbage. */
+function parseMetadata(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== 'string') return {}
+  try {
+    const v: unknown = JSON.parse(raw)
+    return typeof v === 'object' && v !== null ? (v as Record<string, unknown>) : {}
+  } catch {
+    return {}
   }
 }
 
@@ -101,6 +136,33 @@ export class LanceDBWriter {
     const fresh = records.filter((r) => !have.has(r.text_sha))
     if (fresh.length > 0) await this.table.add(fresh)
     return fresh.length
+  }
+
+  /**
+   * Backfill `code_ids` / `codebook_ids` onto already-embedded chunks (#275).
+   * `upsertByTextSha` is add-only — it skips a row whose `text_sha` is already
+   * present — so codes created or linked AFTER the ingest-time embed pass never
+   * reach chunk metadata, leaving codebook-filtered retrieval hollow. This is
+   * the missing update path: a read-modify-write of each row's JSON metadata
+   * blob, keyed by chunk id. Returns the number of rows actually updated
+   * (a patch whose id isn't in the table, or that carries no fields, is a
+   * no-op). Both fields are REPLACED so the caller can recompute the
+   * authoritative set from current code evidence each pass.
+   */
+  async updateChunkMetadata(patches: ChunkMetadataPatch[]): Promise<number> {
+    let updated = 0
+    for (const patch of patches) {
+      if (patch.code_ids === undefined && patch.codebook_ids === undefined) continue
+      const where = `id = ${sqlString(patch.id)}`
+      const rows = await this.table.query().where(where).select(['metadata']).toArray()
+      if (rows.length === 0) continue
+      const metadata = parseMetadata(rows[0]?.metadata)
+      if (patch.code_ids !== undefined) metadata.code_ids = [...patch.code_ids]
+      if (patch.codebook_ids !== undefined) metadata.codebook_ids = [...patch.codebook_ids]
+      await this.table.update({ where, values: { metadata: JSON.stringify(metadata) } })
+      updated += 1
+    }
+    return updated
   }
 
   async size(): Promise<number> {
@@ -206,34 +268,44 @@ export class LanceDBRetriever implements DenseRetriever {
   async search(query: string, k: number): Promise<ScoredChunk[]> {
     const qv = await this.embedQuery(query)
     const rows = await this.table.search(qv, k)
-    return rows.map((r) => ({
-      id: r.id,
-      text: r.text,
-      text_sha: r.text_sha,
-      // cosine distance → similarity score
-      score: 1 - r._distance,
-      metadata: {
-        seed: r.seed,
-        session: r.session,
-        speaker_id: r.speaker_id,
-        start_ms: r.start_ms,
-        end_ms: r.end_ms,
-        source_page: null,
-        highlight_ids: [],
-        code_ids: [],
-        actor_type: 'agent',
-        chunk_type: 'utterance',
-        // Surface the attribution columns so a sourced-document filter (#270)
-        // matches dense hits, not just BM25 ones.
-        ...(r.author || r.year
-          ? {
-              attribution: {
-                ...(r.author ? { author: r.author } : {}),
-                ...(r.year ? { year: r.year } : {}),
-              },
-            }
-          : {}),
-      },
-    }))
+    return rows.map((r) => {
+      // Parse the stored metadata blob so dense hits carry the real
+      // source_page / highlight_ids / code_ids / codebook_ids / attribution —
+      // not the hardcoded empties this used to return, which made
+      // code/codebook-filtered retrieval (#275) silently drop every dense hit.
+      const blob = parseMetadata(r.metadata)
+      const strArr = (v: unknown): string[] =>
+        Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+      const codebookIds = strArr(blob.codebook_ids)
+      // Prefer the blob's full attribution (carries the structured citation);
+      // fall back to the author/year columns for older rows (#270).
+      const attribution: SourceAttribution | undefined =
+        typeof blob.attribution === 'object' && blob.attribution !== null
+          ? (blob.attribution as SourceAttribution)
+          : r.author || r.year
+            ? { ...(r.author ? { author: r.author } : {}), ...(r.year ? { year: r.year } : {}) }
+            : undefined
+      return {
+        id: r.id,
+        text: r.text,
+        text_sha: r.text_sha,
+        // cosine distance → similarity score
+        score: 1 - r._distance,
+        metadata: {
+          seed: r.seed,
+          session: r.session,
+          speaker_id: r.speaker_id,
+          start_ms: r.start_ms,
+          end_ms: r.end_ms,
+          source_page: typeof blob.source_page === 'number' ? blob.source_page : null,
+          highlight_ids: strArr(blob.highlight_ids),
+          code_ids: strArr(blob.code_ids),
+          actor_type: (blob.actor_type as ChunkMetadata['actor_type']) ?? 'agent',
+          chunk_type: (blob.chunk_type as ChunkMetadata['chunk_type']) ?? 'utterance',
+          ...(codebookIds.length > 0 ? { codebook_ids: codebookIds } : {}),
+          ...(attribution !== undefined ? { attribution } : {}),
+        },
+      }
+    })
   }
 }

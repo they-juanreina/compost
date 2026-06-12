@@ -42,6 +42,16 @@ function chunkId(text: string, type: string): string {
   return `${type}:${sha(`${CHUNKER_VERSION}:${type}:${text}`).slice(0, 16)}`
 }
 
+/**
+ * Public form of `chunkId` (#275). The metadata backfill needs to address the
+ * exact chunk ids the chunker produced for a given utterance — both the
+ * `utterance` and `highlight` chunks use the utterance text, distinguished by
+ * type. Kept in lockstep with the chunker so a recompute hits the same rows.
+ */
+export function chunkIdFor(text: string, type: ChunkMetadata['chunk_type']): string {
+  return chunkId(text, type)
+}
+
 function bigSilenceBetween(
   silences: NonNullable<ChunkerTranscript['silences']>,
   fromMs: number,
