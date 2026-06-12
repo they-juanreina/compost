@@ -5,7 +5,14 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import { CompostError } from '../errors.js'
-import { createCode, createHighlight, createTheme, endorseArtifact } from './artifacts.js'
+import {
+  createCode,
+  createCodebook,
+  createHighlight,
+  createTheme,
+  endorseArtifact,
+  rejectArtifact,
+} from './artifacts.js'
 import { blame } from './blame.js'
 import type { Author } from './events.js'
 import { initSeed } from './seed.js'
@@ -139,6 +146,110 @@ describe('createCode / createTheme', () => {
     assert.throws(
       () => createCode(path, { name: '!!!', definition: 'x', author: RESEARCHER }),
       (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
+    )
+  })
+})
+
+describe('in-vivo code-name enforcement (#268)', () => {
+  let work: string
+  let path: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-invivo-'))
+    path = initSeed('demo', { cwd: work }).path
+    createCodebook(path, { name: 'voices', stance: 'in_vivo', author: RESEARCHER })
+    createHighlight(path, {
+      sessionId: 'S001',
+      utteranceId: 'U-1',
+      span: [0, 40],
+      text: 'we are answerable for what we learn how to see',
+      author: RESEARCHER,
+    }) // → H-001
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('accepts an in_vivo code whose name appears verbatim in its evidence', () => {
+    const created = createCode(path, {
+      name: 'answerable for what we learn how to see',
+      definition: 'accountability over agreement',
+      evidence: ['H-001'],
+      codebookId: 'voices',
+      author: RESEARCHER,
+    })
+    assert.equal(created.id, 'C-answerable-for-what-we-learn-how-to-see')
+  })
+
+  it('matches verbatim case-insensitively / whitespace-normalized', () => {
+    assert.doesNotThrow(() =>
+      createCode(path, {
+        name: 'Answerable   For What We Learn How To See',
+        definition: 'd',
+        evidence: ['H-001'],
+        codebookId: 'voices',
+        author: RESEARCHER,
+      }),
+    )
+  })
+
+  it('rejects an in_vivo code whose name is NOT in its evidence', () => {
+    assert.throws(
+      () =>
+        createCode(path, {
+          name: 'situated knowledge', // not in H-001's text
+          definition: 'd',
+          evidence: ['H-001'],
+          codebookId: 'voices',
+          author: RESEARCHER,
+        }),
+      (e: unknown) =>
+        e instanceof CompostError && e.code === 'INVALID_INPUT' && /verbatim/.test(e.message),
+    )
+  })
+
+  it('rejects an in_vivo code with no evidence to validate against', () => {
+    assert.throws(
+      () =>
+        createCode(path, {
+          name: 'answerable',
+          definition: 'd',
+          codebookId: 'voices',
+          author: RESEARCHER,
+        }),
+      (e: unknown) =>
+        e instanceof CompostError && e.code === 'INVALID_INPUT' && /needs evidence/.test(e.message),
+    )
+  })
+
+  it('keeps enforcing even if the in_vivo codebook was rejected (no silent disable)', () => {
+    // Reject the codebook; resolveCodebookId still resolves its id, so a code
+    // can be created under it — enforcement must NOT degrade to inductive.
+    rejectArtifact(path, 'CB-voices', 'reviewer@example.com')
+    assert.throws(
+      () =>
+        createCode(path, {
+          name: 'totally unrelated phrase',
+          definition: 'd',
+          evidence: ['H-001'],
+          codebookId: 'voices',
+          author: RESEARCHER,
+        }),
+      (e: unknown) =>
+        e instanceof CompostError && e.code === 'INVALID_INPUT' && /verbatim/.test(e.message),
+    )
+  })
+
+  it('does NOT enforce verbatim for non-in_vivo codebooks (primary / framework)', () => {
+    // primary (inductive) — any name is fine, no evidence required.
+    assert.doesNotThrow(() =>
+      createCode(path, { name: 'free-form descriptive code', definition: 'd', author: RESEARCHER }),
+    )
+    createCodebook(path, { name: 'epistemology', stance: 'framework', author: RESEARCHER })
+    assert.doesNotThrow(() =>
+      createCode(path, {
+        name: 'situated-standpoint',
+        definition: 'd',
+        codebookId: 'epistemology',
+        author: RESEARCHER,
+      }),
     )
   })
 })

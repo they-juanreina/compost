@@ -30,6 +30,16 @@ function normalize(s: string): string {
   return s.toLowerCase().replace(/\s+/g, ' ').trim()
 }
 
+/**
+ * Does `phrase` appear verbatim in `text`? The same normalization the citation
+ * validator uses (lowercase + collapsed whitespace), so "verbatim" means the
+ * same thing for chat citations and for in-vivo code-name validation (#268).
+ */
+export function verbatimIncludes(text: string, phrase: string): boolean {
+  const p = normalize(phrase)
+  return p.length > 0 && normalize(text).includes(p)
+}
+
 /** Validate an answer: schema-valid, every claim's utterance_id in the
  * evidence set, and every quote substring-matches that utterance's text. */
 export function validateAnswer(answer: unknown, evidence: EvidenceSet): ValidationResult {
