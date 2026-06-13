@@ -12,9 +12,11 @@ Suggest codes by clustering un-coded highlights and emit them as AI
 
 1. Make sure highlights are embedded. Embeddings are written as
    `Seeds/<name>/highlights/<id>.json` sidecars (each `{id, vector}`) by the
-   embed-worker during ingest/watch. If the sidecar count is zero, surface
-   that and stop — there is nothing to cluster. (`compost reindex --vectors`
-   is currently a stub; do not rely on it.)
+   embed-worker during ingest/watch. If the sidecar count is zero, the
+   highlights haven't been embedded yet — run `compost watch --once` (or
+   `compost reindex --vectors`, which re-runs the embed worker) to embed them,
+   then retry. With still no sidecars (e.g. no embeddings provider), surface
+   that and stop — there is nothing to cluster.
 2. **Preview**: `compost code --seed <name> --json` (or `compost rescan` — same
    underlying logic) clusters via cosine single-link with a cohesion score and
    reports what it *would* suggest. Inspect the preview with the user before
@@ -55,11 +57,11 @@ same artifact — the AI event stays in history.
   "suggested": 1,
   "suggestions": [
     {
-      "code_id": "C-ai-draft-distrust-of-automation",
+      "code_id": "C-primary/distrust-of-automation",
       "cohesion": 0.87,
       "members": ["H-001", "H-014", "H-022"],
       "draft_name": "distrust-of-automation",
-      "provenance": { "actor_type": "ai", "model": "claude-opus-4-7", "prompt_hash": "…" }
+      "provenance": { "actor_type": "ai", "model": "claude-opus-4-8", "prompt_hash": "…" }
     }
   ]
 }
