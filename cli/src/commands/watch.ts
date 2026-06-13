@@ -34,9 +34,10 @@ export function registerWatch(program: Command): void {
           : undefined
         if (flags.once === true) {
           const result = await runSupervisorOnce(seedPath, onProgress ? { onProgress } : {})
-          // A drained-but-failed job is not success (#164): non-ok status + exit 1
-          // so scripts/CI can gate, with the failures surfaced inline.
-          const ok = result.failures.length === 0
+          // A drained-but-failed job (#164) OR a standing dead job (#239) is not
+          // success: non-ok status + exit 1 so scripts/CI can gate, with the
+          // failures surfaced inline.
+          const ok = result.failures.length === 0 && result.dead_jobs === 0
           emit(
             {
               status: ok ? 'ok' : 'completed_with_failures',
@@ -82,11 +83,15 @@ export function registerWatch(program: Command): void {
             if (result.failures.length > 0) failedJobPasses += 1
             lastDeadJobs = result.dead_jobs
             // Surface drained-but-failed / dead jobs that don't throw, so they
-            // aren't only visible via `compost status`/`jobs`.
+            // aren't only visible via `compost status`/`jobs`. Report each count
+            // only when non-zero — an idle pass over a dead queue is "1 dead
+            // job(s)", not "1 failure(s), 1 dead job(s)" double-counting the same
+            // job (#239 follow-up).
             if (out.human && (result.failures.length > 0 || result.dead_jobs > 0)) {
-              process.stderr.write(
-                `pass: ${result.failures.length} failure(s), ${result.dead_jobs} dead job(s) — see \`compost jobs\`\n`,
-              )
+              const parts: string[] = []
+              if (result.failures.length > 0) parts.push(`${result.failures.length} failure(s)`)
+              if (result.dead_jobs > 0) parts.push(`${result.dead_jobs} dead job(s)`)
+              process.stderr.write(`pass: ${parts.join(', ')} — see \`compost jobs\`\n`)
             }
           },
         })

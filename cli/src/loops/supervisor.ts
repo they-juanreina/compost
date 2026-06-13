@@ -1,4 +1,4 @@
-import { JobQueue, MAX_ATTEMPTS, stateDbPath } from '../lib/queue.js'
+import { JobQueue, stateDbPath } from '../lib/queue.js'
 import { getLogPath, Logger } from '../logging.js'
 import {
   type EmbedWorkerDeps,
@@ -21,10 +21,15 @@ export interface SupervisorResult {
     highlights_embedded: number
   }
   /** Jobs that exhausted their attempt budget and sit permanently failed in the
-   * queue — nothing will pick them up until `compost jobs requeue` (#239). */
+   * queue — nothing will pick them up until `compost jobs requeue` (#239). This
+   * is a STANDING count of the queue, independent of `failures` (which is only
+   * what went wrong *this* pass); a job can appear in both on the pass that kills
+   * it, but a later idle pass over a dead queue reports dead_jobs>0, failures:[]. */
   dead_jobs: number
-  /** Human-readable failure summaries; empty when the pass was clean. The watch
-   * command turns a non-empty list into a non-ok status + non-zero exit (#164). */
+  /** Human-readable summaries of what failed *this pass* (a transcribe/legacy/
+   * embed job that errored, or a worker that threw); empty when the pass did no
+   * failing work. Does NOT include standing dead jobs — those are `dead_jobs`.
+   * The watch command gates exit on both (#164, #239). */
   failures: string[]
 }
 
@@ -127,10 +132,11 @@ export async function runSupervisorOnce(
   const queue = new JobQueue(stateDbPath(seedPath))
   const deadJobs = queue.counts().failed
   queue.close()
+  // Standing dead jobs are reported via `dead_jobs`, NOT pushed into `failures` —
+  // otherwise a single permanently-failed job is double-counted (once as a
+  // "failure", once as a "dead job") on every idle pass (#239 follow-up). The
+  // watch command gates its exit on dead_jobs explicitly.
   if (deadJobs > 0) {
-    failures.push(
-      `${deadJobs} job(s) permanently failed after ${MAX_ATTEMPTS} attempts — run \`compost jobs\` to inspect and \`compost jobs requeue\` to retry`,
-    )
     await logger.warn('dead jobs in queue', { count: deadJobs })
   }
 
