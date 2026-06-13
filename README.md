@@ -35,7 +35,7 @@ Or try the bundled sample corpus without recording anything: `compost init sampl
 Three surfaces over one engine:
 
 - **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `ingest`, `transcribe`, `watch`, `snap`, `status`, `blame`, `export`, `backup`, `validate`, `reindex`, `config`, `search`, `session`, `create`, `endorse`, `setup`, `secrets`, `tag`, `code`, `rescan`, `saturate`, `codebook`, `category`, `recode`, `agreement`.
-- **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-codebook`, …) and 19 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
+- **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-codebook`, …) and 21 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
 - **Web UI** — a later milestone (transcript player, drag-to-highlight, theme board). Today the surfaces are the CLI and the plugin.
 
 ## Provenance
@@ -46,13 +46,12 @@ Every change to every artifact is an append-only event in `.compost/events.sqlit
 
 ## Status
 
-**v0.2.0** adds the **codebook & category data model**: codes belong to declared interpretive lenses (codebooks), group into second-cycle categories, and ground themes through a heterogeneous `{code | category}` evidence set — with codebook-scoped agreement/saturation, codebook-filtered retrieval, and source/author attribution for sourced documents. The **v0.1 (shareable harness)** base is feature-complete: ingest, transcription (native Parakeet/Whisper + pyannote on Metal, Docker fallback), legacy document ingest, local embeddings (Ollama + LanceDB), hybrid retrieval (BM25 + dense vectors fused via Reciprocal Rank Fusion), grounded chat with enforced citations, three-actor provenance, the Claude Code plugin, and the `compost setup` doctor.
+**v0.2.1** completes the **codebook & category data model** milestone: `compost codebook duplicate` (copy a lens as a new independent frame — definitions + lineage travel, evidence re-grounds locally; `--from <seed>` reuses a validated frame across studies) and `compost codebook merge` (fold one lens into another, keeping colliding names distinct) now ship on the qualified-code-id foundation. v0.2.0 introduced the model itself: codes belong to declared interpretive lenses (codebooks), group into second-cycle categories, and ground themes through a heterogeneous `{code | category}` evidence set — with codebook-scoped agreement/saturation, codebook-filtered retrieval, and source/author attribution for sourced documents. The **v0.1 (shareable harness)** base is feature-complete: ingest, transcription (native Parakeet/Whisper + pyannote on Metal, Docker fallback), legacy document ingest, local embeddings (Ollama + LanceDB), hybrid retrieval (BM25 + dense vectors fused via Reciprocal Rank Fusion), grounded chat with enforced citations, three-actor provenance, the Claude Code plugin, and the `compost setup` doctor.
 
 Retrieval is hybrid end to end: `compost watch` builds the LanceDB index by default, and both `compost search` and `compost chat` fuse BM25 with dense LanceDB results via RRF when the index and an embeddings provider are present — reporting `retrieval: "hybrid"` — and fall back cleanly to BM25 (`retrieval: "bm25"`) when they're not. `compost chat` answers only from retrieved passages and validates every citation (utterance must be in the retrieval set, quote must match verbatim) before returning.
 
 Known limitations:
 - The cross-encoder rerank stage (`retrieval/src/rerank.ts`) is implemented and unit-tested but has no CLI caller yet, so the final `hybrid → rerank → top-N` step is effectively off — `search` and `chat` return RRF-fused results directly.
-- `compost codebook merge | fork | import` are stubs; the qualified-code-id foundation they build on shipped in v0.2.0 (tracked in [#269](https://github.com/they-juanreina/compost/issues/269)).
 - The web UI is an upcoming milestone.
 - `compost serve`, `query`, and `synthesize` are stubs.
 

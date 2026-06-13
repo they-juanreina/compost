@@ -54,14 +54,16 @@ repo-root [`CLAUDE.md`](../CLAUDE.md).
 Carried from the v0.2.0 critical review — the places where compost is *closest
 to the line* and should be re-tested before extending:
 
-1. **Speculative foundation (kill filter, §1/§4/§5).** The qualified-code-id
-   scheme + `migrate-ids` were built to support `codebook duplicate | merge`
-   (verbs settled 2026-06-13, was `merge | fork | import`) — verbs that don't yet
-   exist and haven't passed the kill test ("can an agent combine two codebooks
-   without this?"). The vocabulary is now grounded in the methodology library
-   (`docs/design-codebook-merge-fork-import.md`); the *need* still isn't. Freeze
-   the scheme; don't extend it until the verbs earn their existence on a real
-   two-lens study.
+1. **Speculative foundation (kill filter, §1/§4/§5) — RESOLVED, shipped v0.2.1.**
+   The qualified-code-id scheme + `migrate-ids` were built ahead of the
+   `codebook duplicate | merge` verbs they support. The verbs now exist
+   (`duplicate` #296, `merge` #297; `fork`+`import` collapsed into `duplicate`).
+   The kill filter was run on the real Edges & Ecotones two-lens study
+   (`docs/dogfood-edges-ecotones-duplicate-merge.md`): filters 1–3 pass and the
+   consumers shipped, but the *need* came back *grounded-but-not-demonstrated* on
+   the one available study — built on an explicit maintainer override. The
+   precedent stands: a foundation laid ahead of demonstrated need is a debt the
+   verb work had to repay, not a pattern to repeat.
 2. **Capability vs. reasoning (§2).** `category suggest` / `code` / `rescan`
    cluster embeddings to *propose* groupings. The computation is a legitimate
    local capability; framing the output as "AI-proposed categories/codes" edges

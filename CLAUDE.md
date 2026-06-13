@@ -92,13 +92,15 @@ and its demand is unproven, I say so and recommend validating before building.
 
 From the v0.2.0 audit (see the addendum):
 
-- **`codebook duplicate | merge`** (verbs settled 2026-06-13, was
-  `merge | fork | import`) + the qualified-code-id scheme — built ahead of a
-  proven need. The vocabulary is now grounded (see
-  `docs/design-codebook-merge-fork-import.md`: `fork`+`import`→`duplicate`,
-  `merge` kept, `diverge`/`converge` rejected). Still run the kill filter on the
-  verbs against a **real two-lens study** *before* writing them; don't deepen the
-  id scheme meanwhile.
+- **`codebook duplicate | merge`** — **RESOLVED, shipped v0.2.1** (`duplicate`
+  #296, `merge` #297; closed #269). The kill filter was run on the real
+  Edges & Ecotones two-lens study
+  (`docs/dogfood-edges-ecotones-duplicate-merge.md`): filters 1–3 pass and the
+  consumers shipped, but #4 came back *grounded-but-not-demonstrated* — built on
+  an explicit maintainer override, recorded there. `fork`+`import` collapsed into
+  `duplicate`. Kept here as the precedent for the gate, not an open tension. *If
+  a `merge --rewire` (auto re-point themes/categories instead of refusing) is
+  ever added, re-run the kill filter on it first.*
 - **`category suggest` / `code` / `rescan`** — keep as untrusted
   deterministic-actor `[draft]`s, or reframe as a raw "nearby codes" query;
   don't let compost present groupings as interpretation.
@@ -108,4 +110,6 @@ From the v0.2.0 audit (see the addendum):
   irreducible (§11), preview-then-confirm for consequential acts (§12), history
   as a scannable trust surface (§13), shared selection as agent context (§14).
   No business logic, no embedded reasoning loop. Do not render unvalidated
-  features (the codebook verbs, AI-suggestion-as-truth) into it.
+  features (e.g. AI-suggestion-as-truth) into it — and the codebook verbs,
+  though now shipped on CLI/MCP, stay off the web UI until that surface itself
+  is designed.
