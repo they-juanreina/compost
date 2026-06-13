@@ -1,6 +1,6 @@
 {
   "name": "@they-juanreina/compost-evals",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Eval surfaces: versioned LLM-as-judge rubric, eval-grader loop, skill golden-set runner.",
   "type": "module",
   "repository": {

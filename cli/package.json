@@ -1,6 +1,6 @@
 {
   "name": "@they-juanreina/compost-cli",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Compost CLI engine. Subcommand router, JSON-out, harness loop runner.",
   "type": "module",
   "repository": {

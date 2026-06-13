@@ -1,5 +1,37 @@
 # Changelog
 
+## v0.2.1 — 2026-06-13
+
+Completes the **codebook & category data model** milestone: the two codebook
+verbs gated behind a validated need (#269) now ship, built on the qualified
+code-id foundation from v0.2.0.
+
+### Added
+
+- **`compost codebook duplicate <source> <new-name>`** — copy a codebook as a
+  new, independent lens. Definitions + a `derived_from` lineage link travel;
+  coded instances (evidence) do **not** — the copy enters un-grounded and earns
+  its grounding by being coded against the local data (framework / deductive
+  coding). `--from <seed>` reads the source from a sibling seed, reusing a
+  validated frame across studies. Refuses an in_vivo source (participant-verbatim
+  names can't be re-homed without their evidence). Researcher-authored, additive
+  (rejects rather than overwrites). Exposed as `compost_codebook_duplicate`.
+- **`compost codebook merge <from> <into>`** — fold one lens into another.
+  Re-homes the source's codes (an `update`, not a copy — identity, evidence, and
+  history preserved), then reject-archives the source (never deletes). Colliding
+  names are kept distinct (`distrust` → `distrust-from-<frame>`), never silently
+  fused; coverage math (`saturate` / `agreement`) sees the two as distinct until
+  the researcher de-dups. Dry-run by default (`--apply` to write), with a
+  dirty-tree guard. Refuses when a re-homing code is cited by a theme or category
+  link — those carry cross-lens / one-frame invariants a structural fold must not
+  silently re-decide. Exposed as `compost_codebook_merge`.
+
+### Changed
+
+- `fork` and `import` collapsed into `duplicate` (the source is a flag, not a
+  separate verb); both CLI commands are removed. `import` is documented as the
+  NVivo/ATLAS.ti term the cross-seed `--from` case maps to.
+
 ## v0.2.0 — 2026-06-12
 
 The **codebook & category data model** milestone: codes now live inside declared
