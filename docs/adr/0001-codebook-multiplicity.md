@@ -112,7 +112,7 @@ New/changed fields, all expressible with the existing six event actions:
 - [ADR 0002](./0002-category-tier.md) — Category tier design.
 - Split/merge as first-class event actions vs. composed from create/relink/reject.
 - In-vivo name validation reusing the citation validator.
-- `compost codebook` verb surface (`new | list | migrate` in slice 1; `merge | fork | import` stubbed).
+- `compost codebook` verb surface (`new | list | migrate` in slice 1; `migrate-ids` in v0.2.0; `duplicate | merge` shipped v0.2.1 — `fork`+`import` collapsed into `duplicate`, was `merge | fork | import`).
 - Replication study: [wiki walkthrough](https://github.com/they-juanreina/compost/wiki) on the "Edges and Ecotones" Haraway oral history exercises two coexisting framework-stance codebooks end-to-end.
 
 ## References (project grounding corpus)

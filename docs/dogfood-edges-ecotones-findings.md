@@ -2,6 +2,8 @@
 
 Status: **complete** · Date: 2026-06-11 · Build: `feat/codebook-slice-1` ([#260](https://github.com/they-juanreina/compost/pull/260)) · Corpus: [Edges and Ecotones: Donna Haraway's Worlds at UCSC](https://escholarship.org/uc/item/9h09r84h) (Haraway interviewed by Irene Reti, 2007, UCSC Regional History Project)
 
+> **Point-in-time record (2026-06-11).** The "Untested by design" items below were the deferred slices *as of this run*; most have since shipped (codebook-scoped agreement/saturate, cross-lens themes, categories — v0.2.0) and the `codebook duplicate | merge` verbs landed in **v0.2.1** (see [`dogfood-edges-ecotones-duplicate-merge.md`](./dogfood-edges-ecotones-duplicate-merge.md) for their validation). Read the list as history, not current limitations.
+
 This is the seam record from running the codebook/multi-lens model end-to-end on a real oral-history interview — the validation called for by [ADR 0001](./adr/0001-codebook-multiplicity.md)/[0002](./adr/0002-category-tier.md), retargeted from the grounding-literature texts (which are design rationale, not data) to a primary interview. The reproducible walkthrough is the wiki page *Replication Study — Edges and Ecotones*; this doc records what actually happened on one machine, so the seams are written down rather than rediscovered.
 
 ## What ran (and worked)
