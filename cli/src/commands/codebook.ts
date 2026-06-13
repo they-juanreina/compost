@@ -12,14 +12,15 @@ import {
 import {
   applyCodebookMigration,
   applyCodeIdMigration,
+  applyMerge,
   duplicateCodebook,
   listCodebooks,
   planCodebookMigration,
   planCodeIdMigration,
+  planMerge,
 } from '../lib/codebooks.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
-import { stubAction, stubDescription } from './_stub.js'
 
 /** Whether the git working tree containing `seedPath` has uncommitted changes;
  * null when `seedPath` isn't inside a git repo (no undo point to protect). */
@@ -59,6 +60,12 @@ interface MigrateIdsFlags {
 interface DuplicateFlags {
   seed?: string
   from?: string
+}
+
+interface MergeFlags {
+  seed?: string
+  apply?: boolean
+  force?: boolean
 }
 
 export function registerCodebook(program: Command): void {
@@ -303,11 +310,74 @@ export function registerCodebook(program: Command): void {
       }
     })
 
-  // ADR 0001's remaining verb, visible but honest until it lands (#269).
   codebook
     .command('merge')
-    .description(
-      stubDescription('Merge one codebook into another (reject archives, never deletes)', 269),
+    .description('Merge one codebook into another — re-homes codes, reject-archives the source')
+    .argument('<from>', 'Codebook to fold in (name or CB- id) — reject-archived after')
+    .argument('<into>', 'Codebook to merge into (name or CB- id)')
+    .option('--apply', 'Re-home the codes + archive the source (default: preview)')
+    .option('--force', 'Apply even when the git working tree is dirty (skips the undo-point guard)')
+    .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
+    .addHelpText(
+      'after',
+      '\nCodes keep their identity + evidence (an `update`, not a copy). Colliding names are kept distinct (`distrust` → `distrust-from-<frame>`), never fused — de-dup is a separate explicit step. The source is reject-archived (never deleted). Refuses when a code is cited by a theme or category link; resolve those first.\n\nExamples:\n  $ compost codebook merge old-lens primary          # preview\n  $ compost codebook merge old-lens primary --apply',
     )
-    .action(stubAction({ command: 'codebook merge', issue: 269 }))
+    .action((from: string, into: string, flags: MergeFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        if (flags.apply !== true) {
+          const plan = planMerge(seedPath, from, into)
+          emit(
+            {
+              status: 'ok',
+              command: 'codebook merge',
+              dry_run: true,
+              from: plan.from,
+              into: plan.into,
+              codes: plan.codes,
+              blocking: plan.blocking,
+            },
+            out,
+            (d: {
+              codes: unknown[]
+              blocking: { themes: unknown[]; category_links: unknown[] }
+            }) => {
+              const blocked =
+                d.blocking.themes.length + d.blocking.category_links.length > 0
+                  ? ` — BLOCKED by ${d.blocking.themes.length} theme(s) + ${d.blocking.category_links.length} category link(s); resolve those first`
+                  : ''
+              return `codebook merge (dry-run): ${d.codes.length} code(s) would re-home${blocked}. Re-run with --apply.`
+            },
+          )
+          return
+        }
+        // Consequential (file moves + archive): refuse on a dirty tree so
+        // `git restore` is an undo point, unless not under git or --force.
+        if (flags.force !== true && gitTreeDirty(seedPath) === true) {
+          throw new CompostError(
+            'INVALID_INPUT',
+            'Refusing --apply: the git working tree has uncommitted changes. Commit or stash first so you have an undo point, or pass --force.',
+          )
+        }
+        const result = applyMerge(seedPath, from, into, defaultResearcherId())
+        emit(
+          {
+            status: 'ok',
+            command: 'codebook merge',
+            dry_run: false,
+            from: result.from,
+            into: result.into,
+            codes: result.codes,
+            archived_from: result.archived_from,
+          },
+          out,
+          (d: { codes: unknown[]; from: string; into: string }) =>
+            `codebook merge: re-homed ${d.codes.length} code(s) from ${d.from} into ${d.into}; ${d.from} archived. Run \`compost reindex --vectors\` to refresh chunk code_ids.`,
+        )
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
 }
