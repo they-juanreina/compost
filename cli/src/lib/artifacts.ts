@@ -383,6 +383,12 @@ export interface CreateCodeInput {
   /** Codebook this code belongs to (name or CB- id). Default: the seed's
    * primary codebook, created on first use if absent. */
   codebookId?: string
+  /** Lineage: the origin code this one was copied from (`compost codebook
+   * duplicate`, #269). A bare/qualified code id for a same-seed source, or
+   * `<seed>:<id>` for a cross-seed `--from` source. Recorded in the create
+   * payload + frontmatter so `blame` on the duplicate shows where it came from.
+   * Definitions travel; evidence does not — the copy enters un-grounded. */
+  derivedFrom?: string
   author: Author
   inputs?: AiInputBundle
 }
@@ -426,6 +432,7 @@ export function createCode(seedPath: string, input: CreateCodeInput): CreatedArt
     name,
     definition: input.definition,
     evidence,
+    ...(input.derivedFrom !== undefined ? { derived_from: input.derivedFrom } : {}),
   }
   const sha = artifactId(initialState)
   const body = `${frontmatter({
@@ -433,6 +440,7 @@ export function createCode(seedPath: string, input: CreateCodeInput): CreatedArt
     name,
     codebook_id,
     evidence,
+    ...(input.derivedFrom !== undefined ? { derived_from: input.derivedFrom } : {}),
     artifact_id: sha,
     provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
   })}\n${input.definition}\n`

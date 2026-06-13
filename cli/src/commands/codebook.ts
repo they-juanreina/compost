@@ -12,6 +12,7 @@ import {
 import {
   applyCodebookMigration,
   applyCodeIdMigration,
+  duplicateCodebook,
   listCodebooks,
   planCodebookMigration,
   planCodeIdMigration,
@@ -53,6 +54,11 @@ interface MigrateIdsFlags {
   seed?: string
   apply?: boolean
   force?: boolean
+}
+
+interface DuplicateFlags {
+  seed?: string
+  from?: string
 }
 
 export function registerCodebook(program: Command): void {
@@ -253,19 +259,55 @@ export function registerCodebook(program: Command): void {
       }
     })
 
-  // ADR 0001's full verb surface, visible but honest until they land.
+  codebook
+    .command('duplicate')
+    .description(
+      'Duplicate a codebook as a new independent lens — definitions + lineage travel; evidence re-grounds locally',
+    )
+    .argument('<source>', 'Source codebook to copy (name or CB- id)')
+    .argument('<new-name>', 'Name for the new codebook (slugified for the CB- id)')
+    .option(
+      '--from <seed>',
+      'Read <source> from a sibling seed under Seeds/ instead of this one (reuse a validated frame from another study)',
+    )
+    .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
+    .addHelpText(
+      'after',
+      '\nDefinitions + a `derived_from` lineage link travel; coded instances (evidence) do NOT — the copy enters un-grounded and earns its grounding by being coded against the local data. Category links are not copied. (`import` is the NVivo/ATLAS.ti term for the cross-seed `--from` case.)\n\nExamples:\n  $ compost codebook duplicate epistemology epistemology-v2\n  $ compost codebook duplicate epistemology borrowed-frame --from prior-study',
+    )
+    .action((source: string, newName: string, flags: DuplicateFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        const result = duplicateCodebook(seedPath, source, newName, defaultResearcherId(), {
+          ...(flags.from !== undefined ? { fromSeed: flags.from } : {}),
+        })
+        emit(
+          {
+            status: 'ok',
+            command: 'codebook duplicate',
+            source_seed: result.source_seed,
+            source: result.source_codebook_id,
+            codebook: result.codebook_id,
+            stance: result.stance,
+            codes: result.codes.length,
+            cloned: result.codes,
+          },
+          out,
+          (d: { codebook: string; codes: number; source: string }) =>
+            `codebook duplicate: created ${d.codebook} from ${d.source} with ${d.codes} un-grounded code(s). Code them against the local data to ground the lens.`,
+        )
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
+
+  // ADR 0001's remaining verb, visible but honest until it lands (#269).
   codebook
     .command('merge')
     .description(
-      stubDescription('Merge one codebook into another (reject archives, never deletes)'),
+      stubDescription('Merge one codebook into another (reject archives, never deletes)', 269),
     )
-    .action(stubAction({ command: 'codebook merge' }))
-  codebook
-    .command('fork')
-    .description(stubDescription('Fork a codebook into a new lens over the same seed'))
-    .action(stubAction({ command: 'codebook fork' }))
-  codebook
-    .command('import')
-    .description(stubDescription('Import a codebook from another seed as a shareable frame'))
-    .action(stubAction({ command: 'codebook import' }))
+    .action(stubAction({ command: 'codebook merge', issue: 269 }))
 }
