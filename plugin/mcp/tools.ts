@@ -495,6 +495,34 @@ export const TOOLS: ToolDef[] = [
       ...(a.seed ? ['--seed', String(a.seed)] : []),
     ],
   },
+  {
+    name: 'compost_codebook_merge',
+    description:
+      'Merge one codebook into another (ADR 0001, #269). Re-homes the source frame’s codes into the target (an update, not a copy — identity + evidence + history preserved), then reject-archives the source (never deletes). Colliding code names are kept distinct (`distrust` → `distrust-from-<frame>`), never silently fused — de-dup is a separate explicit step. Dry-run by default (previews the re-home + any blocking refs); set apply=true to write. Refuses when a re-homing code is cited by a theme or category link — resolve those first. Researcher-authored, not an AI [draft].',
+    readOnly: false,
+    // Not aiAuthored: a structural fold the researcher decides; no --ai path.
+    inputSchema: {
+      type: 'object',
+      required: ['from', 'into'],
+      properties: {
+        from: str('Codebook to fold in (name or CB- id) — reject-archived after'),
+        into: str('Codebook to merge into (name or CB- id)'),
+        apply: {
+          type: 'boolean',
+          description: 'Re-home + archive (default false = dry-run preview)',
+        },
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'codebook',
+      'merge',
+      String(a.from),
+      String(a.into),
+      ...(a.apply === true ? ['--apply'] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
 ]
 
 export const READ_ONLY_TOOLS = TOOLS.filter((t) => t.readOnly).map((t) => t.name)

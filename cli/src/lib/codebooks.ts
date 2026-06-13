@@ -9,10 +9,18 @@ import {
   createCodebook,
   DEFAULT_CODEBOOK_ID,
   ensurePrimaryCodebook,
+  rejectArtifact,
   resolveCodebookId,
   updateArtifact,
 } from './artifacts.js'
-import { codebookSlugOf, codeMarkdownPaths, parseCodeId, qualifiedCodeId } from './codeRefs.js'
+import { listCategoryLinks } from './categories.js'
+import {
+  codebookSlugOf,
+  codeMarkdownPaths,
+  parseCodeId,
+  qualifiedCodeId,
+  tryResolveCodeRef,
+} from './codeRefs.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
 
 /** Current snapshots of the seed's codebooks, newest activity first. */
@@ -448,5 +456,240 @@ export function duplicateCodebook(
     codebook_id: created.id,
     codebook_artifact_id: created.artifact_id,
     codes,
+  }
+}
+
+// ---------------------------------------------------------------- merge (#269)
+
+/** A codebook id that resolves AND is not archived (rejected). resolveCodebookId
+ * happily resolves a rejected frame's id from its create event; merge needs the
+ * frame to be live on both ends. */
+function isLiveCodebook(seedPath: string, codebookId: string): boolean {
+  if (codebookId === DEFAULT_CODEBOOK_ID) return true
+  return listCodebooks(seedPath).some((s) => (s.current_state as { id?: string }).id === codebookId)
+}
+
+/** A within-frame-unique code slug: the source slug if free, else
+ * `<slug>-from-<fromSlug>`, else a numeric suffix. Mutates `taken`. */
+function disambiguateSlug(slugName: string, fromSlug: string, taken: Set<string>): string {
+  if (!taken.has(slugName)) {
+    taken.add(slugName)
+    return slugName
+  }
+  let candidate = `${slugName}-from-${fromSlug}`
+  let n = 2
+  while (taken.has(candidate)) {
+    candidate = `${slugName}-from-${fromSlug}-${n}`
+    n += 1
+  }
+  taken.add(candidate)
+  return candidate
+}
+
+/** The existing on-disk path of a code, across both layouts (#269): namespaced
+ * `codebook/<cb>/<slug>.md` or legacy flat `codebook/<slug>.md`. */
+function existingCodePath(seedPath: string, fromSlug: string, codeSlug: string): string | null {
+  const namespaced = join(seedPath, 'codebook', fromSlug, `${codeSlug}.md`)
+  if (existsSync(namespaced)) return namespaced
+  const flat = join(seedPath, 'codebook', `${codeSlug}.md`)
+  if (existsSync(flat)) return flat
+  return null
+}
+
+/** Rewrite a re-homed code's frontmatter (id, codebook_id, and name when the
+ * slug was disambiguated) and move it to the target frame's dir. The SHA
+ * `artifact_id` is NOT touched — re-homing is an update, so identity is stable. */
+function rehomeCodeFile(
+  oldPath: string,
+  newPath: string,
+  newId: string,
+  intoId: string,
+  newName: string | undefined,
+): void {
+  let content = readFileSync(oldPath, 'utf8')
+    .replace(/^id:.*$/m, `id: ${newId}`)
+    .replace(/^codebook_id:.*$/m, `codebook_id: ${intoId}`)
+  if (newName !== undefined) content = content.replace(/^name:.*$/m, `name: ${newName}`)
+  mkdirSync(dirname(newPath), { recursive: true })
+  writeFileSync(newPath, content, 'utf8')
+  if (resolve(newPath) !== resolve(oldPath)) rmSync(oldPath, { force: true })
+}
+
+export interface MergePlan {
+  from: string
+  into: string
+  /** Codes that would re-home, origin id → new id (renamed on a within-frame
+   * collision). */
+  codes: Array<{ from_id: string; to_id: string; renamed: boolean }>
+  /** Higher-tier artifacts that reference a re-homing code and would dangle or
+   * change meaning — merge refuses until the researcher resolves them. */
+  blocking: {
+    /** Theme ids citing a code in the source frame (re-homing could turn a
+     * cross-lens theme single-lens — a meaning change merge must not make
+     * silently). */
+    themes: string[]
+    /** code → category links into the source frame (re-homing would dangle the
+     * ref and break the one-frame-per-category invariant). */
+    category_links: Array<{ code: string; category: string }>
+  }
+}
+
+/** Resolve + validate both ends of a merge and compute the re-home plan,
+ * read-only. Shared by the dry-run and the apply. */
+export function planMerge(seedPath: string, fromRef: string, intoRef: string): MergePlan {
+  const fromId = resolveCodebookId(seedPath, fromRef)
+  const intoId = resolveCodebookId(seedPath, intoRef)
+
+  if (fromId === intoId) {
+    throw new CompostError('INVALID_INPUT', `Cannot merge "${fromId}" into itself.`)
+  }
+  if (fromId === DEFAULT_CODEBOOK_ID) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      'Cannot merge the primary frame away — it is the structural default every code falls back to. Merge other lenses into primary instead.',
+    )
+  }
+  if (!isLiveCodebook(seedPath, fromId)) {
+    throw new CompostError('INVALID_INPUT', `Source codebook "${fromId}" is archived or unknown.`)
+  }
+  if (!isLiveCodebook(seedPath, intoId)) {
+    throw new CompostError('INVALID_INPUT', `Target codebook "${intoId}" is archived or unknown.`)
+  }
+
+  const fromSlug = codebookSlugOf(fromId)
+
+  // Slugs already taken in the target frame seed the collision check.
+  const taken = new Set(codesInCodebook(seedPath, intoId).map((c) => parseCodeId(c.id).codeSlug))
+
+  const codes: MergePlan['codes'] = []
+  for (const code of codesInCodebook(seedPath, fromId)) {
+    const codeSlug = parseCodeId(code.id).codeSlug
+    const targetSlug = disambiguateSlug(codeSlug, fromSlug, taken)
+    codes.push({
+      from_id: code.id,
+      to_id: qualifiedCodeId(intoId, targetSlug),
+      renamed: targetSlug !== codeSlug,
+    })
+  }
+
+  // Reference guard: a re-homing code woven into a theme or category cannot be
+  // moved without dangling the ref or changing the theme's lens membership.
+  // Refuse (transactionally) and tell the researcher to resolve those first —
+  // auto-rewiring would silently re-decide cross-lens/one-frame invariants.
+  const themes: string[] = []
+  for (const snap of listArtifacts(seedPath, 'theme')) {
+    const s = snap.current_state as {
+      id?: string
+      evidence?: Array<{ kind?: string; codebook_id?: string }>
+    }
+    const citesFrom = (s.evidence ?? []).some((e) => e.kind === 'code' && e.codebook_id === fromId)
+    if (citesFrom && typeof s.id === 'string') themes.push(s.id)
+  }
+
+  const category_links: MergePlan['blocking']['category_links'] = []
+  for (const link of listCategoryLinks(seedPath)) {
+    const resolved = tryResolveCodeRef(seedPath, link.code)
+    if (resolved?.codebookId === fromId) {
+      category_links.push({ code: link.code, category: link.category })
+    }
+  }
+
+  return { from: fromId, into: intoId, codes, blocking: { themes, category_links } }
+}
+
+export interface MergeResult {
+  from: string
+  into: string
+  codes: Array<{ from_id: string; to_id: string; renamed: boolean }>
+  archived_from: boolean
+}
+
+/**
+ * `compost codebook merge <from> <into>` (#269, ADR 0001) — fold one lens into
+ * another. Each of `<from>`'s codes is **re-homed** (an `update(codebook_id)` +
+ * `update(id)`, preserving the SHA identity and history, so its existing local
+ * evidence stays attached), then `<from>` is **reject-archived** (never deleted —
+ * `reject` archives, ADR 0001). Colliding names are **kept distinct**, never
+ * silently fused: an incoming `distrust` that clashes with the target's becomes
+ * `distrust-from-<fromframe>`, recorded via an `update(name)` event so `blame`
+ * shows the rename. Coverage math (`saturate`/`agreement`) then sees the two as
+ * distinct until the researcher explicitly de-dups.
+ *
+ * Consequential (file moves + archive), so it is dry-run-first: callers preview
+ * with {@link planMerge} and only `applyMerge` writes. Refuses when a re-homing
+ * code is cited by a theme or category link (those carry cross-lens / one-frame
+ * invariants merge must not silently re-decide — see MergePlan.blocking).
+ */
+export function applyMerge(
+  seedPath: string,
+  fromRef: string,
+  intoRef: string,
+  researcherId: string,
+): MergeResult {
+  const plan = planMerge(seedPath, fromRef, intoRef)
+
+  if (plan.blocking.themes.length > 0 || plan.blocking.category_links.length > 0) {
+    const bits: string[] = []
+    if (plan.blocking.themes.length > 0) bits.push(`themes ${plan.blocking.themes.join(', ')}`)
+    if (plan.blocking.category_links.length > 0) {
+      bits.push(
+        `category links ${plan.blocking.category_links.map((l) => `${l.code}→${l.category}`).join(', ')}`,
+      )
+    }
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Refusing merge: codes in "${plan.from}" are woven into higher tiers (${bits.join('; ')}). Re-cite or drop those first — merge re-homes codes and will not silently change a theme's lens membership or a category's frame.`,
+    )
+  }
+
+  const author = RESEARCHER(researcherId)
+  const fromSlug = codebookSlugOf(plan.from)
+  const intoSlug = codebookSlugOf(plan.into)
+
+  for (const code of plan.codes) {
+    const oldName = parseCodeId(code.from_id).codeSlug
+    const newSlug = parseCodeId(code.to_id).codeSlug
+    // Re-home: codebook_id then id (chained updates on the same artifact). The
+    // SHA identity is unchanged, so history + attached evidence carry over.
+    updateArtifact(
+      seedPath,
+      code.from_id,
+      { field: 'codebook_id', before: plan.from, after: plan.into },
+      author,
+    )
+    updateArtifact(
+      seedPath,
+      code.from_id,
+      { field: 'id', before: code.from_id, after: code.to_id },
+      author,
+    )
+    if (code.renamed) {
+      updateArtifact(
+        seedPath,
+        code.to_id,
+        { field: 'name', before: oldName, after: newSlug },
+        author,
+      )
+    }
+    const oldPath = existingCodePath(seedPath, fromSlug, oldName)
+    if (oldPath !== null) {
+      const newPath = join(seedPath, 'codebook', intoSlug, `${newSlug}.md`)
+      rehomeCodeFile(oldPath, newPath, code.to_id, plan.into, code.renamed ? newSlug : undefined)
+    }
+  }
+
+  // Reject-archive the now-empty source frame (never delete — ADR 0001).
+  const reject = rejectArtifact(
+    seedPath,
+    plan.from,
+    researcherId,
+    `Merged into ${plan.into} (${plan.codes.length} code(s) re-homed).`,
+  )
+
+  return {
+    from: plan.from,
+    into: plan.into,
+    codes: plan.codes,
+    archived_from: reject.already_rejected !== true,
   }
 }
