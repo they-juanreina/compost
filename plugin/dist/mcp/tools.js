@@ -418,6 +418,31 @@ export const TOOLS = [
             ...(a.apply === true ? ['--apply'] : []),
         ],
     },
+    {
+        name: 'compost_codebook_duplicate',
+        description: 'Duplicate a codebook as a new independent lens (ADR 0001, #269). Definitions + a `derived_from` lineage link travel; coded instances (evidence) do NOT — the copy enters un-grounded and earns its grounding by being coded against the local data (framework/deductive coding). Use `from` to reuse a validated frame from another study (the NVivo/ATLAS.ti "import" case). Refuses an in_vivo source. Researcher-authored (structural setup), not an AI [draft].',
+        readOnly: false,
+        // Not aiAuthored: duplicating a lens is structural setup the researcher
+        // chooses (like `codebook new`); the CLI verb has no --ai path.
+        inputSchema: {
+            type: 'object',
+            required: ['source', 'newName'],
+            properties: {
+                source: str('Source codebook to copy (name or CB- id)'),
+                newName: str('Name for the new codebook (slugified for the CB- id)'),
+                from: str('Read source from a sibling seed under Seeds/ instead of this one (cross-study frame reuse)'),
+                seed: str('Seed'),
+            },
+        },
+        toArgv: (a) => [
+            'codebook',
+            'duplicate',
+            String(a.source),
+            String(a.newName),
+            ...(a.from ? ['--from', String(a.from)] : []),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
+    },
 ];
 export const READ_ONLY_TOOLS = TOOLS.filter((t) => t.readOnly).map((t) => t.name);
 export const MUTATION_TOOLS = TOOLS.filter((t) => !t.readOnly).map((t) => t.name);
