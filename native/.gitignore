@@ -1,0 +1,9 @@
+# SwiftPM build output
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode (if a project is generated later)
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/
