@@ -92,9 +92,13 @@ and its demand is unproven, I say so and recommend validating before building.
 
 From the v0.2.0 audit (see the addendum):
 
-- **`codebook merge | fork | import`** + the qualified-code-id scheme — built
-  ahead of a proven need. Run the kill filter on the verbs *before* writing
-  more; don't deepen the id scheme meanwhile.
+- **`codebook duplicate | merge`** (verbs settled 2026-06-13, was
+  `merge | fork | import`) + the qualified-code-id scheme — built ahead of a
+  proven need. The vocabulary is now grounded (see
+  `docs/design-codebook-merge-fork-import.md`: `fork`+`import`→`duplicate`,
+  `merge` kept, `diverge`/`converge` rejected). Still run the kill filter on the
+  verbs against a **real two-lens study** *before* writing them; don't deepen the
+  id scheme meanwhile.
 - **`category suggest` / `code` / `rescan`** — keep as untrusted
   deterministic-actor `[draft]`s, or reframe as a raw "nearby codes" query;
   don't let compost present groupings as interpretation.
