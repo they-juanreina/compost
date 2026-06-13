@@ -15,10 +15,17 @@ continue / pause / conclude recommendation. The math lives in
    chronologically (by id), joins theme → code → highlight → session to figure
    out which themes that session contributed to, then for each session
    computes novelty = fraction of its themes not seen in any earlier session.
+   Saturation is measured **within one codebook** (ADR 0001): it defaults to the
+   primary frame; pass `--codebook <name|CB-id>` to read a specific lens. A
+   deductive and an inductive lens saturate separately, so report per-lens when
+   the seed has more than one — pooling them muddies the curve.
 2. Render the per-session novelty curve and the recommendation. The CLI emits:
    - `per_session[]` — one entry per session with `new_themes[]` and `novelty`
-   - `recommendation` — `continue` | `pause` | `conclude`
+   - `recommendation` — `continue` | `pause` | `conclude` | `insufficient`
    - `rationale` — one-line human-readable reason
+   `insufficient` means there's no curve to read yet — fewer than 2 sessions in
+   this frame (mirrors `agreement`'s `insufficient` gate). Don't dress it up as
+   `pause`/`conclude`; report that more sessions are needed and stop.
 3. If the user wants a different sensitivity, pass `--dry-streak <n>`
    (default 2). One dry session triggers `pause`; `n` consecutive dry sessions
    triggers `conclude`.

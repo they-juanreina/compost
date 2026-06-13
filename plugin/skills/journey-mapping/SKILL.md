@@ -13,10 +13,17 @@ and marked `[draft]` until a researcher endorses it.
 1. Run `compost status --seed <name> --json` to see what's been coded and which
    themes exist. If the seed has no themes yet, stop and suggest
    `/thematic-coding` first — a journey map without themes is pure speculation.
-2. Read `Seeds/<name>/synthesis/themes/*.md` to get each theme's `codes:`, then
-   `Seeds/<name>/codebook/*.md` for each code's `evidence:` (highlight ids),
-   then the highlight files themselves for the quote + `utterance_id` +
-   `session_id`. This chain is what lets every stage cite real evidence.
+2. Read `Seeds/<name>/synthesis/themes/*.md`. A theme's frontmatter carries an
+   `evidence:` list of `kind:ref:codebook_id` tokens — `code:C-<cb>/<slug>:CB-<cb>`
+   or `category:CAT-<slug>:CB-<cb>` (ADR 0002 §1, #266); older code-only themes
+   may still carry a flat `codes:` list instead. For each **code** ref, open its
+   file at `codebook/<codebook>/<slug>.md` (codes are namespaced by frame, #269 —
+   an un-migrated seed may still have a flat `codebook/<slug>.md`) and read its
+   `evidence:` (highlight ids). For each **category** ref, open
+   `categories/<slug>.md` and follow its linked codes. Then open the highlight
+   files for the quote + `utterance_id` + `session_id`. This chain is what lets
+   every stage cite real evidence — and note which lens (codebook) a stage draws
+   on when a seed holds more than one.
 3. Order themes into journey stages (chronological or funnel — pick by the
    research question and explain the choice in the draft).
 4. Copy `templates/journey-map.md` (sibling of this SKILL.md) to
