@@ -94,7 +94,7 @@ Foundation (steps 1–2) shipped in #289. Remaining, sequenced to keep each step
 3. **`duplicate`** — branch-copy into a new frame dir; covers both same-seed and `--from <seed>:<codebook>`; definitions + lineage only (evidence re-grounded locally). Lowest risk (new frame dir → no collision).
 4. **`merge`** — highest risk: within-frame disambiguation rename + coverage math.
 
-Each step gets the same adversarial review + regression tests as the rest of the milestone. **Before building, run the kill filter on a real two-lens study** (CLAUDE.md "do not extend without re-testing") — the methodology research confirms the *capability* is genuinely novel (no QDA-canon analogue), so validate the *need* on real data, not in the abstract; then `duplicate` is the clean first PR.
+Each step gets the same adversarial review + regression tests as the rest of the milestone. **The kill filter was run on a real two-lens study** ([`dogfood-edges-ecotones-duplicate-merge.md`](./dogfood-edges-ecotones-duplicate-merge.md), 2026-06-13): the capability passes filters 1–3 (novel, not-the-analyst, CLI-doable) and the consumers (`agreement`/`saturate --codebook`, cross-lens themes) shipped, but filter #4 came back *grounded-but-not-demonstrated* — the single real study never organically reaches for the verbs (it lacks a second corpus for `duplicate --from` and a coding team for `merge`). The maintainer made the explicit call to build both anyway, judging the methodology grounding + ready consumers sufficient. `duplicate` is the clean first PR; `merge` follows.
 
 ## Why this stayed a design note
 

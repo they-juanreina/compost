@@ -1,8 +1,17 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 
 import { CompostError } from '../errors.js'
-import { DEFAULT_CODEBOOK_ID, ensurePrimaryCodebook, updateArtifact } from './artifacts.js'
+import {
+  CODEBOOK_STANCES,
+  type CodebookStance,
+  createCode,
+  createCodebook,
+  DEFAULT_CODEBOOK_ID,
+  ensurePrimaryCodebook,
+  resolveCodebookId,
+  updateArtifact,
+} from './artifacts.js'
 import { codebookSlugOf, codeMarkdownPaths, parseCodeId, qualifiedCodeId } from './codeRefs.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
 
@@ -281,4 +290,163 @@ function addFrontmatterField(absPath: string, key: string, value: string): boole
   const rewritten = `---\n${block}\n${key}: ${value}${text.slice(close)}`
   writeFileSync(absPath, rewritten, 'utf8')
   return true
+}
+
+// ---------------------------------------------------------------- duplicate (#269)
+
+const RESEARCHER = (researcherId: string) =>
+  ({ actorType: 'researcher', actorId: researcherId }) as const
+
+/** A sibling seed path under the same `Seeds/` root, validated. Rejects names
+ * carrying a path separator so `--from ../escape` can't reach outside the
+ * workspace. */
+function siblingSeedPath(seedPath: string, seedName: string): string {
+  if (/[/\\]/.test(seedName) || seedName === '.' || seedName === '..') {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Invalid --from seed ${JSON.stringify(seedName)}: expected a plain seed name (a directory under Seeds/).`,
+    )
+  }
+  const path = join(dirname(seedPath), seedName)
+  if (!existsSync(join(path, '.compost', 'events.sqlite'))) {
+    throw new CompostError(
+      'FILE_NOT_FOUND',
+      `No seed "${seedName}" with an event log alongside this one (looked in ${dirname(seedPath)}). --from names a sibling seed under the same Seeds/.`,
+    )
+  }
+  return path
+}
+
+/** Declared stance + description of a codebook. CB-primary is the implicit
+ * inductive default and has no artifact to read. */
+function codebookMeta(
+  seedPath: string,
+  codebookId: string,
+): { stance: CodebookStance; description: string } {
+  if (codebookId === DEFAULT_CODEBOOK_ID) return { stance: 'inductive', description: '' }
+  for (const snap of listCodebooks(seedPath)) {
+    const s = snap.current_state as { id?: string; stance?: string; description?: string }
+    if (s.id === codebookId) {
+      const stance = CODEBOOK_STANCES.includes(s.stance as CodebookStance)
+        ? (s.stance as CodebookStance)
+        : 'inductive'
+      return { stance, description: s.description ?? '' }
+    }
+  }
+  return { stance: 'inductive', description: '' }
+}
+
+interface FrameCode {
+  id: string
+  name: string
+  definition: string
+}
+
+/** Non-archived codes belonging to one frame of a seed, with their definitions.
+ * The lazy default (missing codebook_id ⇒ primary) keeps legacy codes visible. */
+function codesInCodebook(seedPath: string, codebookId: string): FrameCode[] {
+  const out: FrameCode[] = []
+  for (const snap of listArtifacts(seedPath, 'code')) {
+    const s = snap.current_state as {
+      id?: string
+      name?: string
+      definition?: string
+      codebook_id?: string
+    }
+    if (typeof s.id !== 'string' || typeof s.name !== 'string') continue
+    if ((s.codebook_id ?? DEFAULT_CODEBOOK_ID) !== codebookId) continue
+    out.push({ id: s.id, name: s.name, definition: s.definition ?? '' })
+  }
+  return out
+}
+
+export interface DuplicateOptions {
+  /** Read `<source>` from a sibling seed under the same `Seeds/` root instead of
+   * locally — the cross-study framework-reuse case (the old `import`). Copied
+   * codes carry a `<seed>:<id>` lineage ref; evidence never travels. */
+  fromSeed?: string
+}
+
+export interface DuplicateResult {
+  source_seed: string
+  source_codebook_id: string
+  stance: CodebookStance
+  /** The new frame. */
+  codebook_id: string
+  codebook_artifact_id: string
+  /** Cloned codes: origin id → new id. */
+  codes: Array<{ from: string; to: string }>
+}
+
+/**
+ * `compost codebook duplicate` (#269, ADR 0001) — copy a codebook as a new,
+ * independent lens. Definitions + a `derived_from` lineage link travel; **coded
+ * instances (evidence) do not** — the copy enters un-grounded and earns its
+ * grounding by being coded against the local data (framework/deductive coding,
+ * Ritchie & Spencer). Category links are not copied (a duplicate is a fresh
+ * second pass). Same-seed (a parallel lens) and cross-seed (`--from`, reuse a
+ * validated frame from another study) are the same operation; only where the
+ * source is read differs. Refuses an in_vivo source — participant-verbatim names
+ * can't be re-homed without their evidence (#268).
+ *
+ * Born researcher-authored (a lens is structural setup, like `codebook new`),
+ * not an AI [draft]: the human chose to bring this frame in. Additive — it
+ * touches nothing existing, so it is not dry-run-gated; the target codebook must
+ * not already exist (clean reject, never overwrite).
+ */
+export function duplicateCodebook(
+  seedPath: string,
+  sourceRef: string,
+  newName: string,
+  researcherId: string,
+  opts: DuplicateOptions = {},
+): DuplicateResult {
+  const sourceSeedPath =
+    opts.fromSeed !== undefined ? siblingSeedPath(seedPath, opts.fromSeed) : seedPath
+  const sourceSeed = opts.fromSeed ?? basename(seedPath)
+
+  // Resolve + read the source frame within ITS OWN seed.
+  const sourceCbId = resolveCodebookId(sourceSeedPath, sourceRef)
+  const { stance, description } = codebookMeta(sourceSeedPath, sourceCbId)
+
+  if (stance === 'in_vivo') {
+    throw new CompostError(
+      'INVALID_INPUT',
+      `Cannot duplicate in_vivo codebook "${sourceCbId}": in_vivo code names are participant-verbatim and only hold against their own evidence, which does not travel with a duplicate. Code a fresh in_vivo lens against the local data instead.`,
+    )
+  }
+
+  // Read every source code BEFORE writing anything, so the only failure during
+  // the write phase would be an unexpected I/O error, never a predictable one.
+  const sourceCodes = codesInCodebook(sourceSeedPath, sourceCbId)
+
+  // createCodebook rejects (never overwrites) when the target already exists.
+  const author = RESEARCHER(researcherId)
+  const created = createCodebook(seedPath, {
+    name: newName,
+    stance,
+    ...(description !== '' ? { description } : {}),
+    author,
+  })
+
+  const codes: DuplicateResult['codes'] = []
+  for (const code of sourceCodes) {
+    const copy = createCode(seedPath, {
+      name: code.name,
+      definition: code.definition,
+      codebookId: created.id,
+      derivedFrom: opts.fromSeed !== undefined ? `${sourceSeed}:${code.id}` : code.id,
+      author,
+    })
+    codes.push({ from: code.id, to: copy.id })
+  }
+
+  return {
+    source_seed: sourceSeed,
+    source_codebook_id: sourceCbId,
+    stance,
+    codebook_id: created.id,
+    codebook_artifact_id: created.artifact_id,
+    codes,
+  }
 }
