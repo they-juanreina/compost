@@ -110,9 +110,9 @@ describe('runSupervisorOnce failure accounting (#164)', () => {
     })
     assert.equal(second.legacy.processed, 0)
     assert.equal(second.dead_jobs, 1)
-    assert.ok(
-      second.failures.some((f) => f.includes('permanently failed') && f.includes('jobs requeue')),
-      `failures should surface the dead job with the recovery command; got ${JSON.stringify(second.failures)}`,
-    )
+    // An idle pass over a dead queue did no failing work this pass, so `failures`
+    // is empty — the dead job is surfaced via `dead_jobs`, not double-counted as
+    // a "failure" too (#239 follow-up). Non-clean is gated on dead_jobs.
+    assert.deepEqual(second.failures, [])
   })
 })
