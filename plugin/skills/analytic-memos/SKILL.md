@@ -14,25 +14,44 @@ researcher endorses it. Never self-endorse your own draft.
 
 ## Verbs
 
-- `compost memo new "<title>" --content "<text>" [--type <t>] [--anchor kind:ref …] [--codebook <ref> | --cross-frame]`
-  — write a memo. `--type` ∈ `code | category | theme | reflexive | method |
-  theory | freeform` (default `freeform`). Repeat `--anchor` to point at what the
-  memo is about: `code:distrust`, `theme:T-x`, `category:CAT-y`, `highlight:H-001`,
-  `codebook:CB-z`, or `memo:M-w` (a metamemo). Zero anchors = a project-level
-  reflexive memo.
-- `compost memo list [--about <ref>] [--type <t>] [--codebook <ref>]` — list
-  memos; `--about` is the backward link (every memo anchored to a code/theme/…).
+- `compost memo new "<content>" [--title "<t>"] [--type <t>] [--anchor kind:ref …] [--codebook <ref> | --cross-frame]`
+  — write a memo. **Content is the positional arg; the title is optional** (id is
+  a stable `M-NNN`, never derived from the title — #314). `--type` ∈ `code |
+  category | theme | reflexive | method | theory | freeform` (default `freeform`).
+  Repeat `--anchor` to point at what the memo is about: `code:distrust`,
+  `theme:T-x`, `category:CAT-y`, `highlight:H-001`, `codebook:CB-z`, or `memo:M-w`
+  (a metamemo). Zero anchors = a project-level reflexive memo.
+- `compost memo list [--text <q>] [--about <ref>] [--type <t>] [--codebook <ref>]`
+  — list/search memos. `--text` is a case-insensitive substring search over
+  title + body (memos ARE searchable — Saldaña — but as their own facet, never the
+  grounding corpus `chat` cites). `--about` is the backward link (every memo
+  anchored to a code/theme/…).
 - `compost memo view <M-id>` — read one memo's current state.
-- `compost memo edit <M-id> [--content <text>] [--type <t>]` — revise it; each
-  edit is an `update` event, so the ledger carries the evolution (Saldaña's "dated
-  snapshots"). **Researcher act** — do this on the human's behalf only when asked.
+- `compost memo edit <M-id> [--content <text>] [--title <text>] [--type <t>]` —
+  revise it; each edit is an `update` event, so the ledger carries the evolution
+  (Saldaña's "dated snapshots"). Retitling never moves the id. **Researcher act.**
 - `compost memo cite <M-id> --anchor kind:ref …` — anchor the memo to more of the
   workflow (ATLAS.ti's "link a memo across the workflow"). **Researcher act.**
+- `compost memo retitle <M-id|--all>` — fill an embedding-extractive
+  `suggested_title` for a title-less memo (local computation; a human/agent title
+  always wins). Optional polish for scannability.
 - `compost endorse <M-id>` / `compost reject <M-id>` — the **top-level** verbs
   (a memo is endorsed like any artifact). Endorsement is the *researcher's* gate.
 
 Via MCP: `compost_create_memo` (drafts → `[draft]`) and `compost_list_memos`
 (read). Editing, citing, and endorsing are CLI/researcher acts — not agent tools.
+
+## Titles (the #312 contract)
+
+The title is **optional** and exists for retrieval, not identity. The human can
+brain-dump a thought with no title; `memo list` then shows a fallback
+(`title ?? suggested_title ?? first line`). **When you draft a memo, always
+generate a concise, evocative, retrieval-friendly title from the content** —
+that's the value you add over a raw dump. The human edits it on endorse
+(`memo edit <id> --title …`) or just lets it stand; either way the `M-NNN` id and
+every reference to the memo are untouched. Generating the title is the *agent's*
+job (reasoning) — compost's offline core never writes one for you (§2); the local
+`memo retitle` only ever *extracts* a representative sentence, it doesn't invent.
 
 ## Drafting a good memo (the AI-assist flow)
 

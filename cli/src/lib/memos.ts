@@ -275,6 +275,35 @@ export function getMemo(seedPath: string, ref: string): MemoView | null {
 }
 
 /**
+ * Case-insensitive substring match over a memo's title, `suggested_title`, and
+ * body — the memo full-text facet (#311). Memos ARE searchable (Saldaña), but as
+ * their **own** facet: this never touches the grounding corpus `compost chat`
+ * cites, so the analyst's interpretation can't be returned as participant
+ * evidence. Memo corpora are small, so substring is plenty; semantic ranking
+ * rides the embedding index (#315).
+ */
+export function memoMatchesText(
+  memo: Pick<MemoView, 'title' | 'suggested_title' | 'content'>,
+  query: string,
+): boolean {
+  const q = query.trim().toLowerCase()
+  if (q.length === 0) return true
+  return [memo.title, memo.suggested_title ?? '', memo.content].some((f) =>
+    f.toLowerCase().includes(q),
+  )
+}
+
+/** Memos whose title / suggested_title / body match `query` (substring), newest
+ * first. The engine-level convenience over `memoMatchesText`. */
+export function searchMemos(
+  seedPath: string,
+  query: string,
+  opts: { includeArchived?: boolean } = {},
+): MemoView[] {
+  return listMemos(seedPath, opts).filter((m) => memoMatchesText(m, query))
+}
+
+/**
  * The memos anchored to a given artifact ref — the backward-link query (ADR 0004
  * §3). Canonicalizes a bare/qualified code ref so a memo anchored to the
  * qualified id is found by either form. Used by `compost memo list --about` and

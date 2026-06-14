@@ -109,9 +109,19 @@ export {
   type MemoAnchorKind,
   type MemoType,
   type MemoView,
+  memoMatchesText,
   memosAbout,
   resolveMemoAnchors,
+  searchMemos,
 } from './lib/memos.js'
+// ---- memo titles: embedding-extractive suggested_title (ADR 0004 §5, #315)
+export {
+  type Embedder,
+  extractiveTitle,
+  type SuggestTitleResult,
+  suggestMemoTitle,
+  titleCandidates,
+} from './lib/memoTitles.js'
 // ---- artifact reads: list / get current snapshots (#121 GET endpoints)
 export { getArtifact, listArtifacts, type SnapshotView } from './lib/reads.js'
 // ---- chat retrieval: hybrid BM25 + dense, no LLM call (#122)

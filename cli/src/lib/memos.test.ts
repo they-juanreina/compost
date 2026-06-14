@@ -24,7 +24,9 @@ import {
   listMemos,
   type MemoAnchor,
   type MemoView,
+  memoMatchesText,
   memosAbout,
+  searchMemos,
 } from './memos.js'
 import { getArtifact } from './reads.js'
 import { initSeed } from './seed.js'
@@ -355,5 +357,38 @@ describe('editMemo / citeMemo / getMemo', () => {
   it('getMemo returns null for a missing memo', () => {
     const { path } = initSeed('demo', { cwd: work })
     assert.equal(getMemo(path, 'M-nope'), null)
+  })
+})
+
+describe('searchMemos / memoMatchesText (#311)', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-memos-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('matches title + body, case-insensitively', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createMemo(path, {
+      title: 'Trust at handoffs',
+      content: 'procedural distrust',
+      author: RESEARCHER,
+    })
+    createMemo(path, { content: 'something about SMELL signals', author: RESEARCHER })
+    assert.equal(searchMemos(path, 'distrust').length, 1)
+    assert.equal(searchMemos(path, 'smell').length, 1) // case-insensitive body match
+    assert.equal(searchMemos(path, 'handoffs').length, 1) // title match
+    assert.equal(searchMemos(path, 'nonexistent').length, 0)
+    assert.equal(searchMemos(path, '').length, 2) // empty query = all
+  })
+
+  it('memoMatchesText also matches the suggested_title tier', () => {
+    assert.equal(
+      memoMatchesText(
+        { title: '', suggested_title: 'leachate management', content: 'x' },
+        'leachate',
+      ),
+      true,
+    )
   })
 })

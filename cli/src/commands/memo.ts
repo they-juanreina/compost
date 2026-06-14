@@ -11,8 +11,10 @@ import {
   type MemoAnchorKind,
   type MemoType,
   type MemoView,
+  memoMatchesText,
   memosAbout,
 } from '../lib/memos.js'
+import { suggestMemoTitle } from '../lib/memoTitles.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 import { addAuthorFlags, type CommonFlags, loadInputs, resolveAuthor } from './create.js'
@@ -27,6 +29,7 @@ interface NewFlags extends CommonFlags {
 interface ListFlags {
   seed?: string
   about?: string
+  text?: string
   type?: string
   codebook?: string
   includeArchived?: boolean
@@ -49,6 +52,10 @@ function withDisplay(m: MemoView): MemoView & { display_title: string } {
 interface CiteFlags {
   seed?: string
   anchor?: string[]
+}
+interface RetitleFlags {
+  seed?: string
+  all?: boolean
 }
 
 /** Collect a repeatable option into an array. */
@@ -153,7 +160,10 @@ export function registerMemo(program: Command): void {
 
   memo
     .command('list')
-    .description("List the seed's memos (newest first); filter by --about / --type / --codebook")
+    .description(
+      "List the seed's memos (newest first); filter by --text / --about / --type / --codebook",
+    )
+    .option('--text <query>', 'Full-text match over title + body (substring, case-insensitive)')
     .option('--about <ref>', 'Only memos anchored to this artifact (e.g. C-distrust, T-x, H-001)')
     .option('--type <type>', 'Only memos of this reflection type')
     .option('--codebook <ref>', 'Only memos scoped to this frame (CB- id)')
@@ -168,6 +178,10 @@ export function registerMemo(program: Command): void {
           flags.about !== undefined
             ? memosAbout(seedPath, flags.about, opts)
             : listMemos(seedPath, opts)
+        if (flags.text !== undefined) {
+          const q = flags.text
+          memos = memos.filter((m) => memoMatchesText(m, q))
+        }
         if (flags.type !== undefined) memos = memos.filter((m) => m.type === flags.type)
         if (flags.codebook !== undefined)
           memos = memos.filter((m) => m.codebookId === flags.codebook)
@@ -259,6 +273,42 @@ export function registerMemo(program: Command): void {
           actorId: defaultResearcherId(),
         })
         emit({ status: 'ok', command: 'memo cite', ...result }, out)
+      } catch (err) {
+        if (isCompostError(err)) emitError(err, out)
+        throw err
+      }
+    })
+
+  memo
+    .command('retitle')
+    .description(
+      'Fill an embedding-extractive suggested_title for title-less memos — the most representative sentence of the body (local embeddings; a human/agent title always wins). Needs the embeddings provider (Ollama) up.',
+    )
+    .argument('[ref]', 'Memo id (M-NNN); omit and pass --all to do every title-less memo')
+    .option('--all', 'Retitle every title-less memo that has no suggested_title yet')
+    .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
+    .action(async (ref: string | undefined, flags: RetitleFlags, cmd: Command) => {
+      const out = getOutputOpts(cmd)
+      try {
+        const seedPath = resolveSeedPath(process.cwd(), flags.seed)
+        const author = { actorType: 'researcher' as const, actorId: defaultResearcherId() }
+        if (flags.all === true) {
+          const targets = listMemos(seedPath).filter(
+            (m) => m.title.trim().length === 0 && m.suggested_title === undefined,
+          )
+          const results = []
+          for (const m of targets) results.push(await suggestMemoTitle(seedPath, m.id, author))
+          emit({ status: 'ok', command: 'memo retitle', count: results.length, results }, out)
+          return
+        }
+        if (ref === undefined) {
+          throw new CompostError(
+            'INVALID_INPUT',
+            'Pass a memo ref, or --all for every title-less memo.',
+          )
+        }
+        const result = await suggestMemoTitle(seedPath, ref, author)
+        emit({ status: 'ok', command: 'memo retitle', ...result }, out)
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err
