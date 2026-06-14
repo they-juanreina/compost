@@ -12,15 +12,19 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
 ### Added
 
 - **`compost memo new|list|view|edit|cite`** — write and link analytic memos
-  (`M-<slug>`, `synthesis/memos/`). A memo carries a `type` (constrained set:
-  code | category | theme | reflexive | method | theory | freeform) and a
-  heterogeneous **anchor** set pointing at highlights, codes, categories, themes,
-  codebooks, or other memos (metamemos); zero anchors = a project-level reflexive
-  memo. Researcher-authored memos are born endorsed; AI-drafted memos (`--ai`,
-  and the `compost_create_memo` MCP tool) are born `[draft]` until a researcher
-  `compost endorse`s them — the same three-actor gate as codes/themes. Editing
-  emits an `update` event, so the append-only ledger carries the memo's evolution
-  (Saldaña's "series of dated snapshots").
+  (`M-NNN`, `synthesis/memos/`). The id is **mechanical** (like a highlight's);
+  the **title is optional** — brain-dump a thought and `memo list` shows the
+  first line (later a sharper embedding-extractive title, #315), or set/change a
+  title any time without moving the id (it's a label, not identity). A memo
+  carries a `type` (constrained set: code | category | theme | reflexive | method
+  | theory | freeform) and a heterogeneous **anchor** set pointing at highlights,
+  codes, categories, themes, codebooks, or other memos (metamemos); zero anchors
+  = a project-level reflexive memo. Researcher-authored memos are born endorsed;
+  AI-drafted memos (`--ai`, and the `compost_create_memo` MCP tool, which
+  generates a retrieval-friendly title from the content) are born `[draft]` until
+  a researcher `compost endorse`s them — the same three-actor gate as
+  codes/themes. Editing emits an `update` event, so the append-only ledger
+  carries the memo's evolution (Saldaña's "series of dated snapshots").
 - **Memos are codable** — a theme may cite a memo in its evidence set
   (`--evidence memo:M-x`). A memo cited as evidence is frame-neutral and
   **excluded from saturation / κ** (a memo is not a participant utterance), so it

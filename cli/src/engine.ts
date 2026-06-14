@@ -98,6 +98,7 @@ export {
 export {
   DEFAULT_MEMO_TYPE,
   decodeAnchor,
+  displayTitle,
   encodeAnchor,
   getMemo,
   listMemos,

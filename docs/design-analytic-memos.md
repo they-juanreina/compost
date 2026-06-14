@@ -141,14 +141,23 @@ The four load-bearing decisions were made by the maintainer up front:
 
 ### Artifact shape
 
-- **Kind:** `memo`. **Stable id:** `M-<slug>` (joins `H-/C-/CB-/CAT-/T-`).
-- **Markdown:** `synthesis/memos/M-<slug>.md` (sibling of `synthesis/themes/`).
+- **Kind:** `memo`. **Stable id:** `M-NNN` — a **mechanical, frozen** id like a
+  highlight's `H-NNN` (decoupled from the title; ADR 0004 / #314). The title is a
+  retrieval label over a prose body, not the memo's identity, so the id is
+  sequential rather than slug-derived: a title-less brain-dump is valid, and
+  retitling never moves the id or any reference.
+- **Markdown:** `synthesis/memos/M-NNN.md` (sibling of `synthesis/themes/`).
 - **Event:** `artifact_kind: memo`, SHA256-addressed initial state, atomic
   write-then-emit with rollback — identical to every other artifact
   (`cli/src/lib/artifacts.ts` pattern).
-- **Frontmatter:** `id`, `type`, `codebook_id?` (frame scope; `null` =
-  cross-frame / project-level), `anchors` (heterogeneous, see below),
-  `artifact_id`, `provenance: {actor_type, actor_id}`. Body = the memo prose.
+- **Frontmatter:** `id`, `type`, `title?` (optional — omitted for a brain-dump),
+  `codebook_id?` (frame scope; `null` = cross-frame / project-level), `anchors`
+  (heterogeneous, see below), `artifact_id`, `provenance: {actor_type,
+  actor_id}`. Body = the memo prose (with a `# title` heading only when titled).
+- **Display title:** `title ?? suggested_title ?? first-line(content)` — the
+  human title, else the embedding-extractive candidate (#315), else the first
+  line, so `memo list` is always scannable. Title-gen lives in the agent (#312)
+  or as a local extractive computation (#315) — never as generated prose in core.
 
 ### Authorship + endorsement — *decision: researcher-authored; AI may draft, endorse-gated*
 

@@ -3,12 +3,14 @@ import type { Command } from 'commander'
 import { CompostError, isCompostError } from '../errors.js'
 import { citeMemo, createMemo, defaultResearcherId, editMemo } from '../lib/artifacts.js'
 import {
+  displayTitle,
   getMemo,
   listMemos,
   MEMO_ANCHOR_KINDS,
   type MemoAnchor,
   type MemoAnchorKind,
   type MemoType,
+  type MemoView,
   memosAbout,
 } from '../lib/memos.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
@@ -16,7 +18,7 @@ import { emit, emitError, getOutputOpts } from '../output.js'
 import { addAuthorFlags, type CommonFlags, loadInputs, resolveAuthor } from './create.js'
 
 interface NewFlags extends CommonFlags {
-  content: string
+  title?: string
   type?: string
   anchor?: string[]
   codebook?: string
@@ -36,6 +38,13 @@ interface EditFlags {
   seed?: string
   content?: string
   type?: string
+  title?: string
+}
+
+/** Shape a memo for output: the raw view plus the resolved display_title
+ * (human → suggested → first-line). */
+function withDisplay(m: MemoView): MemoView & { display_title: string } {
+  return { ...m, display_title: displayTitle(m) }
 }
 interface CiteFlags {
   seed?: string
@@ -85,9 +94,11 @@ export function registerMemo(program: Command): void {
   addAuthorFlags(
     memo
       .command('new')
-      .description('Write a memo (researcher-authored; --ai lands it as a [draft] until endorsed)')
-      .argument('<title>', 'Memo title (slugified for the M- id)')
-      .requiredOption('--content <text>', 'The memo body')
+      .description(
+        'Write a memo from a thought (researcher-authored; --ai lands it as a [draft] until endorsed). A title is optional — omit it to brain-dump; `memo list` falls back to the first line. The id is a stable M-NNN, never derived from the title.',
+      )
+      .argument('<content>', 'The memo body (the thought)')
+      .option('--title <text>', 'Optional title for retrieval (else the first line is shown)')
       .option(
         '--type <type>',
         'Reflection type: code | category | theme | reflexive | method | theory | freeform (default: freeform)',
@@ -100,7 +111,7 @@ export function registerMemo(program: Command): void {
       )
       .option('--codebook <ref>', 'Scope the memo to one codebook frame (CB- id or name)')
       .option('--cross-frame', 'Mark a frame-less / project-level memo (codebook_id=null)'),
-  ).action((title: string, flags: NewFlags, cmd: Command) => {
+  ).action((content: string, flags: NewFlags, cmd: Command) => {
     const out = getOutputOpts(cmd)
     try {
       if (flags.crossFrame === true && flags.codebook !== undefined) {
@@ -115,8 +126,8 @@ export function registerMemo(program: Command): void {
       const codebookId: string | null | undefined =
         flags.crossFrame === true ? null : flags.codebook
       const created = createMemo(seedPath, {
-        title,
-        content: flags.content,
+        content,
+        ...(flags.title !== undefined ? { title: flags.title } : {}),
         ...(flags.type !== undefined ? { type: flags.type as MemoType } : {}),
         anchors: parseAnchors(flags.anchor),
         ...(codebookId !== undefined ? { codebookId } : {}),
@@ -160,7 +171,15 @@ export function registerMemo(program: Command): void {
         if (flags.type !== undefined) memos = memos.filter((m) => m.type === flags.type)
         if (flags.codebook !== undefined)
           memos = memos.filter((m) => m.codebookId === flags.codebook)
-        emit({ status: 'ok', command: 'memo list', count: memos.length, memos }, out)
+        emit(
+          {
+            status: 'ok',
+            command: 'memo list',
+            count: memos.length,
+            memos: memos.map(withDisplay),
+          },
+          out,
+        )
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err
@@ -170,7 +189,7 @@ export function registerMemo(program: Command): void {
   memo
     .command('view')
     .description('Print a single memo (current state from the ledger)')
-    .argument('<ref>', 'Memo id (M-slug) or SHA prefix')
+    .argument('<ref>', 'Memo id (M-NNN) or SHA prefix')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .action((ref: string, flags: ViewFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
@@ -178,7 +197,7 @@ export function registerMemo(program: Command): void {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const m = getMemo(seedPath, ref)
         if (m === null) throw new CompostError('FILE_NOT_FOUND', `No memo "${ref}" in this seed.`)
-        emit({ status: 'ok', command: 'memo view', memo: m }, out)
+        emit({ status: 'ok', command: 'memo view', memo: withDisplay(m) }, out)
       } catch (err) {
         if (isCompostError(err)) emitError(err, out)
         throw err
@@ -188,19 +207,24 @@ export function registerMemo(program: Command): void {
   memo
     .command('edit')
     .description('Revise a memo (emits an update event; the ledger carries the evolution)')
-    .argument('<ref>', 'Memo id (M-slug) or SHA prefix')
+    .argument('<ref>', 'Memo id (M-NNN) or SHA prefix')
     .option('--content <text>', 'New body text')
+    .option('--title <text>', 'Set or change the title (the id stays the same)')
     .option('--type <type>', 'New reflection type')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .action((ref: string, flags: EditFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
-        if (flags.content === undefined && flags.type === undefined) {
-          throw new CompostError('INVALID_INPUT', 'Nothing to edit — pass --content and/or --type.')
+        if (flags.content === undefined && flags.type === undefined && flags.title === undefined) {
+          throw new CompostError(
+            'INVALID_INPUT',
+            'Nothing to edit — pass --content, --title, and/or --type.',
+          )
         }
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const result = editMemo(seedPath, ref, {
           ...(flags.content !== undefined ? { content: flags.content } : {}),
+          ...(flags.title !== undefined ? { title: flags.title } : {}),
           ...(flags.type !== undefined ? { type: flags.type as MemoType } : {}),
           author: { actorType: 'researcher', actorId: defaultResearcherId() },
         })
@@ -214,7 +238,7 @@ export function registerMemo(program: Command): void {
   memo
     .command('cite')
     .description('Anchor a memo to more of the workflow (append anchors; idempotent)')
-    .argument('<ref>', 'Memo id (M-slug) or SHA prefix')
+    .argument('<ref>', 'Memo id (M-NNN) or SHA prefix')
     .requiredOption(
       '--anchor <kind:ref>',
       'Anchor to add (repeatable): code:distrust, theme:T-x, highlight:H-001, …',

@@ -30,11 +30,18 @@ under the endorsement gate; it never generates-and-asserts it.
 provenance-bearing interpretive record — born under the same three-actor model
 and `[draft]` gate as every other artifact.**
 
-1. **First-class artifact.** `artifact_kind=memo`, stable id `M-<slug>`, markdown
-   at `synthesis/memos/`, SHA256-addressed initial state, atomic write-then-emit
-   with the existing six event actions. A free-text field on code/theme was
-   rejected: it cannot carry provenance, cannot be dated/versioned as a series,
-   and cannot itself be coded.
+1. **First-class artifact, mechanical id (refined 2026-06-14, #314).** `artifact_kind=memo`,
+   stable id **`M-NNN`** (sequential + frozen, like a highlight's `H-NNN`),
+   markdown at `synthesis/memos/M-NNN.md`, SHA256-addressed initial state, atomic
+   write-then-emit with the existing six event actions. The **title is an
+   optional, editable label decoupled from identity** — a memo's title is a
+   retrieval convenience over a body of prose, not its identity (unlike a code,
+   whose *name is* its identity). So the id is mechanical: a title-less
+   brain-dump is valid, and retitling never moves the id or any reference (see
+   ADR 0005 for the general reference-key/rename model). A free-text field on
+   code/theme was rejected: it cannot carry provenance, cannot be
+   dated/versioned as a series, and cannot itself be coded.
+   *Display:* `displayTitle = title ?? suggested_title (embedding-extractive, #315) ?? first-line(content)`.
 2. **Researcher-authored; AI may draft, endorse-gated.** A researcher memo is
    trusted on creation; an AI-drafted memo is born `[draft]` and untrusted until
    `endorse`. `reject` archives; `blame` prints lineage; the self-endorse guard

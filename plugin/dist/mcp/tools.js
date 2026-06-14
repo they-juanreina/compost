@@ -277,15 +277,15 @@ export const TOOLS = [
     },
     {
         name: 'compost_create_memo',
-        description: "Write an analytic memo — your dated interpretive note about the corpus, a code, or a theme (the reasoning behind a move, a reflexive observation, a pattern hunch). Anchor it to what it's about. Lands as an AI [draft] until a researcher endorses (compost endorse) — propose, never self-approve.",
+        description: "Write an analytic memo — your dated interpretive note about the corpus, a code, or a theme (the reasoning behind a move, a reflexive observation, a pattern hunch). Anchor it to what it's about. Always provide a concise, evocative, retrieval-friendly `title` you generate from the content (the human may have only given you a raw thought). Lands as an AI [draft] until a researcher endorses (compost endorse) — propose, never self-approve.",
         readOnly: false,
         aiAuthored: true,
         inputSchema: {
             type: 'object',
-            required: ['title', 'content'],
+            required: ['content'],
             properties: {
-                title: str('Memo title (slugified for the M- id)'),
                 content: str('The memo body — the reflection/reasoning'),
+                title: str('A short retrieval-friendly title. Optional in the CLI, but you should generate one from the content for scannability (the human edits it on endorse if needed).'),
                 type: {
                     type: 'string',
                     enum: ['code', 'category', 'theme', 'reflexive', 'method', 'theory', 'freeform'],
@@ -304,9 +304,8 @@ export const TOOLS = [
         toArgv: (a) => [
             'memo',
             'new',
-            String(a.title),
-            '--content',
             String(a.content),
+            ...(a.title ? ['--title', String(a.title)] : []),
             ...(a.type ? ['--type', String(a.type)] : []),
             ...(Array.isArray(a.anchor) ? a.anchor.flatMap((x) => ['--anchor', String(x)]) : []),
             ...(a.codebook ? ['--codebook', String(a.codebook)] : []),

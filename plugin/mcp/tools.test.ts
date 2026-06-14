@@ -287,23 +287,25 @@ describe('MCP tool definitions', () => {
     assert.equal(memo.aiAuthored, true)
     assert.ok(MUTATION_TOOLS.includes('compost_create_memo'))
     const argv = buildArgv(memo, {
-      title: 'On distrust',
       content: 'procedural, not personal',
+      title: 'On distrust',
       type: 'code',
       anchor: ['code:distrust', 'highlight:H-001'],
     })
-    assert.deepEqual(argv.slice(0, 5), [
-      'memo',
-      'new',
-      'On distrust',
-      '--content',
-      'procedural, not personal',
-    ])
+    // content is positional; title is an optional flag (#314)
+    assert.deepEqual(argv.slice(0, 3), ['memo', 'new', 'procedural, not personal'])
+    assert.deepEqual([argv[argv.indexOf('--title') + 1]], ['On distrust'])
     // each anchor expands to its own --anchor flag
     assert.equal(argv.filter((x) => x === '--anchor').length, 2)
     // born [draft]: AI flags + schema-required model/prompt-hash injected
     assert.ok(argv.includes('--ai'))
     assert.match(argv[argv.indexOf('--prompt-hash') + 1] as string, /^[a-f0-9]{64}$/)
+  })
+
+  it('compost_create_memo works title-less (content only)', () => {
+    const argv = buildArgv(tool('compost_create_memo'), { content: 'a raw thought' })
+    assert.deepEqual(argv.slice(0, 3), ['memo', 'new', 'a raw thought'])
+    assert.ok(!argv.includes('--title'))
   })
 
   it('compost_list_memos is read-only and maps the --about filter', () => {

@@ -27,7 +27,8 @@ repo-root [`CLAUDE.md`](../CLAUDE.md).
   (second-cycle grouping), `theme`, `memo` (the analyst's dated, evolving
   interpretive record — ADR 0004), glossary `term`, and the append-only
   `event`. Stable ids: `S001`, `U-0001`, `H-001`, `C-<codebook>/<code>`,
-  `CB-<slug>`, `CAT-<slug>`, `T-<slug>`, `M-<slug>`.
+  `CB-<slug>`, `CAT-<slug>`, `T-<slug>`, `M-NNN` (memos take a mechanical id like
+  highlights — the title is an editable label, not identity; ADR 0004 / #314).
 - **Capabilities (verbs)** — typed commands and queries in `cli/src/lib` (the
   domain core). Commands mutate + emit events: `create highlight|code|theme`,
   `codebook new|migrate|migrate-ids`, `category new|link|unlink|suggest`,

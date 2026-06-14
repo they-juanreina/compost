@@ -7,7 +7,7 @@ import { getArtifact, listArtifacts, type SnapshotView } from './reads.js'
 /**
  * Analytic memos (ADR 0004). A memo is the analyst's dated, evolving
  * interpretive record — Saldaña's "site of conversation with ourselves about our
- * data." It is a first-class artifact (`M-<slug>`, `synthesis/memos/`) like every
+ * data." It is a first-class artifact (`M-NNN`, `synthesis/memos/`) like every
  * other: SHA-addressed, event-logged, researcher-authored or AI-drafted behind
  * the `[draft]`→endorse gate. compost stores and versions the interpretation; it
  * never authors it.
@@ -185,7 +185,12 @@ export function assertMemoType(type: string): MemoType {
 export interface MemoView {
   id: string
   type: MemoType
+  /** The human-set title; empty string when the memo was a brain-dump with no
+   * title (#314). Use `displayTitle` for what to show. */
   title: string
+  /** An embedding-extractive title candidate filled by the embed worker (#315);
+   * the middle tier of the display fallback. Absent until vectors exist. */
+  suggested_title?: string
   content: string
   anchors: MemoAnchor[]
   /** Frame scope; null for a cross-frame / project-level memo. */
@@ -198,12 +203,40 @@ export interface MemoView {
   last_event_ts: string
 }
 
+/** First non-empty line of the content, trimmed and clipped — the always-present
+ * display fallback so an untitled memo is never blank when scanning. */
+function firstLine(content: string, max = 80): string {
+  const line =
+    content
+      .split('\n')
+      .find((l) => l.trim().length > 0)
+      ?.trim() ?? ''
+  return line.length > max ? `${line.slice(0, max - 1).trimEnd()}…` : line
+}
+
+/**
+ * What to show when scanning memos (#314 fallback chain): the human title, else
+ * the embedding-extractive `suggested_title` (#315), else the first line of the
+ * content. So `memo list` is always scannable — even a titleless brain-dump, even
+ * before embeddings have run.
+ */
+export function displayTitle(
+  memo: Pick<MemoView, 'title' | 'suggested_title' | 'content'>,
+): string {
+  const human = memo.title.trim()
+  if (human.length > 0) return human
+  const suggested = memo.suggested_title?.trim()
+  if (suggested !== undefined && suggested.length > 0) return suggested
+  return firstLine(memo.content)
+}
+
 /** Project a memo snapshot to a typed view. */
 function snapshotToMemo(snap: SnapshotView): MemoView {
   const s = snap.current_state as {
     id?: string
     type?: string
     title?: string
+    suggested_title?: string
     content?: string
     anchors?: unknown
     codebook_id?: string | null
@@ -216,6 +249,9 @@ function snapshotToMemo(snap: SnapshotView): MemoView {
     id: s.id ?? snap.artifact_id,
     type,
     title: s.title ?? '',
+    ...(typeof s.suggested_title === 'string' && s.suggested_title.length > 0
+      ? { suggested_title: s.suggested_title }
+      : {}),
     content: s.content ?? '',
     anchors: loadMemoAnchors(s.anchors),
     codebookId: s.codebook_id ?? null,

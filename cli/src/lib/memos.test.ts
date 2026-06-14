@@ -18,10 +18,12 @@ import {
 import { blame } from './blame.js'
 import {
   decodeAnchor,
+  displayTitle,
   encodeAnchor,
   getMemo,
   listMemos,
   type MemoAnchor,
+  type MemoView,
   memosAbout,
 } from './memos.js'
 import { getArtifact } from './reads.js'
@@ -63,7 +65,7 @@ describe('createMemo', () => {
   })
   afterEach(() => rmSync(work, { recursive: true, force: true }))
 
-  it('writes M-<slug> markdown with id/type/artifact_id and emits a create event', () => {
+  it('writes M-NNN markdown with a mechanical id, title, type + emits a create event', () => {
     const { path } = initSeed('demo', { cwd: work })
     const m = createMemo(path, {
       title: 'Why distrust clusters around handoffs',
@@ -71,13 +73,14 @@ describe('createMemo', () => {
       type: 'theme',
       author: RESEARCHER,
     })
-    assert.equal(m.id, 'M-why-distrust-clusters-around-handoffs')
+    assert.equal(m.id, 'M-001') // mechanical, not derived from the title (#314)
     assert.equal(m.artifact_id.length, 64)
-    assert.ok(m.path.endsWith('synthesis/memos/why-distrust-clusters-around-handoffs.md'))
+    assert.ok(m.path.endsWith('synthesis/memos/M-001.md'))
 
     const md = readFileSync(m.path, 'utf8')
-    assert.match(md, /id: M-why-distrust-clusters-around-handoffs/)
+    assert.match(md, /id: M-001/)
     assert.match(md, /type: theme/)
+    assert.match(md, /title: Why distrust clusters around handoffs/)
     assert.match(md, new RegExp(`artifact_id: ${m.artifact_id}`))
     assert.match(md, /actor_type: researcher/)
     assert.match(md, /# Why distrust clusters around handoffs/)
@@ -108,13 +111,29 @@ describe('createMemo', () => {
     )
   })
 
-  it('rejects a duplicate title', () => {
+  it('allows a title-less brain-dump; displayTitle falls back to the first line', () => {
     const { path } = initSeed('demo', { cwd: work })
-    createMemo(path, { title: 'Dupe', content: 'a', author: RESEARCHER })
-    assert.throws(
-      () => createMemo(path, { title: 'Dupe', content: 'b', author: RESEARCHER }),
-      (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
-    )
+    const m = createMemo(path, {
+      content: 'distrust keeps showing up right after handoffs\n\nmore detail later',
+      author: RESEARCHER,
+    })
+    assert.equal(m.id, 'M-001')
+    const md = readFileSync(m.path, 'utf8')
+    assert.doesNotMatch(md, /^title:/m) // no title line written
+    assert.doesNotMatch(md, /^# /m) // no heading
+    const memo = listMemos(path)[0]
+    assert.ok(memo)
+    assert.equal(memo.title, '')
+    assert.equal(displayTitle(memo), 'distrust keeps showing up right after handoffs')
+  })
+
+  it('allocates sequential ids and allows duplicate titles', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const a = createMemo(path, { title: 'Dupe', content: 'a', author: RESEARCHER })
+    const b = createMemo(path, { title: 'Dupe', content: 'b', author: RESEARCHER })
+    assert.equal(a.id, 'M-001')
+    assert.equal(b.id, 'M-002')
+    assert.notEqual(a.artifact_id, b.artifact_id)
   })
 
   it('canonicalizes + frame-stamps a code anchor and infers the memo frame', () => {
@@ -300,6 +319,17 @@ describe('editMemo / citeMemo / getMemo', () => {
     const memo = getMemo(path, m.id)
     assert.equal(memo?.content, 'second')
     assert.equal(memo?.type, 'theory')
+  })
+
+  it('editMemo sets/changes the title without moving the id (#314)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const m = createMemo(path, { content: 'a titleless brain-dump', author: RESEARCHER })
+    const res = editMemo(path, m.id, { title: 'Distrust at handoffs', author: RESEARCHER })
+    assert.deepEqual(res.updated, ['title'])
+    const memo = getMemo(path, m.id)
+    assert.equal(memo?.id, 'M-001') // id unchanged
+    assert.equal(memo?.title, 'Distrust at handoffs')
+    assert.equal(displayTitle(memo as MemoView), 'Distrust at handoffs')
   })
 
   it('editMemo is a no-op when the value is unchanged', () => {
