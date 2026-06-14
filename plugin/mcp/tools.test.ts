@@ -281,6 +281,38 @@ describe('MCP tool definitions', () => {
     assert.equal(a, b)
     assert.match(a, AI_ACTOR_RE)
   })
+
+  it('compost_create_memo is an AI [draft] author and maps title/content/anchors', () => {
+    const memo = tool('compost_create_memo')
+    assert.equal(memo.aiAuthored, true)
+    assert.ok(MUTATION_TOOLS.includes('compost_create_memo'))
+    const argv = buildArgv(memo, {
+      content: 'procedural, not personal',
+      title: 'On distrust',
+      type: 'code',
+      anchor: ['code:distrust', 'highlight:H-001'],
+    })
+    // content is positional; title is an optional flag (#314)
+    assert.deepEqual(argv.slice(0, 3), ['memo', 'new', 'procedural, not personal'])
+    assert.deepEqual([argv[argv.indexOf('--title') + 1]], ['On distrust'])
+    // each anchor expands to its own --anchor flag
+    assert.equal(argv.filter((x) => x === '--anchor').length, 2)
+    // born [draft]: AI flags + schema-required model/prompt-hash injected
+    assert.ok(argv.includes('--ai'))
+    assert.match(argv[argv.indexOf('--prompt-hash') + 1] as string, /^[a-f0-9]{64}$/)
+  })
+
+  it('compost_create_memo works title-less (content only)', () => {
+    const argv = buildArgv(tool('compost_create_memo'), { content: 'a raw thought' })
+    assert.deepEqual(argv.slice(0, 3), ['memo', 'new', 'a raw thought'])
+    assert.ok(!argv.includes('--title'))
+  })
+
+  it('compost_list_memos is read-only and maps the --about filter', () => {
+    assert.ok(READ_ONLY_TOOLS.includes('compost_list_memos'))
+    const argv = tool('compost_list_memos').toArgv({ about: 'C-distrust', seed: 'study' })
+    assert.deepEqual(argv, ['memo', 'list', '--about', 'C-distrust', '--seed', 'study'])
+  })
 })
 
 describe('runTool', () => {
@@ -388,5 +420,19 @@ describe('plugin manifest', () => {
     assert.equal(manifest.commands, './commands')
     assert.ok(Array.isArray(manifest.skills))
     assert.ok(manifest.skills.includes('thematic-coding'))
+    assert.ok(manifest.skills.includes('analytic-memos'))
+  })
+
+  it('every declared skill has a SKILL.md on disk', () => {
+    const manifest = JSON.parse(
+      readFileSync(join(__dirname, '..', '.claude-plugin', 'plugin.json'), 'utf8'),
+    ) as { skills: string[] }
+    for (const skill of manifest.skills) {
+      const skillFile = join(__dirname, '..', 'skills', skill, 'SKILL.md')
+      assert.ok(
+        readFileSync(skillFile, 'utf8').length > 0,
+        `${skill} declared in plugin.json must have a non-empty skills/${skill}/SKILL.md`,
+      )
+    }
   })
 })

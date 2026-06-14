@@ -21,6 +21,7 @@ import {
   qualifiedCodeId,
   tryResolveCodeRef,
 } from './codeRefs.js'
+import { listMemos } from './memos.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
 
 /** Current snapshots of the seed's codebooks, newest activity first. */
@@ -531,6 +532,9 @@ export interface MergePlan {
     /** code → category links into the source frame (re-homing would dangle the
      * ref and break the one-frame-per-category invariant). */
     category_links: Array<{ code: string; category: string }>
+    /** Memo ids whose anchors point at a code in the source frame — re-homing
+     * the code would dangle the memo anchor (#318). */
+    memo_anchors: string[]
   }
 }
 
@@ -594,7 +598,19 @@ export function planMerge(seedPath: string, fromRef: string, intoRef: string): M
     }
   }
 
-  return { from: fromId, into: intoId, codes, blocking: { themes, category_links } }
+  // Memo anchors into the source frame (#318): a memo that's *about* a re-homing
+  // code would dangle if the code id moves. Same refuse-on-referrers posture.
+  const memo_anchors: string[] = []
+  for (const memo of listMemos(seedPath)) {
+    const hits = memo.anchors.some((a) => {
+      if (a.kind !== 'code') return false
+      const frame = a.codebookId ?? tryResolveCodeRef(seedPath, a.ref)?.codebookId
+      return frame === fromId
+    })
+    if (hits) memo_anchors.push(memo.id)
+  }
+
+  return { from: fromId, into: intoId, codes, blocking: { themes, category_links, memo_anchors } }
 }
 
 export interface MergeResult {
@@ -628,7 +644,11 @@ export function applyMerge(
 ): MergeResult {
   const plan = planMerge(seedPath, fromRef, intoRef)
 
-  if (plan.blocking.themes.length > 0 || plan.blocking.category_links.length > 0) {
+  if (
+    plan.blocking.themes.length > 0 ||
+    plan.blocking.category_links.length > 0 ||
+    plan.blocking.memo_anchors.length > 0
+  ) {
     const bits: string[] = []
     if (plan.blocking.themes.length > 0) bits.push(`themes ${plan.blocking.themes.join(', ')}`)
     if (plan.blocking.category_links.length > 0) {
@@ -636,9 +656,12 @@ export function applyMerge(
         `category links ${plan.blocking.category_links.map((l) => `${l.code}→${l.category}`).join(', ')}`,
       )
     }
+    if (plan.blocking.memo_anchors.length > 0) {
+      bits.push(`memos ${plan.blocking.memo_anchors.join(', ')}`)
+    }
     throw new CompostError(
       'INVALID_INPUT',
-      `Refusing merge: codes in "${plan.from}" are woven into higher tiers (${bits.join('; ')}). Re-cite or drop those first — merge re-homes codes and will not silently change a theme's lens membership or a category's frame.`,
+      `Refusing merge: codes in "${plan.from}" are woven into higher tiers (${bits.join('; ')}). Re-cite or drop those first — merge re-homes codes and will not silently change a theme's lens membership, a category's frame, or dangle a memo's anchor.`,
     )
   }
 

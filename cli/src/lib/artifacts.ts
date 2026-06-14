@@ -17,11 +17,20 @@ import {
   openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
-import { listArtifacts } from './reads.js'
+import {
+  assertMemoType,
+  DEFAULT_MEMO_TYPE,
+  encodeAnchor,
+  loadMemoAnchors,
+  type MemoAnchor,
+  type MemoType,
+  resolveMemoAnchors,
+} from './memos.js'
+import { getArtifact, listArtifacts } from './reads.js'
 import { encodeEvidence, resolveThemeEvidence, type ThemeEvidence } from './themes.js'
 
 export interface CreatedArtifact {
-  id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug)
+  id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug, CAT-slug, M-slug)
   artifact_id: string // SHA256(initial state) — the provenance content-address
   path: string // markdown file written
   event_id: string // the create event's ULID
@@ -51,6 +60,20 @@ function nextHighlightId(dir: string): string {
     }
   }
   return `H-${String(max + 1).padStart(3, '0')}`
+}
+
+/** Next sequential M-NNN in synthesis/memos/, scanning existing files. A memo's
+ * id is mechanical (like a highlight's) — decoupled from its optional, editable
+ * title (ADR 0004 / #314), so the id never moves when the title changes. */
+function nextMemoId(dir: string): string {
+  let max = 0
+  if (existsSync(dir)) {
+    for (const f of readdirSync(dir)) {
+      const m = /^M-(\d+)\.md$/.exec(f)
+      if (m) max = Math.max(max, Number.parseInt(m[1] as string, 10))
+    }
+  }
+  return `M-${String(max + 1).padStart(3, '0')}`
 }
 
 /**
@@ -543,6 +566,187 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
   return { id, artifact_id: sha, path, event_id }
 }
 
+export interface CreateMemoInput {
+  content: string
+  /** Optional title (ADR 0004 / #314): a retrieval label over the body, not the
+   * memo's identity. Brain-dump without one; `displayTitle` falls back to the
+   * first line (and later the embedding-extractive `suggested_title`, #315). The
+   * id is mechanical (`M-NNN`) and never derived from the title. */
+  title?: string
+  /** The kind of reflection (ADR 0004 §5) — a constrained set, default freeform. */
+  type?: MemoType
+  /** What the memo is about: a heterogeneous anchor set
+   * `{kind: highlight|code|category|theme|codebook|memo, ref}`. Zero anchors is
+   * valid — a project-level reflexive memo. */
+  anchors?: MemoAnchor[]
+  /** Frame scope. A CB- id (or name) scopes the memo to one lens; explicit
+   * `null` marks a cross-frame / project-level memo; omitted is inferred from
+   * the anchors (one shared frame ⇒ that frame, else frame-less). */
+  codebookId?: string | null
+  author: Author
+  inputs?: AiInputBundle
+}
+
+/**
+ * Create an analytic memo (ADR 0004) — the analyst's dated, evolving
+ * interpretive record. Lives in `synthesis/memos/M-NNN.md` (a sibling of
+ * synthesis/themes/), with a mechanical, frozen id like a highlight — the title
+ * is an optional, editable label decoupled from identity (#314), so it can be
+ * empty (brain-dump) and changed freely without moving the id or any reference.
+ * AI-drafted memos are born `[draft]` (actor_type=ai) until a researcher
+ * endorses; researcher memos are born endorsed. Editing emits an `update` event,
+ * so the append-only ledger carries Saldaña's "series of dated snapshots."
+ * compost stores and versions the interpretation; it never authors it.
+ */
+export function createMemo(seedPath: string, input: CreateMemoInput): CreatedArtifact {
+  const dir = join(seedPath, 'synthesis', 'memos')
+  mkdirSync(dir, { recursive: true })
+  const id = nextMemoId(dir)
+  const title = input.title?.trim() ?? ''
+  const type = input.type === undefined ? DEFAULT_MEMO_TYPE : assertMemoType(input.type)
+  const { anchors, codebookId } = resolveMemoAnchors(
+    seedPath,
+    input.anchors ?? [],
+    input.codebookId,
+  )
+
+  // SHA-addressed identity carries the mechanical id + title + content + anchors.
+  const anchorState = anchors.map((a) => ({
+    kind: a.kind,
+    ref: a.ref,
+    codebook_id: a.codebookId ?? null,
+  }))
+  const initialState = {
+    id,
+    kind: 'memo',
+    type,
+    title,
+    content: input.content,
+    anchors: anchorState,
+    codebook_id: codebookId,
+  }
+  const sha = artifactId(initialState)
+  const body = `${frontmatter({
+    id,
+    type,
+    ...(title.length > 0 ? { title } : {}),
+    ...(anchors.length > 0 ? { anchors: anchors.map(encodeAnchor) } : {}),
+    codebook_id: codebookId,
+    artifact_id: sha,
+    provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
+  })}\n${title.length > 0 ? `# ${title}\n\n` : ''}${input.content}\n`
+
+  // Sequential id ⇒ the path is always fresh (mirrors createHighlight); no
+  // existsSync collision guard needed, and duplicate titles are fine now.
+  const path = join(dir, `${id}.md`)
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'memo',
+    initialState,
+    author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
+  })
+  return { id, artifact_id: sha, path, event_id }
+}
+
+export interface EditMemoInput {
+  content?: string
+  type?: MemoType
+  /** Set or change the memo's title. Because the id is mechanical (`M-NNN`,
+   * #314), retitling is a plain field update — the id and every reference to the
+   * memo are untouched. */
+  title?: string
+  author: Author
+}
+
+/**
+ * Edit a memo's content, type, and/or title — emits a field-level `update` event
+ * per changed field (ADR 0004 §6). The append-only ledger carries the evolution
+ * (Saldaña's "series of dated snapshots"); reads (`memo view` / `list`) reflect
+ * it immediately. Like every other artifact, the create-time markdown is not
+ * rewritten — the ledger is canonical, the `.md` is the birth rendering. The id
+ * never changes, so retitling never breaks links or citations.
+ */
+export function editMemo(
+  seedPath: string,
+  ref: string,
+  input: EditMemoInput,
+): { id: string; artifact_id: string; updated: string[] } {
+  const snap = getArtifact(seedPath, 'memo', ref)
+  if (snap === null) {
+    throw new CompostError('FILE_NOT_FOUND', `No memo "${ref}" in this seed.`)
+  }
+  const s = snap.current_state as { id?: string; type?: string; content?: string; title?: string }
+  const id = s.id ?? ref
+  const updated: string[] = []
+  if (input.type !== undefined) {
+    const t = assertMemoType(input.type)
+    if (t !== s.type) {
+      updateArtifact(seedPath, ref, { field: 'type', before: s.type, after: t }, input.author)
+      updated.push('type')
+    }
+  }
+  if (input.title !== undefined) {
+    const t = input.title.trim()
+    if (t !== (s.title ?? '')) {
+      updateArtifact(seedPath, ref, { field: 'title', before: s.title, after: t }, input.author)
+      updated.push('title')
+    }
+  }
+  if (input.content !== undefined && input.content !== s.content) {
+    updateArtifact(
+      seedPath,
+      ref,
+      { field: 'content', before: s.content, after: input.content },
+      input.author,
+    )
+    updated.push('content')
+  }
+  return { id, artifact_id: snap.artifact_id, updated }
+}
+
+/**
+ * Grow a memo's anchor set — ATLAS.ti's "link a memo across the workflow."
+ * Resolves + canonicalizes the new anchors, merge-dedups with the existing set
+ * (by kind+ref), and emits an `update` on the `anchors` field.
+ */
+export function citeMemo(
+  seedPath: string,
+  ref: string,
+  add: MemoAnchor[],
+  author: Author,
+): { id: string; artifact_id: string; anchors: MemoAnchor[]; added: number } {
+  const snap = getArtifact(seedPath, 'memo', ref)
+  if (snap === null) {
+    throw new CompostError('FILE_NOT_FOUND', `No memo "${ref}" in this seed.`)
+  }
+  const s = snap.current_state as { id?: string; anchors?: unknown }
+  const id = s.id ?? ref
+  const current = loadMemoAnchors(s.anchors)
+  const { anchors: resolved } = resolveMemoAnchors(seedPath, add, undefined)
+  const merged = [...current]
+  let added = 0
+  for (const a of resolved) {
+    if (!merged.some((x) => x.kind === a.kind && x.ref === a.ref)) {
+      merged.push(a)
+      added += 1
+    }
+  }
+  if (added > 0) {
+    const anchorState = merged.map((a) => ({
+      kind: a.kind,
+      ref: a.ref,
+      codebook_id: a.codebookId ?? null,
+    }))
+    updateArtifact(
+      seedPath,
+      ref,
+      { field: 'anchors', before: s.anchors ?? [], after: anchorState },
+      author,
+    )
+  }
+  return { id, artifact_id: snap.artifact_id, anchors: merged, added }
+}
+
 // ---------------------------------------------------------------- endorse
 
 interface CreateEventRow {
@@ -553,13 +757,15 @@ interface CreateEventRow {
 }
 
 /**
- * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug`, `CB-slug` —
- * the id `compost create`/`compost codebook new` prints. We accept it wherever
- * a SHA prefix is accepted so the obvious `endorse <id-from-create>` round-trip
- * works (#168). The dash and non-hex chars make it unambiguous vs a SHA prefix
- * (`^[a-f0-9]{8,64}$`).
+ * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug`, `CB-slug`,
+ * `CAT-slug`, `M-slug` — the id `compost create`/`compost codebook new`/`compost
+ * memo new` prints. We accept it wherever a SHA prefix is accepted so the obvious
+ * `endorse <id-from-create>` round-trip works (#168). The dash and non-hex chars
+ * make it unambiguous vs a SHA prefix (`^[a-f0-9]{8,64}$`). Extending this set is
+ * what lets endorse/reject/update/getArtifact resolve a new kind by its id —
+ * `M-` was added for memos (ADR 0004).
  */
-export const HUMAN_REF_RE = /^(?:CAT|CB|[CHT])-[A-Za-z0-9_/-]+$/
+export const HUMAN_REF_RE = /^(?:CAT|CB|[CHMT])-[A-Za-z0-9_/-]+$/
 
 /**
  * Look up a create event by the human id stored in its payload (initialState.id).

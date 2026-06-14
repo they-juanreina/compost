@@ -9,4 +9,5 @@ Status vocabulary: **Proposed** (under discussion) · **Accepted** (the decision
 | [0001](./0001-codebook-multiplicity.md) | Codebook multiplicity (1:n codebooks per Seed) | Accepted |
 | [0002](./0002-category-tier.md) | Category tier (second-cycle / pattern-coding layer) | Accepted |
 | [0003](./0003-interfaces-monorepo-plugin-tauri.md) | Interfaces: monorepo, plugin-first, Tauri-wrap for native | Accepted |
+| [0004](./0004-analytic-memos.md) | Analytic memos (first-class, codable interpretive artifact) | Accepted |
 | [0005](./0005-reference-key-and-rename-model.md) | Reference key & rename model (slugs cosmetic, artifact_id is the FK) | Accepted (impl deferred) |

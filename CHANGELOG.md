@@ -2,6 +2,39 @@
 
 ## Unreleased
 
+Opens the **analytic memos** milestone (#9): a first-class, provenance-bearing,
+*codable* interpretive artifact — the analyst's dated, evolving record (Saldaña;
+ADR 0004). Built on a recorded maintainer override (kill filter clears 1–3;
+"validated need" is grounded-but-not-demonstrated against the single-study
+dogfood — see [`docs/design-analytic-memos.md`](docs/design-analytic-memos.md)).
+The web surface is deliberately deferred (CLAUDE.md live tension).
+
+### Added
+
+- **`compost memo new|list|view|edit|cite`** — write and link analytic memos
+  (`M-NNN`, `synthesis/memos/`). The id is **mechanical** (like a highlight's);
+  the **title is optional** — brain-dump a thought and `memo list` shows the
+  first line (later a sharper embedding-extractive title, #315), or set/change a
+  title any time without moving the id (it's a label, not identity). A memo
+  carries a `type` (constrained set: code | category | theme | reflexive | method
+  | theory | freeform) and a heterogeneous **anchor** set pointing at highlights,
+  codes, categories, themes, codebooks, or other memos (metamemos); zero anchors
+  = a project-level reflexive memo. Researcher-authored memos are born endorsed;
+  AI-drafted memos (`--ai`, and the `compost_create_memo` MCP tool, which
+  generates a retrieval-friendly title from the content) are born `[draft]` until
+  a researcher `compost endorse`s them — the same three-actor gate as
+  codes/themes. Editing emits an `update` event, so the append-only ledger
+  carries the memo's evolution (Saldaña's "series of dated snapshots").
+- **Memos are codable** — a theme may cite a memo in its evidence set
+  (`--evidence memo:M-x`). A memo cited as evidence is frame-neutral and
+  **excluded from saturation / κ** (a memo is not a participant utterance), so it
+  never inflates coverage.
+- **`compost_create_memo` + `compost_list_memos`** MCP tools, and the
+  **`/analytic-memos`** skill (drafts grounded memos behind the endorse gate).
+- `compost status` now counts memos; PROV-O export and `reindex` cover the memo
+  kind. Memos are intentionally kept out of `search`/grounded-chat retrieval
+  (interpretation, not corpus).
+
 ### Fixed
 
 - **`slug()` is now diacritic-folding** — accented / non-ASCII Latin names no

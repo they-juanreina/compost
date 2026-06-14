@@ -45,6 +45,7 @@ describe('gatherStatus', () => {
       highlights: 0,
       codes: 0,
       themes: 0,
+      memos: 0,
       frames: 0,
       insights: 0,
       legacy_assets: 0,
@@ -111,6 +112,17 @@ describe('gatherStatus', () => {
     assert.ok(seed)
     assert.equal(seed.counts.themes, 2)
     assert.equal(seed.counts.insights, 1)
+  })
+
+  it('counts memos under synthesis/memos', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    mkdirSync(join(path, 'synthesis/memos'), { recursive: true })
+    writeFileSync(join(path, 'synthesis/memos/positionality.md'), '')
+    writeFileSync(join(path, 'synthesis/memos/on-distrust.md'), '')
+    const snap = gatherStatus({ cwd: work })
+    const seed = snap.seeds[0]
+    assert.ok(seed)
+    assert.equal(seed.counts.memos, 2)
   })
 
   it('counts legacy assets recursively', () => {

@@ -34,14 +34,19 @@ export {
   type CreateCodeInput,
   type CreatedArtifact,
   type CreateHighlightInput,
+  type CreateMemoInput,
   type CreateThemeInput,
+  citeMemo,
   createCategory,
   createCode,
   createCodebook,
   createHighlight,
+  createMemo,
   createTheme,
   DEFAULT_CODEBOOK_ID,
   defaultResearcherId,
+  type EditMemoInput,
+  editMemo,
   endorseArtifact,
   ensurePrimaryCodebook,
   HUMAN_REF_RE,
@@ -89,6 +94,34 @@ export {
   readJournal,
   saveJournal,
 } from './lib/journal.js'
+// ---- memos: analytic-memo artifact (ADR 0004)
+export {
+  DEFAULT_MEMO_TYPE,
+  decodeAnchor,
+  displayTitle,
+  encodeAnchor,
+  getMemo,
+  listMemos,
+  loadMemoAnchors,
+  MEMO_ANCHOR_KINDS,
+  MEMO_TYPES,
+  type MemoAnchor,
+  type MemoAnchorKind,
+  type MemoType,
+  type MemoView,
+  memoMatchesText,
+  memosAbout,
+  resolveMemoAnchors,
+  searchMemos,
+} from './lib/memos.js'
+// ---- memo titles: embedding-extractive suggested_title (ADR 0004 §5, #315)
+export {
+  type Embedder,
+  extractiveTitle,
+  type SuggestTitleResult,
+  suggestMemoTitle,
+  titleCandidates,
+} from './lib/memoTitles.js'
 // ---- artifact reads: list / get current snapshots (#121 GET endpoints)
 export { getArtifact, listArtifacts, type SnapshotView } from './lib/reads.js'
 // ---- chat retrieval: hybrid BM25 + dense, no LLM call (#122)

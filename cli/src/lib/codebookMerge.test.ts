@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import { CompostError } from '../errors.js'
-import { createCategory, createCode, createCodebook, createTheme } from './artifacts.js'
+import { createCategory, createCode, createCodebook, createMemo, createTheme } from './artifacts.js'
 import { blame } from './blame.js'
 import { linkCodeToCategory } from './categories.js'
 import { applyMerge, listCodebooks, planMerge } from './codebooks.js'
@@ -157,5 +157,20 @@ describe('mergeCodebooks (#269)', () => {
       () => applyMerge(seedPath, 'lens-a', 'lens-b', RID),
       (err: unknown) => err instanceof CompostError && /category link/.test(err.message),
     )
+  })
+
+  it('refuses when a re-homing code is anchored by a memo (#318)', () => {
+    const m = createMemo(seedPath, {
+      content: 'reflecting on alpha',
+      anchors: [{ kind: 'code', ref: 'C-lens-a/alpha' }],
+      author: AUTHOR,
+    })
+    const plan = planMerge(seedPath, 'lens-a', 'lens-b')
+    assert.deepEqual(plan.blocking.memo_anchors, [m.id])
+    assert.throws(
+      () => applyMerge(seedPath, 'lens-a', 'lens-b', RID),
+      (err: unknown) => err instanceof CompostError && /memo/.test(err.message),
+    )
+    assert.equal(isLive(seedPath, 'CB-lens-a'), true) // transactional refusal
   })
 })

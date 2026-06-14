@@ -13,7 +13,7 @@ import { resolveSeedPath } from '../lib/seedResolve.js'
 import type { ThemeEvidence, ThemeEvidenceKind } from '../lib/themes.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
-interface CommonFlags {
+export interface CommonFlags {
   seed?: string
   ai?: boolean
   actorId?: string
@@ -28,7 +28,7 @@ interface CommonFlags {
  * MCP wrapper (or a researcher) hand over the bundle that backs `compost rerun`
  * and PROV-O. Only meaningful with `--ai`; absent → hash-only, as before.
  */
-function loadInputs(flags: CommonFlags): AiInputBundle | undefined {
+export function loadInputs(flags: CommonFlags): AiInputBundle | undefined {
   if (flags.inputsFile === undefined) return undefined
   if (flags.ai !== true) {
     throw new CompostError('INVALID_INPUT', '--inputs-file only applies to AI creates (use --ai)')
@@ -131,7 +131,7 @@ interface ThemeFlags extends CommonFlags {
   crossLens?: boolean
 }
 
-function addAuthorFlags(c: Command): Command {
+export function addAuthorFlags(c: Command): Command {
   return c
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--ai', 'Mark the artifact as AI-authored (lands as [draft] until endorsed)')
@@ -262,7 +262,7 @@ export function registerCreate(program: Command): void {
   })
 }
 
-const EVIDENCE_KINDS: readonly ThemeEvidenceKind[] = ['code', 'category']
+const EVIDENCE_KINDS: readonly ThemeEvidenceKind[] = ['code', 'category', 'memo']
 
 /** Parse `--evidence code:C-foo,category:CAT-bar` into structured refs. A bare
  * token (no `kind:` prefix) defaults to a code, so `--evidence C-foo` works. */

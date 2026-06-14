@@ -23,6 +23,7 @@ describe('renderStatus', () => {
             highlights: 5,
             codes: 2,
             themes: 1,
+            memos: 3,
             frames: 10,
             insights: 0,
             legacy_assets: 4,
@@ -35,6 +36,7 @@ describe('renderStatus', () => {
     assert.match(out, /study\s+\[active\]/)
     assert.match(out, /sessions:\s+3 \(2 transcribed, 1 queued, 0 in _inbox\)/)
     assert.match(out, /highlights: 5\s+codes: 2\s+themes: 1/)
+    assert.match(out, /memos: 3\s+frames: 10/)
     assert.match(out, /⚠ sessions\/foo/)
   })
 })
