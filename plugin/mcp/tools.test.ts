@@ -418,5 +418,19 @@ describe('plugin manifest', () => {
     assert.equal(manifest.commands, './commands')
     assert.ok(Array.isArray(manifest.skills))
     assert.ok(manifest.skills.includes('thematic-coding'))
+    assert.ok(manifest.skills.includes('analytic-memos'))
+  })
+
+  it('every declared skill has a SKILL.md on disk', () => {
+    const manifest = JSON.parse(
+      readFileSync(join(__dirname, '..', '.claude-plugin', 'plugin.json'), 'utf8'),
+    ) as { skills: string[] }
+    for (const skill of manifest.skills) {
+      const skillFile = join(__dirname, '..', 'skills', skill, 'SKILL.md')
+      assert.ok(
+        readFileSync(skillFile, 'utf8').length > 0,
+        `${skill} declared in plugin.json must have a non-empty skills/${skill}/SKILL.md`,
+      )
+    }
   })
 })
