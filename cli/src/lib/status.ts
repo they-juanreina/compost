@@ -18,6 +18,7 @@ export interface SeedCounts {
   highlights: number
   codes: number
   themes: number
+  memos: number
   frames: number
   insights: number
   legacy_assets: number
@@ -105,6 +106,7 @@ function readSeed(name: string, path: string): SeedStatus {
       highlights: countMarkdown(join(path, 'highlights')),
       codes: codeMarkdownPaths(path).length, // both layouts (#269)
       themes: countMarkdown(join(path, 'synthesis', 'themes')),
+      memos: countMarkdown(join(path, 'synthesis', 'memos')),
       insights: countMarkdown(join(path, 'synthesis', 'insights')),
       frames: countFrames(join(path, 'sessions')),
       legacy_assets: countFiles(join(path, 'legacy')),

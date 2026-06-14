@@ -23,7 +23,9 @@ export function renderStatus(s: StatusSnapshot): string {
       `    sessions:   ${c.sessions.total} (${c.sessions.transcribed} transcribed, ${c.sessions.queued} queued, ${c.sessions.inbox} in _inbox)`,
     )
     lines.push(`    highlights: ${c.highlights}   codes: ${c.codes}   themes: ${c.themes}`)
-    lines.push(`    frames: ${c.frames}   insights: ${c.insights}   legacy: ${c.legacy_assets}`)
+    lines.push(
+      `    memos: ${c.memos}   frames: ${c.frames}   insights: ${c.insights}   legacy: ${c.legacy_assets}`,
+    )
     for (const w of seed.warnings) lines.push(`    ${g.warn} ${w}`)
   }
   return lines.join('\n')
