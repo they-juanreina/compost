@@ -76,9 +76,20 @@ function nextMemoId(dir: string): string {
   return `M-${String(max + 1).padStart(3, '0')}`
 }
 
-/** Filesystem-safe slug for code/theme names. */
+/**
+ * Filesystem-safe slug for code/theme/category/codebook names. Diacritic-folding
+ * so non-ASCII Latin names survive: NFKD decomposes accented letters into a base
+ * char + a combining mark (é → e + ◌́, ñ → n + ◌̃, ü → u + ◌̈), then the combining
+ * marks are stripped — so "niñez" → "ninez", "café" → "cafe", "después" →
+ * "despues" rather than the lossy "ni-ez"/"caf-"/"despu-s" the old ASCII-only
+ * filter produced. Scripts with no Latin decomposition (Cyrillic, CJK, emoji)
+ * still reduce to nothing and raise the same INVALID_INPUT — the name needs at
+ * least one transliterable character.
+ */
 function slug(name: string): string {
   const s = name
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '') // strip combining diacritical marks U+0300-U+036F
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, '-')

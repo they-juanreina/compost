@@ -35,6 +35,21 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
   kind. Memos are intentionally kept out of `search`/grounded-chat retrieval
   (interpretation, not corpus).
 
+### Fixed
+
+- **`slug()` is now diacritic-folding** — accented / non-ASCII Latin names no
+  longer degrade in artifact ids and filenames. NFKD-normalize + strip combining
+  marks means `"niñez"` → `ninez`, `"café"` → `cafe`, `"después"` → `despues`
+  (was the lossy `ni-ez` / `caf-` / `despu-s`). Affects all named artifacts
+  (codes / themes / categories / codebooks); existing frozen ids are unchanged.
+
+### Decided (not yet built)
+
+- **ADR 0005 — reference key & rename model.** When a general rename verb is
+  added, references will key on the immutable `artifact_id`, with the slug kept
+  as a cosmetic display id + filename — so renames stay safe by construction.
+  Deferred until a rename need is validated.
+
 ## v0.2.1 — 2026-06-13
 
 Completes the **codebook & category data model** milestone: the two codebook
