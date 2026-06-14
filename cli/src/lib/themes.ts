@@ -20,18 +20,20 @@ import { listArtifacts } from './reads.js'
  * delimiter is unambiguous.
  */
 
-export type ThemeEvidenceKind = 'code' | 'category'
+export type ThemeEvidenceKind = 'code' | 'category' | 'memo'
 
 export interface ThemeEvidence {
   kind: ThemeEvidenceKind
   ref: string
   /** The frame this code/category belongs to. Present on freshly-created
    * themes; absent (undefined) when lazy-mapped from a legacy `codes[]` theme
-   * whose per-code frame was never recorded on the theme. */
+   * whose per-code frame was never recorded on the theme, or for a `memo`
+   * entry, which is frame-neutral (a memo is an analytic annotation, not a lens
+   * — ADR 0004 §3–4). */
   codebookId?: string
 }
 
-const EVIDENCE_KINDS: readonly ThemeEvidenceKind[] = ['code', 'category']
+const EVIDENCE_KINDS: readonly ThemeEvidenceKind[] = ['code', 'category', 'memo']
 
 /** Encode one evidence entry as a frontmatter token: `kind:ref:codebook_id`. */
 export function encodeEvidence(e: ThemeEvidence): string {
@@ -90,6 +92,10 @@ export function evidenceToCodeIds(seedPath: string, evidence: ThemeEvidence[]): 
   let links: ReturnType<typeof listCategoryLinks> | null = null
   const out = new Set<string>()
   for (const e of evidence) {
+    // The no-inflate invariant (ADR 0004 §4): a memo cited as theme evidence is
+    // an analytic annotation, not a participant utterance — it contributes no
+    // codes, so it never lifts saturation / coverage math.
+    if (e.kind === 'memo') continue
     if (e.kind === 'code') {
       // Canonicalize to the qualified code id (#269) so a bare-or-qualified
       // theme ref joins the same code files saturate reads, and matches the
@@ -134,8 +140,10 @@ function resolveCodeFrame(
 }
 
 export interface ResolvedThemeEvidence {
-  /** Evidence entries with a concrete frame stamped on each. */
-  evidence: Required<ThemeEvidence>[]
+  /** Evidence entries with a concrete frame stamped on each lens-bearing
+   * (code/category) entry. `memo` entries are frame-neutral, so their
+   * `codebookId` may be absent. */
+  evidence: ThemeEvidence[]
   /** The theme's frame: a CB- id when single-lens, or null when cross-lens. */
   codebookId: string | null
 }
@@ -154,22 +162,31 @@ export function resolveThemeEvidence(
   evidence: ThemeEvidence[],
   requested: string | null | undefined,
 ): ResolvedThemeEvidence {
-  // An evidence-less theme is a degenerate but supported state (e.g. a theme
-  // created in the web UI before codes are attached). Skip frame enforcement;
-  // resolve the requested frame if given, else leave it unscoped (null).
-  if (evidence.length === 0) {
-    if (requested === null || requested === undefined) return { evidence: [], codebookId: null }
-    return { evidence: [], codebookId: resolveCodebookId(seedPath, requested) }
+  // Lens-bearing evidence (code/category) defines the theme's frame; `memo`
+  // entries are analytic annotations that ride along frame-neutral (ADR 0004
+  // §3). Frame enforcement runs over the lens entries only, so a theme with no
+  // codes/categories — even if it cites memos — takes the evidence-less path.
+  const lensCount = evidence.filter((e) => e.kind !== 'memo').length
+  if (lensCount === 0) {
+    const codebookId =
+      requested === null || requested === undefined ? null : resolveCodebookId(seedPath, requested)
+    return { evidence, codebookId }
   }
-  const stamped: Required<ThemeEvidence>[] = evidence.map((e) => {
+  const stamped: ThemeEvidence[] = evidence.map((e) => {
     if (e.codebookId !== undefined) return { ...e, codebookId: e.codebookId }
+    if (e.kind === 'memo') return e // frame-neutral
     if (e.kind === 'category') {
       return { ...e, codebookId: resolveCategory(seedPath, e.ref).codebook_id }
     }
     const frame = resolveCodeFrame(seedPath, e.ref)
     return { ...e, codebookId: frame?.codebookId ?? DEFAULT_CODEBOOK_ID }
   })
-  const frames = new Set(stamped.map((e) => e.codebookId))
+  const frames = new Set(
+    stamped
+      .filter((e) => e.kind !== 'memo')
+      .map((e) => e.codebookId)
+      .filter((f): f is string => f !== undefined),
+  )
 
   if (requested === null) {
     if (frames.size < 2) {

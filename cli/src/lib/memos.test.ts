@@ -18,6 +18,7 @@ import { blame } from './blame.js'
 import { decodeAnchor, encodeAnchor, listMemos, type MemoAnchor, memosAbout } from './memos.js'
 import { getArtifact } from './reads.js'
 import { initSeed } from './seed.js'
+import { evidenceToCodeIds, resolveThemeEvidence } from './themes.js'
 
 const RESEARCHER = { actorType: 'researcher' as const, actorId: 'juan@example.com' }
 const REVIEWER = { actorType: 'researcher' as const, actorId: 'reviewer@example.com' }
@@ -217,5 +218,55 @@ describe('memosAbout (backward link)', () => {
     const m = createMemo(path, { title: 'Findable', content: 'r', author: RESEARCHER })
     const snap = getArtifact(path, 'memo', m.id)
     assert.equal(snap?.artifact_id, m.artifact_id)
+  })
+})
+
+describe('memo as theme evidence (codable, no-inflate)', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-memos-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('a theme cites a memo, frame-neutral, single-lens scoped by its code', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCode(path, { name: 'distrust', definition: 'd', author: RESEARCHER })
+    const memo = createMemo(path, { title: 'note', content: 'c', author: RESEARCHER })
+    const theme = createTheme(path, {
+      name: 'Trust erosion',
+      summary: 's',
+      evidence: [
+        { kind: 'code', ref: 'distrust' },
+        { kind: 'memo', ref: memo.id },
+      ],
+      author: RESEARCHER,
+    })
+    const md = readFileSync(theme.path, 'utf8')
+    // the memo doesn't make it cross-lens — it stays scoped to the code's frame
+    assert.match(md, /codebook_id: CB-primary/)
+    assert.match(md, new RegExp(`memo:${memo.id}:`))
+  })
+
+  it('a memo cited as evidence contributes no codes to coverage (§4)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCode(path, { name: 'distrust', definition: 'd', author: RESEARCHER })
+    const memo = createMemo(path, { title: 'note', content: 'c', author: RESEARCHER })
+    const codeIds = evidenceToCodeIds(path, [
+      { kind: 'code', ref: 'C-primary/distrust' },
+      { kind: 'memo', ref: memo.id },
+    ])
+    assert.deepEqual(codeIds, ['C-primary/distrust'])
+  })
+
+  it('a memo-only theme is frame-less (a memo is not a lens)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const memo = createMemo(path, { title: 'n', content: 'c', author: RESEARCHER })
+    const { evidence, codebookId } = resolveThemeEvidence(
+      path,
+      [{ kind: 'memo', ref: memo.id }],
+      undefined,
+    )
+    assert.equal(codebookId, null)
+    assert.equal(evidence.length, 1)
   })
 })
