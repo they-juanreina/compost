@@ -517,3 +517,29 @@ describe('endorseArtifact', () => {
     })
   })
 })
+
+describe('slug — diacritic folding', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-slug-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('folds accents/ñ to ASCII instead of dropping them (no internal hyphens)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const a = createCode(path, { name: 'niñez', definition: 'childhood', author: RESEARCHER })
+    assert.equal(a.id, 'C-primary/ninez') // not the old lossy "ni-ez"
+    assert.ok(a.path.endsWith('codebook/primary/ninez.md'))
+
+    const b = createCode(path, { name: 'café después', definition: 'x', author: RESEARCHER })
+    assert.equal(b.id, 'C-primary/cafe-despues')
+  })
+
+  it('still rejects a name with no transliterable characters', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    assert.throws(
+      () => createCode(path, { name: '🙂', definition: 'x', author: RESEARCHER }),
+      (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
+    )
+  })
+})
