@@ -24,15 +24,16 @@ repo-root [`CLAUDE.md`](../CLAUDE.md).
   means. That is the agent's and the researcher's reasoning.
 - **Entities (nouns)** — `seed`, `session`/`transcript`/`utterance`,
   `highlight`, `code`, `codebook` (interpretive lens/frame), `category`
-  (second-cycle grouping), `theme`, glossary `term`, and the append-only
+  (second-cycle grouping), `theme`, `memo` (the analyst's dated, evolving
+  interpretive record — ADR 0004), glossary `term`, and the append-only
   `event`. Stable ids: `S001`, `U-0001`, `H-001`, `C-<codebook>/<code>`,
-  `CB-<slug>`, `CAT-<slug>`, `T-<slug>`.
+  `CB-<slug>`, `CAT-<slug>`, `T-<slug>`, `M-<slug>`.
 - **Capabilities (verbs)** — typed commands and queries in `cli/src/lib` (the
   domain core). Commands mutate + emit events: `create highlight|code|theme`,
   `codebook new|migrate|migrate-ids`, `category new|link|unlink|suggest`,
-  `endorse`, `reject`, `recode`, `ingest`, `transcribe`. Queries read current
-  state: `search`, `chat` (grounded, cited), `session`, `status`, `blame`,
-  `saturate`, `agreement`, `export`.
+  `memo new|edit|cite`, `endorse`, `reject`, `recode`, `ingest`, `transcribe`.
+  Queries read current state: `search`, `chat` (grounded, cited), `session`,
+  `status`, `blame`, `saturate`, `agreement`, `memo list|view`, `export`.
 - **Surfaces in scope** — the **CLI** (human, JSON-by-default), the **Claude
   Code / Cowork plugin** (native agent layer: slash commands + MCP tools), and
   a **web UI** (upcoming — must be a thin surface, no logic). External agents
@@ -75,7 +76,12 @@ to the line* and should be re-tested before extending:
    this down before the UI names anything.
 4. **Thin validation.** The whole methodology layer is validated against one
    dogfood (Edges & Ecotones, one coder). Get a second, independent corpus
-   before adding more apparatus.
+   before adding more apparatus. *Note (milestone #9):* analytic memos (ADR 0004)
+   are more apparatus, added on an explicit maintainer override of this tension —
+   the kill filter's "validated need" came back grounded-but-not-demonstrated, and
+   the build proceeded on methodology grounding, recorded in
+   [`docs/design-analytic-memos.md`](design-analytic-memos.md). First validation
+   is real memos against the Edges & Ecotones seed.
 
 ## CLAUDE.md compilation
 
