@@ -281,6 +281,36 @@ describe('MCP tool definitions', () => {
     assert.equal(a, b)
     assert.match(a, AI_ACTOR_RE)
   })
+
+  it('compost_create_memo is an AI [draft] author and maps title/content/anchors', () => {
+    const memo = tool('compost_create_memo')
+    assert.equal(memo.aiAuthored, true)
+    assert.ok(MUTATION_TOOLS.includes('compost_create_memo'))
+    const argv = buildArgv(memo, {
+      title: 'On distrust',
+      content: 'procedural, not personal',
+      type: 'code',
+      anchor: ['code:distrust', 'highlight:H-001'],
+    })
+    assert.deepEqual(argv.slice(0, 5), [
+      'memo',
+      'new',
+      'On distrust',
+      '--content',
+      'procedural, not personal',
+    ])
+    // each anchor expands to its own --anchor flag
+    assert.equal(argv.filter((x) => x === '--anchor').length, 2)
+    // born [draft]: AI flags + schema-required model/prompt-hash injected
+    assert.ok(argv.includes('--ai'))
+    assert.match(argv[argv.indexOf('--prompt-hash') + 1] as string, /^[a-f0-9]{64}$/)
+  })
+
+  it('compost_list_memos is read-only and maps the --about filter', () => {
+    assert.ok(READ_ONLY_TOOLS.includes('compost_list_memos'))
+    const argv = tool('compost_list_memos').toArgv({ about: 'C-distrust', seed: 'study' })
+    assert.deepEqual(argv, ['memo', 'list', '--about', 'C-distrust', '--seed', 'study'])
+  })
 })
 
 describe('runTool', () => {

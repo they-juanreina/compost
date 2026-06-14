@@ -318,6 +318,68 @@ export const TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'compost_create_memo',
+    description:
+      "Write an analytic memo — your dated interpretive note about the corpus, a code, or a theme (the reasoning behind a move, a reflexive observation, a pattern hunch). Anchor it to what it's about. Lands as an AI [draft] until a researcher endorses (compost endorse) — propose, never self-approve.",
+    readOnly: false,
+    aiAuthored: true,
+    inputSchema: {
+      type: 'object',
+      required: ['title', 'content'],
+      properties: {
+        title: str('Memo title (slugified for the M- id)'),
+        content: str('The memo body — the reflection/reasoning'),
+        type: {
+          type: 'string',
+          enum: ['code', 'category', 'theme', 'reflexive', 'method', 'theory', 'freeform'],
+          description: 'Reflection type (default: freeform)',
+        },
+        anchor: {
+          type: 'array',
+          items: str('kind:ref — e.g. code:distrust, theme:T-x, category:CAT-y, highlight:H-001'),
+          description: 'What the memo is about (repeatable anchors)',
+        },
+        codebook: str('Scope the memo to one codebook frame (CB- id or name)'),
+        seed: str('Seed'),
+        model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
+      },
+    },
+    toArgv: (a) => [
+      'memo',
+      'new',
+      String(a.title),
+      '--content',
+      String(a.content),
+      ...(a.type ? ['--type', String(a.type)] : []),
+      ...(Array.isArray(a.anchor) ? a.anchor.flatMap((x) => ['--anchor', String(x)]) : []),
+      ...(a.codebook ? ['--codebook', String(a.codebook)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
+    name: 'compost_list_memos',
+    description:
+      "List analytic memos (newest first). Filter by `about` (memos anchored to an artifact — read the analyst's notes on a code/theme before acting), `type`, or `codebook`.",
+    readOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        about: str('Only memos anchored to this artifact (e.g. C-distrust, T-x, H-001)'),
+        type: str('Only memos of this reflection type'),
+        codebook: str('Only memos scoped to this frame (CB- id)'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'memo',
+      'list',
+      ...(a.about ? ['--about', String(a.about)] : []),
+      ...(a.type ? ['--type', String(a.type)] : []),
+      ...(a.codebook ? ['--codebook', String(a.codebook)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
     name: 'compost_endorse',
     description:
       "Endorse an artifact — promotes an AI [draft] to researcher-approved. This is the RESEARCHER's act: the host shows a confirmation, and approving it IS the endorsement. Do not call autonomously to self-approve your own drafts.",
