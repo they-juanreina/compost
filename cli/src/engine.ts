@@ -34,11 +34,13 @@ export {
   type CreateCodeInput,
   type CreatedArtifact,
   type CreateHighlightInput,
+  type CreateMemoInput,
   type CreateThemeInput,
   createCategory,
   createCode,
   createCodebook,
   createHighlight,
+  createMemo,
   createTheme,
   DEFAULT_CODEBOOK_ID,
   defaultResearcherId,
@@ -60,6 +62,21 @@ export {
   resolveCategory,
   unlinkCodeFromCategory,
 } from './lib/categories.js'
+// ---- memos: analytic-memo artifact (ADR 0004)
+export {
+  DEFAULT_MEMO_TYPE,
+  decodeAnchor,
+  encodeAnchor,
+  listMemos,
+  type MemoAnchor,
+  type MemoAnchorKind,
+  MEMO_ANCHOR_KINDS,
+  MEMO_TYPES,
+  type MemoType,
+  type MemoView,
+  memosAbout,
+  resolveMemoAnchors,
+} from './lib/memos.js'
 // ---- codebooks: list + lazy migration (ADR 0001 slice 1)
 export {
   applyCodebookMigration,

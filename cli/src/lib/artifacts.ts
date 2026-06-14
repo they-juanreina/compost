@@ -17,11 +17,19 @@ import {
   openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
+import {
+  assertMemoType,
+  DEFAULT_MEMO_TYPE,
+  encodeAnchor,
+  type MemoAnchor,
+  type MemoType,
+  resolveMemoAnchors,
+} from './memos.js'
 import { listArtifacts } from './reads.js'
 import { encodeEvidence, resolveThemeEvidence, type ThemeEvidence } from './themes.js'
 
 export interface CreatedArtifact {
-  id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug)
+  id: string // human/file id (H-NNN, C-slug, T-slug, CB-slug, CAT-slug, M-slug)
   artifact_id: string // SHA256(initial state) — the provenance content-address
   path: string // markdown file written
   event_id: string // the create event's ULID
@@ -532,6 +540,78 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
   return { id, artifact_id: sha, path, event_id }
 }
 
+export interface CreateMemoInput {
+  title: string
+  content: string
+  /** The kind of reflection (ADR 0004 §5) — a constrained set, default freeform. */
+  type?: MemoType
+  /** What the memo is about: a heterogeneous anchor set
+   * `{kind: highlight|code|category|theme|codebook|memo, ref}`. Zero anchors is
+   * valid — a project-level reflexive memo. */
+  anchors?: MemoAnchor[]
+  /** Frame scope. A CB- id (or name) scopes the memo to one lens; explicit
+   * `null` marks a cross-frame / project-level memo; omitted is inferred from
+   * the anchors (one shared frame ⇒ that frame, else frame-less). */
+  codebookId?: string | null
+  author: Author
+  inputs?: AiInputBundle
+}
+
+/**
+ * Create an analytic memo (ADR 0004) — the analyst's dated, evolving
+ * interpretive record. Lives in `synthesis/memos/M-<slug>.md` (a sibling of
+ * synthesis/themes/). AI-drafted memos are born `[draft]` (actor_type=ai) until a
+ * researcher endorses; researcher memos are born endorsed. Editing emits an
+ * `update` event, so the append-only ledger carries Saldaña's "series of dated
+ * snapshots." compost stores and versions the interpretation; it never authors it.
+ */
+export function createMemo(seedPath: string, input: CreateMemoInput): CreatedArtifact {
+  const dir = join(seedPath, 'synthesis', 'memos')
+  mkdirSync(dir, { recursive: true })
+  const name = slug(input.title)
+  const id = `M-${name}`
+  const type = input.type === undefined ? DEFAULT_MEMO_TYPE : assertMemoType(input.type)
+  const { anchors, codebookId } = resolveMemoAnchors(seedPath, input.anchors ?? [], input.codebookId)
+
+  // SHA-addressed identity carries title + content + structured anchors + frame.
+  const anchorState = anchors.map((a) => ({
+    kind: a.kind,
+    ref: a.ref,
+    codebook_id: a.codebookId ?? null,
+  }))
+  const initialState = {
+    id,
+    kind: 'memo',
+    type,
+    title: input.title.trim(),
+    content: input.content,
+    anchors: anchorState,
+    codebook_id: codebookId,
+  }
+  const sha = artifactId(initialState)
+  const title = input.title.trim()
+  const body = `${frontmatter({
+    id,
+    type,
+    ...(anchors.length > 0 ? { anchors: anchors.map(encodeAnchor) } : {}),
+    codebook_id: codebookId,
+    artifact_id: sha,
+    provenance: { actor_type: input.author.actorType, actor_id: input.author.actorId },
+  })}\n# ${title}\n\n${input.content}\n`
+
+  const path = join(dir, `${name}.md`)
+  if (existsSync(path)) {
+    throw new CompostError('INVALID_INPUT', `Memo "${id}" already exists at ${path}`)
+  }
+  const event_id = writeArtifactAtomic(seedPath, path, body, {
+    artifactKind: 'memo',
+    initialState,
+    author: input.author,
+    ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
+  })
+  return { id, artifact_id: sha, path, event_id }
+}
+
 // ---------------------------------------------------------------- endorse
 
 interface CreateEventRow {
@@ -542,13 +622,15 @@ interface CreateEventRow {
 }
 
 /**
- * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug`, `CB-slug` —
- * the id `compost create`/`compost codebook new` prints. We accept it wherever
- * a SHA prefix is accepted so the obvious `endorse <id-from-create>` round-trip
- * works (#168). The dash and non-hex chars make it unambiguous vs a SHA prefix
- * (`^[a-f0-9]{8,64}$`).
+ * Human-id form for an artifact ref: `H-NNN`, `C-slug`, `T-slug`, `CB-slug`,
+ * `CAT-slug`, `M-slug` — the id `compost create`/`compost codebook new`/`compost
+ * memo new` prints. We accept it wherever a SHA prefix is accepted so the obvious
+ * `endorse <id-from-create>` round-trip works (#168). The dash and non-hex chars
+ * make it unambiguous vs a SHA prefix (`^[a-f0-9]{8,64}$`). Extending this set is
+ * what lets endorse/reject/update/getArtifact resolve a new kind by its id —
+ * `M-` was added for memos (ADR 0004).
  */
-export const HUMAN_REF_RE = /^(?:CAT|CB|[CHT])-[A-Za-z0-9_/-]+$/
+export const HUMAN_REF_RE = /^(?:CAT|CB|[CHMT])-[A-Za-z0-9_/-]+$/
 
 /**
  * Look up a create event by the human id stored in its payload (initialState.id).
