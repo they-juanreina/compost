@@ -21,11 +21,12 @@ import {
   assertMemoType,
   DEFAULT_MEMO_TYPE,
   encodeAnchor,
+  loadMemoAnchors,
   type MemoAnchor,
   type MemoType,
   resolveMemoAnchors,
 } from './memos.js'
-import { listArtifacts } from './reads.js'
+import { getArtifact, listArtifacts } from './reads.js'
 import { encodeEvidence, resolveThemeEvidence, type ThemeEvidence } from './themes.js'
 
 export interface CreatedArtifact {
@@ -571,7 +572,11 @@ export function createMemo(seedPath: string, input: CreateMemoInput): CreatedArt
   const name = slug(input.title)
   const id = `M-${name}`
   const type = input.type === undefined ? DEFAULT_MEMO_TYPE : assertMemoType(input.type)
-  const { anchors, codebookId } = resolveMemoAnchors(seedPath, input.anchors ?? [], input.codebookId)
+  const { anchors, codebookId } = resolveMemoAnchors(
+    seedPath,
+    input.anchors ?? [],
+    input.codebookId,
+  )
 
   // SHA-addressed identity carries title + content + structured anchors + frame.
   const anchorState = anchors.map((a) => ({
@@ -610,6 +615,93 @@ export function createMemo(seedPath: string, input: CreateMemoInput): CreatedArt
     ...(input.inputs !== undefined ? { inputs: input.inputs } : {}),
   })
   return { id, artifact_id: sha, path, event_id }
+}
+
+export interface EditMemoInput {
+  content?: string
+  type?: MemoType
+  author: Author
+}
+
+/**
+ * Edit a memo's content and/or type — emits a field-level `update` event per
+ * changed field (ADR 0004 §6). The append-only ledger carries the evolution
+ * (Saldaña's "series of dated snapshots"); reads (`memo view` / `list`) reflect
+ * it immediately. Like every other artifact, the create-time markdown is not
+ * rewritten — the ledger is canonical, the `.md` is the birth rendering.
+ */
+export function editMemo(
+  seedPath: string,
+  ref: string,
+  input: EditMemoInput,
+): { id: string; artifact_id: string; updated: string[] } {
+  const snap = getArtifact(seedPath, 'memo', ref)
+  if (snap === null) {
+    throw new CompostError('FILE_NOT_FOUND', `No memo "${ref}" in this seed.`)
+  }
+  const s = snap.current_state as { id?: string; type?: string; content?: string }
+  const id = s.id ?? ref
+  const updated: string[] = []
+  if (input.type !== undefined) {
+    const t = assertMemoType(input.type)
+    if (t !== s.type) {
+      updateArtifact(seedPath, ref, { field: 'type', before: s.type, after: t }, input.author)
+      updated.push('type')
+    }
+  }
+  if (input.content !== undefined && input.content !== s.content) {
+    updateArtifact(
+      seedPath,
+      ref,
+      { field: 'content', before: s.content, after: input.content },
+      input.author,
+    )
+    updated.push('content')
+  }
+  return { id, artifact_id: snap.artifact_id, updated }
+}
+
+/**
+ * Grow a memo's anchor set — ATLAS.ti's "link a memo across the workflow."
+ * Resolves + canonicalizes the new anchors, merge-dedups with the existing set
+ * (by kind+ref), and emits an `update` on the `anchors` field.
+ */
+export function citeMemo(
+  seedPath: string,
+  ref: string,
+  add: MemoAnchor[],
+  author: Author,
+): { id: string; artifact_id: string; anchors: MemoAnchor[]; added: number } {
+  const snap = getArtifact(seedPath, 'memo', ref)
+  if (snap === null) {
+    throw new CompostError('FILE_NOT_FOUND', `No memo "${ref}" in this seed.`)
+  }
+  const s = snap.current_state as { id?: string; anchors?: unknown }
+  const id = s.id ?? ref
+  const current = loadMemoAnchors(s.anchors)
+  const { anchors: resolved } = resolveMemoAnchors(seedPath, add, undefined)
+  const merged = [...current]
+  let added = 0
+  for (const a of resolved) {
+    if (!merged.some((x) => x.kind === a.kind && x.ref === a.ref)) {
+      merged.push(a)
+      added += 1
+    }
+  }
+  if (added > 0) {
+    const anchorState = merged.map((a) => ({
+      kind: a.kind,
+      ref: a.ref,
+      codebook_id: a.codebookId ?? null,
+    }))
+    updateArtifact(
+      seedPath,
+      ref,
+      { field: 'anchors', before: s.anchors ?? [], after: anchorState },
+      author,
+    )
+  }
+  return { id, artifact_id: snap.artifact_id, anchors: merged, added }
 }
 
 // ---------------------------------------------------------------- endorse

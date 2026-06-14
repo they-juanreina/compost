@@ -17,6 +17,7 @@ import { registerIngest } from './commands/ingest.js'
 import { registerInit } from './commands/init.js'
 import { registerJobs } from './commands/jobs.js'
 import { registerLabel } from './commands/label.js'
+import { registerMemo } from './commands/memo.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
 import { registerQuery } from './commands/query.js'
@@ -89,6 +90,7 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerCode(program)
   registerCodebook(program)
   registerCategory(program)
+  registerMemo(program)
   registerRecode(program)
   registerAgreement(program)
   registerRerun(program)

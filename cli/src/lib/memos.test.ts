@@ -6,16 +6,24 @@ import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import { CompostError } from '../errors.js'
 import {
+  citeMemo,
   createCode,
-  createHighlight,
   createMemo,
   createTheme,
+  editMemo,
   endorseArtifact,
   rejectArtifact,
   updateArtifact,
 } from './artifacts.js'
 import { blame } from './blame.js'
-import { decodeAnchor, encodeAnchor, listMemos, type MemoAnchor, memosAbout } from './memos.js'
+import {
+  decodeAnchor,
+  encodeAnchor,
+  getMemo,
+  listMemos,
+  type MemoAnchor,
+  memosAbout,
+} from './memos.js'
 import { getArtifact } from './reads.js'
 import { initSeed } from './seed.js'
 import { evidenceToCodeIds, resolveThemeEvidence } from './themes.js'
@@ -94,7 +102,8 @@ describe('createMemo', () => {
   it('rejects an invalid type with a listing error (§10)', () => {
     const { path } = initSeed('demo', { cwd: work })
     assert.throws(
-      () => createMemo(path, { title: 'x', content: 'y', type: 'wat' as never, author: RESEARCHER }),
+      () =>
+        createMemo(path, { title: 'x', content: 'y', type: 'wat' as never, author: RESEARCHER }),
       (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
     )
   })
@@ -183,7 +192,12 @@ describe('memo endorsement gate', () => {
   it('edit emits an update event; the snapshot reflects the new content', () => {
     const { path } = initSeed('demo', { cwd: work })
     const m = createMemo(path, { title: 'Evolving', content: 'first pass', author: RESEARCHER })
-    updateArtifact(path, m.id, { field: 'content', before: 'first pass', after: 'second pass' }, RESEARCHER)
+    updateArtifact(
+      path,
+      m.id,
+      { field: 'content', before: 'first pass', after: 'second pass' },
+      RESEARCHER,
+    )
     assert.equal(listMemos(path)[0]?.content, 'second pass')
     const actions = blame(m.id, { cwd: work, seed: 'demo' }).events.map((e) => e.action)
     assert.deepEqual(actions, ['create', 'update'])
@@ -268,5 +282,48 @@ describe('memo as theme evidence (codable, no-inflate)', () => {
     )
     assert.equal(codebookId, null)
     assert.equal(evidence.length, 1)
+  })
+})
+
+describe('editMemo / citeMemo / getMemo', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-memos-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  it('editMemo updates content + type and reports the changed fields', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const m = createMemo(path, { title: 'Evolving', content: 'first', author: RESEARCHER })
+    const res = editMemo(path, m.id, { content: 'second', type: 'theory', author: RESEARCHER })
+    assert.deepEqual(res.updated.sort(), ['content', 'type'])
+    const memo = getMemo(path, m.id)
+    assert.equal(memo?.content, 'second')
+    assert.equal(memo?.type, 'theory')
+  })
+
+  it('editMemo is a no-op when the value is unchanged', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const m = createMemo(path, { title: 'Same', content: 'x', author: RESEARCHER })
+    const res = editMemo(path, m.id, { content: 'x', author: RESEARCHER })
+    assert.deepEqual(res.updated, [])
+  })
+
+  it('citeMemo appends anchors and dedups (idempotent)', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    createCode(path, { name: 'distrust', definition: 'd', author: RESEARCHER })
+    const m = createMemo(path, { title: 'Grows', content: 'c', author: RESEARCHER })
+    const first = citeMemo(path, m.id, [{ kind: 'code', ref: 'distrust' }], RESEARCHER)
+    assert.equal(first.added, 1)
+    assert.equal(getMemo(path, m.id)?.anchors.length, 1)
+    // citing the same code again adds nothing (dedup by kind+ref, canonicalized)
+    const again = citeMemo(path, m.id, [{ kind: 'code', ref: 'C-primary/distrust' }], RESEARCHER)
+    assert.equal(again.added, 0)
+    assert.equal(getMemo(path, m.id)?.anchors.length, 1)
+  })
+
+  it('getMemo returns null for a missing memo', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    assert.equal(getMemo(path, 'M-nope'), null)
   })
 })

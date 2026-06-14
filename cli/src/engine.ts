@@ -36,6 +36,7 @@ export {
   type CreateHighlightInput,
   type CreateMemoInput,
   type CreateThemeInput,
+  citeMemo,
   createCategory,
   createCode,
   createCodebook,
@@ -44,6 +45,8 @@ export {
   createTheme,
   DEFAULT_CODEBOOK_ID,
   defaultResearcherId,
+  type EditMemoInput,
+  editMemo,
   endorseArtifact,
   ensurePrimaryCodebook,
   HUMAN_REF_RE,
@@ -62,21 +65,6 @@ export {
   resolveCategory,
   unlinkCodeFromCategory,
 } from './lib/categories.js'
-// ---- memos: analytic-memo artifact (ADR 0004)
-export {
-  DEFAULT_MEMO_TYPE,
-  decodeAnchor,
-  encodeAnchor,
-  listMemos,
-  type MemoAnchor,
-  type MemoAnchorKind,
-  MEMO_ANCHOR_KINDS,
-  MEMO_TYPES,
-  type MemoType,
-  type MemoView,
-  memosAbout,
-  resolveMemoAnchors,
-} from './lib/memos.js'
 // ---- codebooks: list + lazy migration (ADR 0001 slice 1)
 export {
   applyCodebookMigration,
@@ -106,6 +94,23 @@ export {
   readJournal,
   saveJournal,
 } from './lib/journal.js'
+// ---- memos: analytic-memo artifact (ADR 0004)
+export {
+  DEFAULT_MEMO_TYPE,
+  decodeAnchor,
+  encodeAnchor,
+  getMemo,
+  listMemos,
+  loadMemoAnchors,
+  MEMO_ANCHOR_KINDS,
+  MEMO_TYPES,
+  type MemoAnchor,
+  type MemoAnchorKind,
+  type MemoType,
+  type MemoView,
+  memosAbout,
+  resolveMemoAnchors,
+} from './lib/memos.js'
 // ---- artifact reads: list / get current snapshots (#121 GET endpoints)
 export { getArtifact, listArtifacts, type SnapshotView } from './lib/reads.js'
 // ---- chat retrieval: hybrid BM25 + dense, no LLM call (#122)

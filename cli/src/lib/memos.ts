@@ -2,7 +2,7 @@ import { CompostError } from '../errors.js'
 import { resolveCodebookId } from './artifacts.js'
 import { resolveCategory } from './categories.js'
 import { tryResolveCodeRef } from './codeRefs.js'
-import { listArtifacts, type SnapshotView } from './reads.js'
+import { getArtifact, listArtifacts, type SnapshotView } from './reads.js'
 
 /**
  * Analytic memos (ADR 0004). A memo is the analyst's dated, evolving
@@ -228,11 +228,14 @@ function snapshotToMemo(snap: SnapshotView): MemoView {
 
 /** Every memo's current snapshot, newest activity first. Archived (rejected)
  * memos are excluded unless `includeArchived` is set. */
-export function listMemos(
-  seedPath: string,
-  opts: { includeArchived?: boolean } = {},
-): MemoView[] {
+export function listMemos(seedPath: string, opts: { includeArchived?: boolean } = {}): MemoView[] {
   return listArtifacts(seedPath, 'memo', opts).map(snapshotToMemo)
+}
+
+/** A single memo by ref (its `M-` id or a SHA prefix), or null when absent. */
+export function getMemo(seedPath: string, ref: string): MemoView | null {
+  const snap = getArtifact(seedPath, 'memo', ref)
+  return snap === null ? null : snapshotToMemo(snap)
 }
 
 /**
@@ -249,6 +252,8 @@ export function memosAbout(
   const canonicalCode = tryResolveCodeRef(seedPath, ref)?.id
   const targets = new Set<string>([ref, ...(canonicalCode !== undefined ? [canonicalCode] : [])])
   return listMemos(seedPath, opts).filter((m) =>
-    m.anchors.some((a) => targets.has(a.ref) || (canonicalCode !== undefined && a.ref === canonicalCode)),
+    m.anchors.some(
+      (a) => targets.has(a.ref) || (canonicalCode !== undefined && a.ref === canonicalCode),
+    ),
   )
 }
