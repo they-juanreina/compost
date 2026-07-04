@@ -34,6 +34,13 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
 - `compost status` now counts memos; PROV-O export and `reindex` cover the memo
   kind. Memos are intentionally kept out of `search`/grounded-chat retrieval
   (interpretation, not corpus).
+- **`compost import` now reads caption files (`.vtt` WebVTT / `.srt` SubRip)** in
+  addition to speaker+timestamp text — the formats Teams / Zoom / Otter / YouTube
+  export. A researcher who already has transcripts imports them into a real,
+  diarized `sessions/<id>/transcript.json` (voice-tag / `Name:` speakers lifted,
+  markup stripped, cue end-times preserved) instead of routing them through
+  document legacy-ingest as an untyped "asset" (dogfood 2026-07-01). Caption files
+  with no speaker labels become a single honest `other`-type speaker.
 
 ### Fixed
 
@@ -42,6 +49,14 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
   marks means `"niñez"` → `ninez`, `"café"` → `cafe`, `"después"` → `despues`
   (was the lossy `ni-ez` / `caf-` / `despu-s`). Affects all named artifacts
   (codes / themes / categories / codebooks); existing frozen ids are unchanged.
+- **`compost rescan` / `compost code` no longer fail silently on absent or broken
+  embeddings.** When highlights exist but were never embedded, or the provider
+  returned degenerate (empty/zero/NaN) vectors, the clustering surfaces threw
+  nothing back — an empty result that read as "found no codes" rather than
+  "embeddings didn't run" (dogfood 2026-07-01: *"no cluster surface, the default
+  0.75 threshold"*). They now raise a structured `INVALID_INPUT` error naming the
+  fix (`compost reindex --vectors`, `compost doctor`). A seed with no highlights
+  yet is still a clean no-op, not an error.
 
 ### Decided (not yet built)
 

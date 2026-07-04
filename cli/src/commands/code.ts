@@ -1,9 +1,7 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import type { EmbeddedItem } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
+import { assertHighlightsEmbedded, loadEmbeddedHighlights } from '../lib/embeddedHighlights.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { suggestThemesOnce } from '../loops/synthesis.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -12,23 +10,6 @@ interface CodeFlags {
   seed?: string
   apply?: boolean
   threshold?: string
-}
-
-function loadEmbeddedHighlights(seedPath: string): EmbeddedItem[] {
-  const dir = join(seedPath, 'highlights')
-  if (!existsSync(dir)) return []
-  const out: EmbeddedItem[] = []
-  for (const f of readdirSync(dir)) {
-    if (!f.endsWith('.json')) continue
-    try {
-      const j = JSON.parse(readFileSync(join(dir, f), 'utf8')) as { id?: string; vector?: number[] }
-      if (typeof j.id === 'string' && Array.isArray(j.vector))
-        out.push({ id: j.id, vector: j.vector })
-    } catch {
-      // skip malformed
-    }
-  }
-  return out
 }
 
 export function registerCode(program: Command): void {
@@ -43,6 +24,7 @@ export function registerCode(program: Command): void {
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const highlights = loadEmbeddedHighlights(seedPath)
+        assertHighlightsEmbedded(seedPath, highlights)
         // suggestThemesOnce emits the AI code drafts; with --apply we run it,
         // otherwise we report what it *would* suggest (dry preview).
         if (flags.apply === true) {

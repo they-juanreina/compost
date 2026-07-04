@@ -1,7 +1,40 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { clusterByEmbedding, saturationPulse, suggestCodeClusters } from './clustering.js'
+import {
+  clusterByEmbedding,
+  isDegenerateVector,
+  saturationPulse,
+  suggestCodeClusters,
+} from './clustering.js'
+
+describe('isDegenerateVector', () => {
+  it('flags empty, all-zero, and non-finite vectors', () => {
+    assert.equal(isDegenerateVector([]), true)
+    assert.equal(isDegenerateVector([0, 0, 0]), true)
+    assert.equal(isDegenerateVector([0, Number.NaN, 0]), true)
+    assert.equal(isDegenerateVector([1, Number.POSITIVE_INFINITY]), true)
+  })
+
+  it('passes vectors carrying any real signal', () => {
+    assert.equal(isDegenerateVector([0, 0, 0.0001]), false)
+    assert.equal(isDegenerateVector([1, 0, 0]), false)
+    assert.equal(isDegenerateVector([-0.5, 0.5]), false)
+  })
+
+  it('flags the failed-embedding regime that silently surfaces zero suggestions', () => {
+    // all-zero vectors ⇒ cosine 0 with everything ⇒ each highlight is its own
+    // singleton ⇒ suggestCodeClusters (minSize 2) surfaces nothing. That empty
+    // result reads as "found nothing" unless a caller checks isDegenerateVector.
+    const zero = [
+      { id: 'a', vector: [0, 0] },
+      { id: 'b', vector: [0, 0] },
+      { id: 'c', vector: [0, 0] },
+    ]
+    assert.equal(suggestCodeClusters(zero).length, 0)
+    assert.ok(zero.every((h) => isDegenerateVector(h.vector)))
+  })
+})
 
 describe('clusterByEmbedding', () => {
   it('groups near-parallel vectors and separates orthogonal ones', () => {

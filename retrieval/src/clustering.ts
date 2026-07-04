@@ -40,6 +40,23 @@ export function clusterByEmbedding(items: EmbeddedItem[], threshold = 0.75): Clu
   }))
 }
 
+/**
+ * A vector that carries no usable signal: empty, all-zero, or containing a
+ * non-finite component (NaN/Inf). These arise when the embedding provider fails
+ * — and they cluster pathologically (cosine 0 with everything ⇒ silent zero
+ * suggestions; all-identical ⇒ one bogus mega-cluster), so callers should
+ * detect them and surface an actionable error rather than clustering blind.
+ */
+export function isDegenerateVector(vector: number[]): boolean {
+  if (vector.length === 0) return true
+  let allZero = true
+  for (const x of vector) {
+    if (!Number.isFinite(x)) return true
+    if (x !== 0) allZero = false
+  }
+  return allZero
+}
+
 /** Candidate codes = clusters of >= minSize un-coded highlights. */
 export function suggestCodeClusters(
   highlights: EmbeddedItem[],

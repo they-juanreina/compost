@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
-import { loadEmbeddedHighlights } from '../lib/embeddedHighlights.js'
+import { assertHighlightsEmbedded, loadEmbeddedHighlights } from '../lib/embeddedHighlights.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { suggestThemesOnce } from '../loops/synthesis.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -24,6 +24,7 @@ export function registerRescan(program: Command): void {
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
         const highlights = loadEmbeddedHighlights(seedPath)
+        assertHighlightsEmbedded(seedPath, highlights)
         const suggestions = suggestThemesOnce(seedPath, highlights, {
           threshold: Number(flags.threshold ?? 0.75),
         })
