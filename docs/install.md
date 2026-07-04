@@ -13,7 +13,12 @@ exactly what's missing and how to fix it.
 
 ### Always required
 
-- **Node 22+** and **pnpm 10+** — `node --version`, `pnpm --version`.
+- **Node 22+** and **pnpm 10+** — `node --version`, `pnpm --version`. If either
+  reports `command not found`, you don't have Node yet (this is what a bare
+  `command not found: npm` / `compost` means — the runtime is missing, not
+  compost). On macOS, install [Homebrew](https://brew.sh) first, then
+  `brew install node pnpm`; on Windows/Linux, get Node from
+  [nodejs.org](https://nodejs.org) and run `npm install -g pnpm`.
 - **[Ollama](https://ollama.com)** for local embeddings (no API key, no cloud):
   ```sh
   ollama serve          # or just open the Ollama app

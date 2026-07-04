@@ -5,9 +5,35 @@ sample seed, then point it at your own material.
 
 ## 1. Install
 
+First check you have a Node package manager. Run:
+
+```sh
+node --version    # want v22 or newer
+pnpm --version    # the install command below uses pnpm
+```
+
+If either prints `command not found`, you don't have Node yet — install it before
+going further. On macOS the shortest path is [Homebrew](https://brew.sh):
+
+```sh
+# install Homebrew (skip if `brew --version` already works)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# install Node (bundles npm) and pnpm, then re-check
+brew install node pnpm
+node --version && pnpm --version
+```
+
+On Windows/Linux, install Node from [nodejs.org](https://nodejs.org) (or your
+package manager), then `npm install -g pnpm`. With Node and pnpm on your `PATH`:
+
 ```sh
 pnpm add -g @they-juanreina/compost-cli      # or: brew install they-juanreina/tap/compost
 ```
+
+> Seeing `zsh: command not found: npm` (or `pnpm`)? That's this step: the package
+> manager isn't installed yet, not a compost problem. Install Node as above and
+> re-run.
 
 ## 2. Open the sample seed
 
