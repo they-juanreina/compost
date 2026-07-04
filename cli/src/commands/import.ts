@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { basename, extname, join } from 'node:path'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { parseTextTranscript } from '../lib/importTranscript.js'
+import { parseCaptionTranscript, parseTextTranscript } from '../lib/importTranscript.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { assertSessionContained } from '../lib/sessionId.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -26,10 +26,11 @@ export function registerImport(program: Command): void {
   program
     .command('import')
     .description(
-      'Import an existing speaker + timestamp text transcript (.txt) into a session ' +
-        'transcript.json (#172). Recognizes "[00:01] Name: text", "Name (01:23): text", etc.',
+      'Import an existing transcript into a session transcript.json (#172) — no ' +
+        're-transcription. Recognizes speaker+timestamp text (.txt: "[00:01] Name: text", ' +
+        '"Name (01:23): text") and caption files (.vtt WebVTT / .srt SubRip from Teams/Zoom/Otter).',
     )
-    .argument('<file>', 'Path to a text transcript')
+    .argument('<file>', 'Path to a transcript (.txt, .vtt, or .srt)')
     .option('--session <id>', 'Target session id (default: derived from the filename)')
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
     .option('--language <tag>', 'BCP-47 language tag for the transcript (default: und)')
@@ -43,11 +44,17 @@ export function registerImport(program: Command): void {
         // must resolve under <seed>/sessions/ — it is joined straight into that
         // tree and written to below (#211 followup).
         assertSessionContained(seedPath, sessionId)
-        const transcript = parseTextTranscript(readFileSync(file, 'utf8'), {
+        const parseOpts = {
           sessionId,
           source: file,
           ...(flags.language !== undefined ? { language: flags.language } : {}),
-        })
+        }
+        const ext = extname(file).toLowerCase()
+        const raw = readFileSync(file, 'utf8')
+        const transcript =
+          ext === '.vtt' || ext === '.srt'
+            ? parseCaptionTranscript(raw, parseOpts)
+            : parseTextTranscript(raw, parseOpts)
 
         const dir = join(seedPath, 'sessions', sessionId)
         mkdirSync(dir, { recursive: true })
