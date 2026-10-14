@@ -182,6 +182,45 @@ describe('LLMAdapter routing', () => {
     )
   })
 
+  // Ollama's /api/embed answers an over-large batch (bge-m3, >~256 inputs) with
+  // `400 … Post ".../tokenize": EOF`. The raw dump never says "batch too big";
+  // the translated error names the size and the config knob to lower.
+  it('translates the embed-path 400 tokenize/EOF into a batch-too-large error', async () => {
+    const body = '{"error":"do embedding request: Post \\"http://127.0.0.1:52011/tokenize\\": EOF"}'
+    const fetchImpl: FetchLike = async () => ({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => JSON.parse(body),
+      text: async () => body,
+    })
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+    const input = Array.from({ length: 500 }, (_, i) => `chunk ${i}`)
+    await assert.rejects(
+      () => adapter.embed('embeddings', input),
+      (e: unknown) =>
+        isCompostError(e) &&
+        (e as { code: string }).code === 'PROVIDER_ERROR' &&
+        /batch of 500 texts/.test((e as Error).message) &&
+        /providers\.ollama\.embed_batch_cap/.test((e as Error).message),
+    )
+  })
+
+  it('leaves other embed-path 400s untranslated', async () => {
+    const fetchImpl: FetchLike = async () => ({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: async () => ({ error: 'invalid input type' }),
+      text: async () => '{"error":"invalid input type"}',
+    })
+    const adapter = new LLMAdapter(parseConfig(CONFIG_TOML), { fetchImpl })
+    await assert.rejects(
+      () => adapter.embed('embeddings', ['hello']),
+      (e: unknown) => !isCompostError(e) && /→ 400 /.test((e as Error).message),
+    )
+  })
+
   it('maps a 401 from a cloud provider to PROVIDER_AUTH naming the env var (#236)', async () => {
     process.env.TEST_ANTHROPIC_KEY = 'sk-wrong'
     try {

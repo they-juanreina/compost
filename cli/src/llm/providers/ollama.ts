@@ -43,6 +43,29 @@ function translateOllamaError(err: unknown, model: string): Error {
   )
 }
 
+/**
+ * Ollama's `/api/embed` gives up on an over-large batch with a 400 whose body
+ * reads `Post ".../tokenize": EOF` (or `connection reset by peer`) — reproduced
+ * deterministically with bge-m3 above ~256 inputs per request. The raw HTTP
+ * dump doesn't say the batch is the problem; name the knob
+ * (`providers.ollama.embed_batch_cap`) and the batch size that failed.
+ * Everything else defers to translateOllamaError.
+ */
+function translateOllamaEmbedError(err: unknown, req: EmbedRequest): Error {
+  if (
+    err instanceof Error &&
+    /→ 400 /.test(err.message) &&
+    /tokenize|EOF|connection reset/i.test(err.message)
+  ) {
+    return new CompostError(
+      'PROVIDER_ERROR',
+      `Ollama rejected an embeddings batch of ${req.input.length} texts for '${req.model}' (${err.message.replace(/^POST \S+ → /, '')}) — the batch is too large for the server. Lower providers.ollama.embed_batch_cap in config.toml (e.g. 64) and re-run.`,
+      { cause: err },
+    )
+  }
+  return translateOllamaError(err, req.model)
+}
+
 export class OllamaProvider implements Provider {
   readonly name = 'ollama'
   private readonly base: string
@@ -94,7 +117,7 @@ export class OllamaProvider implements Provider {
         this.timeoutMs,
       )) as { embeddings?: number[][] }
     } catch (err) {
-      throw translateOllamaError(err, req.model)
+      throw translateOllamaEmbedError(err, req)
     }
     return {
       vectors: json.embeddings ?? [],

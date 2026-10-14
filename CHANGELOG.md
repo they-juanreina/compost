@@ -44,6 +44,27 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
 
 ### Fixed
 
+- **Installs on Node 26 (Homebrew default); no more GC abort on long
+  `reindex --vectors`.** `better-sqlite3` `^11` has no prebuilt for Node 26 and
+  its source doesn't compile against that V8 (`no member named 'GetPrototype'
+  in 'v8::Object'`), so `npm i -g @they-juanreina/compost-cli` failed on a
+  fresh Mac; under node@24 the same 11.x aborted mid-run during garbage
+  collection on long vector reindexes (`Statement::~Statement` →
+  `RemoveEnvironmentCleanupHook … Assertion failed: (env) != nullptr`). Bumped
+  to `^12.11.1` (prebuilds for Node 20–26) across cli / provenance / evals /
+  web so the workspace resolves one native build. No API changes for the
+  calls compost makes (`new Database`, `pragma`, `prepare`, `transaction`,
+  `exec`).
+- **`reindex --vectors` no longer dies on seeds past ~256 chunks with Ollama.**
+  The embed worker sent up to 500 texts per `/api/embed` request; bge-m3 on a
+  default Ollama answers `400 … Post ".../tokenize": EOF` (or `connection reset
+  by peer`) deterministically above ~256 inputs — batches of 128 and 256
+  passed, 500 failed every time on a 1975-chunk seed. The default cap is now
+  **128**, configurable per provider as `providers.<name>.embed_batch_cap`
+  (positive integer; an invalid value is a `CONFIG_ERROR` naming the fix, not a
+  silent fallback). When Ollama does reject a batch, the error now names the
+  batch size and the knob to lower instead of a raw HTTP dump.
+
 - **`slug()` is now diacritic-folding** — accented / non-ASCII Latin names no
   longer degrade in artifact ids and filenames. NFKD-normalize + strip combining
   marks means `"niñez"` → `ninez`, `"café"` → `cafe`, `"después"` → `despues`

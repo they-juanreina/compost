@@ -11,6 +11,10 @@ export interface ProviderSettings {
   /** Per-request timeout override (ms). Large local models can need more than
    * the 120s default just to load into memory. */
   timeout_ms?: number
+  /** Max texts per embeddings request the embed worker sends this provider.
+   * Defaults to DEFAULT_EMBED_BATCH_CAP; lower it if the provider rejects or
+   * drops large batches, raise it if it comfortably takes more. */
+  embed_batch_cap?: number
 }
 
 export interface CompostConfig {
@@ -25,6 +29,15 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
 }
+
+/**
+ * Default texts-per-request ceiling for the embed worker. Ollama's `/api/embed`
+ * (bge-m3) fails deterministically above roughly 256 inputs per request —
+ * `400 … Post ".../tokenize": EOF` or `connection reset by peer` — while 128
+ * and 256 succeed; 128 keeps headroom for longer chunks. Override per provider
+ * with `providers.<name>.embed_batch_cap`.
+ */
+export const DEFAULT_EMBED_BATCH_CAP = 128
 
 export function parseConfig(tomlText: string): CompostConfig {
   let parsed: Record<string, unknown>
@@ -58,6 +71,22 @@ export function providerApiKey(config: CompostConfig, providerName: string): str
   // send a blank `x-api-key`).
   const value = process.env[envName]
   return value && value.trim() !== '' ? value : undefined
+}
+
+/** Texts-per-request ceiling for embeddings sent to `providerName`:
+ * `providers.<name>.embed_batch_cap` when set, else DEFAULT_EMBED_BATCH_CAP.
+ * A set-but-invalid value (non-integer, < 1) is a CONFIG_ERROR naming the fix
+ * rather than a silent fallback — a cap of 0 would loop forever. */
+export function providerEmbedBatchCap(config: CompostConfig, providerName: string): number {
+  const raw = config.providers[providerName]?.embed_batch_cap
+  if (raw === undefined) return DEFAULT_EMBED_BATCH_CAP
+  if (typeof raw !== 'number' || !Number.isInteger(raw) || raw < 1) {
+    throw new CompostError(
+      'CONFIG_ERROR',
+      `providers.${providerName}.embed_batch_cap must be a positive integer (got ${JSON.stringify(raw)}) — set it with \`compost config set providers.${providerName}.embed_batch_cap ${DEFAULT_EMBED_BATCH_CAP} --type=int\`, or remove it to use the default (${DEFAULT_EMBED_BATCH_CAP}).`,
+    )
+  }
+  return raw
 }
 
 /** Resolve a dotted key (e.g. `providers.ollama.base_url`) against the raw TOML

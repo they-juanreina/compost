@@ -5,10 +5,11 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import type { LanceDBWriter, VectorRecord } from '@they-juanreina/compost-retrieval'
-
+import { CompostError } from '../errors.js'
 import { createHighlight } from '../lib/artifacts.js'
+import { DEFAULT_EMBED_BATCH_CAP } from '../lib/config.js'
 import { initSeed } from '../lib/seed.js'
-import { runEmbedWorkerOnce, runHighlightEmbedWorkerOnce } from './embed_worker.js'
+import { embedInBatches, runEmbedWorkerOnce, runHighlightEmbedWorkerOnce } from './embed_worker.js'
 
 const MINI_TRANSCRIPT = {
   schema_version: '1.0',
@@ -172,11 +173,11 @@ describe('runEmbedWorkerOnce', () => {
   })
 
   // v0.1-04 review feedback: a very large corpus splits into multiple
-  // embed() calls of size <= EMBED_BATCH_CAP (defense in depth against
-  // multi-megabyte single requests).
-  it('splits very large corpora into EMBED_BATCH_CAP-sized passes', async () => {
+  // embed() calls of size <= the batch cap. Since the Ollama /api/embed
+  // repro (bge-m3 fails past ~256 inputs) the default is 128, not 500.
+  it('splits very large corpora into DEFAULT_EMBED_BATCH_CAP-sized passes', async () => {
     const { path } = initSeed('demo', { cwd: work })
-    // 200 sessions × ~3 chunks each > 500 chunks (crosses the cap).
+    // 200 sessions × ~3 chunks each > 128 chunks (crosses the cap).
     for (let i = 0; i < 200; i++) {
       const sid = `S${String(i + 1).padStart(3, '0')}`
       mkdirSync(join(path, 'sessions', sid), { recursive: true })
@@ -199,16 +200,134 @@ describe('runEmbedWorkerOnce', () => {
       embed,
       vectorDim: 4,
     })
-    assert.ok(result.embedded > 500, `expected >500 chunks, got ${result.embedded}`)
+    assert.equal(DEFAULT_EMBED_BATCH_CAP, 128)
+    assert.ok(result.embedded > 128, `expected >128 chunks, got ${result.embedded}`)
     assert.ok(embedCalls >= 2, `expected >=2 batches, got ${embedCalls}`)
     assert.ok(
-      batchSizes.every((s) => s <= 500),
-      `some batch exceeded 500: ${batchSizes.join(',')}`,
+      batchSizes.every((s) => s <= 128),
+      `some batch exceeded 128: ${batchSizes.join(',')}`,
     )
     // Note: writer.inserted.length tracks dedup-filtered count, not raw chunk count.
     // The MINI_TRANSCRIPT body is identical per session so most chunks dedupe to
     // their first occurrence. We assert only that inserts happened, not the count.
     assert.ok(result.inserted > 0)
+  })
+
+  it('honors an injected batchCap alongside an injected embedder', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    for (let i = 0; i < 5; i++) {
+      const sid = `S00${i + 1}`
+      mkdirSync(join(path, 'sessions', sid), { recursive: true })
+      writeFileSync(
+        join(path, 'sessions', sid, 'transcript.json'),
+        JSON.stringify({ ...MINI_TRANSCRIPT, session_id: sid }),
+      )
+    }
+    const batchSizes: number[] = []
+    const result = await runEmbedWorkerOnce(path, {
+      writer: new FakeWriter() as unknown as LanceDBWriter,
+      embed: async (texts) => {
+        batchSizes.push(texts.length)
+        return texts.map(() => [0, 0, 0, 0])
+      },
+      vectorDim: 4,
+      batchCap: 3,
+    })
+    assert.ok(result.embedded > 3)
+    assert.ok(batchSizes.length >= 2)
+    assert.ok(
+      batchSizes.every((s) => s <= 3),
+      `some batch exceeded 3: ${batchSizes.join(',')}`,
+    )
+    assert.equal(
+      batchSizes.reduce((a, b) => a + b, 0),
+      result.embedded,
+      'batches cover every chunk exactly once',
+    )
+  })
+})
+
+// Unit coverage of the batching primitive itself: the Ollama repro (bge-m3
+// `/api/embed` answering `400 … Post ".../tokenize": EOF` past ~256 inputs) is a
+// per-request ceiling, so the cap must be a hard bound on every call, with
+// order preserved across slices.
+describe('embedInBatches', () => {
+  const fingerprint = async (texts: string[]) => texts.map((t) => [t.length])
+
+  it('never sends more than `cap` texts per call and keeps order', async () => {
+    const texts = Array.from({ length: 300 }, (_, i) => 'x'.repeat(i + 1))
+    const batchSizes: number[] = []
+    const embed = async (slice: string[]) => {
+      batchSizes.push(slice.length)
+      return fingerprint(slice)
+    }
+    const out = await embedInBatches(embed, texts, 128)
+    assert.deepEqual(batchSizes, [128, 128, 44])
+    assert.equal(out.length, texts.length)
+    assert.deepEqual(
+      out.map((v) => v[0]),
+      texts.map((t) => t.length),
+      'vectors line up with their texts across slices',
+    )
+  })
+
+  it('sends a single call when the corpus fits under the cap', async () => {
+    const texts = ['a', 'bb', 'ccc']
+    let calls = 0
+    const out = await embedInBatches(
+      async (slice) => {
+        calls += 1
+        return fingerprint(slice)
+      },
+      texts,
+      128,
+    )
+    assert.equal(calls, 1)
+    assert.deepEqual(out, [[1], [2], [3]])
+  })
+
+  it('reports progress per slice with a running total', async () => {
+    const notes: string[] = []
+    await embedInBatches(
+      fingerprint,
+      Array.from({ length: 10 }, () => 'x'),
+      4,
+      (m) => notes.push(m),
+    )
+    assert.deepEqual(notes, [
+      'embedding 4/10 chunks',
+      'embedding 8/10 chunks',
+      'embedding 10/10 chunks',
+    ])
+  })
+
+  it('fails with the batch index when a slice comes back short', async () => {
+    const texts = Array.from({ length: 10 }, () => 'x')
+    let calls = 0
+    await assert.rejects(
+      embedInBatches(
+        async (slice) => {
+          calls += 1
+          return calls === 2 ? [[1]] : fingerprint(slice)
+        },
+        texts,
+        4,
+      ),
+      (e: unknown) =>
+        e instanceof CompostError &&
+        e.code === 'PROVIDER_ERROR' &&
+        /returned 1 vectors for 4 chunks \(batch 2\/3\)/.test(e.message),
+    )
+  })
+
+  it('refuses a cap that is not a positive integer (a cap of 0 would loop forever)', async () => {
+    for (const cap of [0, -1, 1.5, Number.NaN]) {
+      await assert.rejects(
+        embedInBatches(fingerprint, ['x'], cap),
+        (e: unknown) => e instanceof CompostError && e.code === 'CONFIG_ERROR',
+        `cap ${cap} should be rejected`,
+      )
+    }
   })
 })
 
