@@ -5,11 +5,10 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
 import type { LanceDBWriter, VectorRecord } from '@they-juanreina/compost-retrieval'
-
-import { createHighlight } from '../lib/artifacts.js'
-import { initSeed } from '../lib/seed.js'
 import { CompostError } from '../errors.js'
+import { createHighlight } from '../lib/artifacts.js'
 import { DEFAULT_EMBED_BATCH_CAP } from '../lib/config.js'
+import { initSeed } from '../lib/seed.js'
 import { embedInBatches, runEmbedWorkerOnce, runHighlightEmbedWorkerOnce } from './embed_worker.js'
 
 const MINI_TRANSCRIPT = {
