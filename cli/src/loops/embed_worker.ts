@@ -15,7 +15,12 @@ import {
 } from '@they-juanreina/compost-retrieval'
 
 import { CompostError } from '../errors.js'
-import { loadConfig, parseRoute } from '../lib/config.js'
+import {
+  DEFAULT_EMBED_BATCH_CAP,
+  loadConfig,
+  parseRoute,
+  providerEmbedBatchCap,
+} from '../lib/config.js'
 import { seedNameOf } from '../lib/seedResolve.js'
 import { LLMAdapter } from '../llm/adapter.js'
 import { backfillCodeIds } from './backfill.js'
@@ -45,6 +50,9 @@ export interface EmbedWorkerDeps {
   embed?: (texts: string[]) => Promise<number[][]>
   /** Override the embedding dimension (must match what the writer expects). */
   vectorDim?: number
+  /** Override the texts-per-request cap (only consulted alongside `embed`; the
+   * config path reads `providers.<name>.embed_batch_cap`). */
+  batchCap?: number
   /** Optional per-batch progress sink (watch wires this to a TTY-gated stderr
    * line in human mode). Receives a human-readable "embedding N/M chunks" note. */
   onProgress?: (msg: string) => void
@@ -68,8 +76,8 @@ export async function runEmbedWorkerOnce(
     return { embedded: 0, inserted: 0, transcripts_scanned: 0, backfilled: 0 }
   }
 
-  // Resolve embeddings provider + dimension.
-  const { embed, vectorDim } = resolveEmbedder(seedPath, deps)
+  // Resolve embeddings provider + dimension + per-request cap.
+  const { embed, vectorDim, batchCap } = resolveEmbedder(seedPath, deps)
 
   // Chunk every transcript.
   const allChunks: Array<Chunk & { sessionId: string }> = []
@@ -89,17 +97,13 @@ export async function runEmbedWorkerOnce(
     deps.writer ??
     (await openLanceDBForWrite(join(seedPath, '.compost', 'vectors.lancedb'), vectorDim))
 
-  // Embed with a worker-level batch cap. The LLMAdapter already batches
-  // internally (provider-appropriate, ~50/req for Ollama), but a worker-level
-  // cap is defense-in-depth: a very large corpus (10k+ chunks) shouldn't be
-  // a single multi-megabyte JSON request even if the adapter would split it.
-  // 500 chunks/pass is a safe ceiling for HTTP body size on default Ollama
-  // configs while keeping the round-trip count low (~36 batches for a
-  // typical 18k-chunk corpus).
+  // Embed in worker-level batches. The LLMAdapter does NOT split requests, so
+  // this cap is the only thing between a large seed and a single request the
+  // provider rejects (see DEFAULT_EMBED_BATCH_CAP for the Ollama failure mode).
   const vectors = await embedInBatches(
     embed,
     allChunks.map((c) => c.text),
-    EMBED_BATCH_CAP,
+    batchCap,
     deps.onProgress,
   )
   if (vectors.length !== allChunks.length) {
@@ -156,6 +160,8 @@ export async function runEmbedWorkerOnce(
 interface ResolvedEmbedder {
   embed: (texts: string[]) => Promise<number[][]>
   vectorDim: number
+  /** Texts per embed() call — provider-dependent, see providerEmbedBatchCap. */
+  batchCap: number
 }
 
 /**
@@ -165,7 +171,11 @@ interface ResolvedEmbedder {
  */
 function resolveEmbedder(seedPath: string, deps: EmbedWorkerDeps): ResolvedEmbedder {
   if (deps.embed !== undefined) {
-    return { embed: deps.embed, vectorDim: deps.vectorDim ?? 1024 }
+    return {
+      embed: deps.embed,
+      vectorDim: deps.vectorDim ?? 1024,
+      batchCap: deps.batchCap ?? DEFAULT_EMBED_BATCH_CAP,
+    }
   }
   const config = loadConfig(seedPath)
   const adapter = new LLMAdapter(config)
@@ -177,12 +187,14 @@ function resolveEmbedder(seedPath: string, deps: EmbedWorkerDeps): ResolvedEmbed
   // their tag (bge-m3 / mxbai-embed-large are 1024). Fall back to 1024; a
   // mismatch surfaces as a clear LanceDB error.
   let vectorDim = deps.vectorDim ?? 1024
+  let batchCap = DEFAULT_EMBED_BATCH_CAP
   const route = config.defaults.embeddings
   if (route !== undefined) {
-    const { model } = parseRoute(route)
+    const { provider, model } = parseRoute(route)
     vectorDim = DEFAULT_DIM_FOR_MODEL[model] ?? 1024
+    batchCap = providerEmbedBatchCap(config, provider)
   }
-  return { embed, vectorDim }
+  return { embed, vectorDim, batchCap }
 }
 
 export interface HighlightEmbedResult {
@@ -230,11 +242,11 @@ export async function runHighlightEmbedWorkerOnce(
     return { highlights_scanned: scanned.length, embedded: 0, skipped: scanned.length }
   }
 
-  const { embed } = resolveEmbedder(seedPath, deps)
+  const { embed, batchCap } = resolveEmbedder(seedPath, deps)
   const vectors = await embedInBatches(
     embed,
     stale.map((h) => h.text),
-    EMBED_BATCH_CAP,
+    batchCap,
     deps.onProgress,
   )
   if (vectors.length !== stale.length) {
@@ -285,23 +297,26 @@ function sidecarUpToDate(sidecarPath: string, text_sha: string): boolean {
 }
 
 /**
- * Worker-level batch cap. Defense in depth against very large corpora that
- * would otherwise produce a single multi-megabyte JSON request. The
- * LLMAdapter splits within this cap to provider-appropriate sizes.
+ * Embed `texts` in slices of at most `cap` per embed() call, preserving order.
+ * The cap is the provider's per-request ceiling (`providers.<name>.embed_batch_cap`,
+ * default DEFAULT_EMBED_BATCH_CAP): the former 500 default made Ollama's
+ * `/api/embed` (bge-m3) fail deterministically on any seed past ~256 chunks,
+ * so the cap is no longer just defense in depth against huge request bodies.
  *
- * Tuning notes: 500 chunks × ~1KB text each = ~500KB request body, well
- * under Ollama's default HTTP body limits. A typical interview corpus
- * (~600 utterances per session × 3 chunks/utt × 30 sessions = 54k chunks)
- * batches to ~108 round-trips.
+ * Exported for unit tests; the worker is its only production caller.
  */
-export const EMBED_BATCH_CAP = 500
-
-async function embedInBatches(
+export async function embedInBatches(
   embed: (texts: string[]) => Promise<number[][]>,
   texts: string[],
   cap: number,
   onProgress?: (msg: string) => void,
 ): Promise<number[][]> {
+  if (!Number.isInteger(cap) || cap < 1) {
+    throw new CompostError(
+      'CONFIG_ERROR',
+      `embed batch cap must be a positive integer (got ${JSON.stringify(cap)})`,
+    )
+  }
   // Caller guarantee: runEmbedWorkerOnce returns early when there are no chunks,
   // so `texts` is always non-empty here — the single-batch fast-path never calls
   // embed([]). Keep this invariant if a second caller is ever added.
