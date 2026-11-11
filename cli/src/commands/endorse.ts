@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 import { isCompostError } from '../errors.js'
-import { defaultResearcherId, endorseArtifact } from '../lib/artifacts.js'
+import { endorseArtifact } from '../lib/artifacts.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -20,12 +21,15 @@ export function registerEndorse(program: Command): void {
       'Id from `compost create` (C-slug / H-NNN / T-slug), SHA256 prefix, or latest:<kind>=<seed>',
     )
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
-    .option('--researcher <id>', 'Researcher identity (default: $COMPOST_USER)')
+    .option(
+      '--researcher <id>',
+      'Researcher identity (default: $COMPOST_USER, then user.email in compost config, then git)',
+    )
     .action((artifactRef: string, flags: EndorseFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-        const researcher = flags.researcher ?? defaultResearcherId()
+        const researcher = resolveResearcherId({ explicit: flags.researcher, seedPath })
         const result = endorseArtifact(seedPath, artifactRef, researcher)
         // A second endorse by the same researcher is a no-op (#169) — surface
         // that distinctly so callers/scripts can tell "ok, just did it" from

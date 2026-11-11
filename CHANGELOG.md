@@ -38,6 +38,19 @@
   the same millisecond — e.g. a create and its endorse — still replay in the
   order they were written. Existing ledgers need no migration.
 
+- **Git-style researcher identity (ADR 0008 decision 2)** — one lib function
+  (`cli/src/lib/identity.ts`) resolves who a researcher-authored write belongs
+  to, for every surface (CLI, MCP via the CLI, web): `--researcher` (or
+  `--actor-id` / `--coder`) → `$COMPOST_USER` → the seed's `user.email` → the
+  global `~/.compost/config.toml` `user.email` → `git config user.email` (only
+  if git is installed). The `$USER` and literal `researcher` fallbacks are
+  **gone**: with nothing set, researcher writes refuse with `IDENTITY_UNSET` and
+  the exact fix (`compost config set user.email you@example.com --global`). AI
+  and agent actors are unaffected. `user.name` is a display label. `compost
+  config get|set|show` gain `--global`; `config show` reports the resolved
+  identity and its source, and `compost setup` adds an identity line. Existing
+  events keep their old actor ids (no migration).
+
 ### Removed
 
 - **`compost synthesize` and `compost query`** — the two dangling stub verbs

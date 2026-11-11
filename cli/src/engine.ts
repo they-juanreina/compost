@@ -44,7 +44,6 @@ export {
   createMemo,
   createTheme,
   DEFAULT_CODEBOOK_ID,
-  defaultResearcherId,
   type EditMemoInput,
   editMemo,
   endorseArtifact,
@@ -85,6 +84,13 @@ export {
   emitUpdate,
   openSeedEvents,
 } from './lib/events.js'
+// ---- identity: git-style researcher identity (ADR 0008)
+export {
+  type IdentitySource,
+  type ResearcherIdentity,
+  resolveIdentity,
+  resolveResearcherId,
+} from './lib/identity.js'
 // ---- prompt journal: AGENTS.md read/parse/save (#122)
 export {
   agentsPath,

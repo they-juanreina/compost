@@ -7,14 +7,21 @@ import { afterEach, beforeEach, describe, it } from 'node:test'
 import { collectionRoute, endorseRoute, itemRoute, rejectRoute } from './artifactRoutes.js'
 
 let work: string
+let prevUser: string | undefined
 beforeEach(() => {
   work = mkdtempSync(join(tmpdir(), 'compost-web-routes-'))
   mkdirSync(join(work, 'Seeds', 'demo'), { recursive: true })
   process.env.COMPOST_ROOT = work
+  // Header-less requests act as the resolved researcher identity (ADR 0008);
+  // pin it so the test never depends on the machine's git config (CI has none).
+  prevUser = process.env.COMPOST_USER
+  process.env.COMPOST_USER = 'juan@example.com'
 })
 afterEach(() => {
   rmSync(work, { recursive: true, force: true })
   delete process.env.COMPOST_ROOT
+  if (prevUser === undefined) delete process.env.COMPOST_USER
+  else process.env.COMPOST_USER = prevUser
 })
 
 function ctx<T>(params: T) {

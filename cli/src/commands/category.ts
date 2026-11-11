@@ -1,7 +1,7 @@
 import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
-import { createCategory, DEFAULT_CODEBOOK_ID, defaultResearcherId } from '../lib/artifacts.js'
+import { createCategory, DEFAULT_CODEBOOK_ID } from '../lib/artifacts.js'
 import {
   linkCodeToCategory,
   listCategories,
@@ -10,6 +10,7 @@ import {
   unlinkCodeFromCategory,
 } from '../lib/categories.js'
 import { loadHighlightVectorMap } from '../lib/embeddedHighlights.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { listArtifacts } from '../lib/reads.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { type CodeForCategorizing, suggestCategoriesOnce } from '../loops/synthesis.js'
@@ -55,7 +56,7 @@ export function registerCategory(program: Command): void {
           name,
           definition: flags.definition,
           ...(flags.codebook !== undefined ? { codebookId: flags.codebook } : {}),
-          author: { actorType: 'researcher', actorId: defaultResearcherId() },
+          author: { actorType: 'researcher', actorId: resolveResearcherId({ seedPath }) },
         })
         emit(
           {
@@ -143,7 +144,7 @@ export function registerCategory(program: Command): void {
           category: cat.id,
           codebookId: cat.codebook_id,
           ...(primary !== undefined ? { primary } : {}),
-          author: { actorType: 'researcher', actorId: defaultResearcherId() },
+          author: { actorType: 'researcher', actorId: resolveResearcherId({ seedPath }) },
         })
         emit({ status: 'ok', command: 'category link', ...result }, out)
       } catch (err) {
@@ -213,7 +214,7 @@ export function registerCategory(program: Command): void {
         const result = unlinkCodeFromCategory(seedPath, {
           code,
           category: cat.id,
-          author: { actorType: 'researcher', actorId: defaultResearcherId() },
+          author: { actorType: 'researcher', actorId: resolveResearcherId({ seedPath }) },
         })
         emit({ status: 'ok', command: 'category unlink', code, category: cat.id, ...result }, out)
       } catch (err) {

@@ -1,4 +1,4 @@
-import { type Author, defaultResearcherId } from '@they-juanreina/compost-cli/engine'
+import { type Author, resolveResearcherId } from '@they-juanreina/compost-cli/engine'
 
 import { ApiError } from './http.js'
 
@@ -9,16 +9,18 @@ import { ApiError } from './http.js'
  *
  * Header is structured JSON `{ "type": "researcher"|"ai", "id": "...",
  * "model"?: "...", "promptHash"?: "..." }`, mapping 1:1 onto the provenance
- * Author. Absent → the OS user as a researcher (COMPOST_USER || USER ||
- * "researcher"), so the common case needs no header at all.
+ * Author. Absent → the researcher identity the CLI would use (engine
+ * `resolveResearcherId`: $COMPOST_USER, then `user.email` in the seed / global
+ * compost config, then git — ADR 0008), so the common case needs no header at
+ * all. With nothing configured it refuses (IDENTITY_UNSET) rather than guess.
  *
  * `agent` is intentionally rejected: agent-authored events come from the
  * harness loops / CLI (emitAgentCreate), never an interactive web mutation.
  */
-export function parseActor(req: Request): Author {
+export function parseActor(req: Request, seedPath?: string): Author {
   const raw = req.headers.get('x-compost-actor')
   if (raw === null || raw.trim() === '') {
-    return { actorType: 'researcher', actorId: defaultResearcherId() }
+    return { actorType: 'researcher', actorId: resolveResearcherId({ seedPath }) }
   }
 
   let parsed: unknown
@@ -44,7 +46,7 @@ export function parseActor(req: Request): Author {
     typeof p.id === 'string' && p.id.trim() !== ''
       ? p.id
       : type === 'researcher'
-        ? defaultResearcherId()
+        ? resolveResearcherId({ seedPath })
         : undefined
   if (id === undefined) {
     throw new ApiError('INVALID_INPUT', 'x-compost-actor.id is required for ai actors')

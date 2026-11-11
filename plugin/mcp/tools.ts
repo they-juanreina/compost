@@ -421,7 +421,8 @@ export const TOOLS: ToolDef[] = [
     readOnly: false,
     // Not aiAuthored: the endorse event's actor is the researcher (the human
     // who approves the mutation), not Claude Code. The endorsing IDENTITY is
-    // bound server-side to $COMPOST_USER (the CLI default) — deliberately NOT a
+    // bound server-side to the CLI's resolved researcher identity
+    // (lib/identity.ts: $COMPOST_USER → config user.email → git) — deliberately NOT a
     // tool arg, so an agent can't endorse under an arbitrary/author identity and
     // the CLI's self-endorse refusal can't be sidestepped (#236).
     inputSchema: {
@@ -534,7 +535,7 @@ export const TOOLS: ToolDef[] = [
     readOnly: false,
     // Not aiAuthored: `compost codebook new` authors as the researcher (a lens is
     // structural setup, not an interpretive suggestion) and the CLI verb has no
-    // --ai path. Identity is the CLI default ($COMPOST_USER), as for endorse.
+    // --ai path. Identity is the CLI's resolved researcher identity, as for endorse.
     inputSchema: {
       type: 'object',
       required: ['name', 'stance'],

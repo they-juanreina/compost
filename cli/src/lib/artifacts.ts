@@ -17,6 +17,7 @@ import {
   openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
+import { resolveResearcherId } from './identity.js'
 import {
   assertMemoType,
   DEFAULT_MEMO_TYPE,
@@ -315,7 +316,10 @@ export function createCategory(seedPath: string, input: CreateCategoryInput): Cr
  * human invoked init/create), so it is born endorsed rather than [draft].
  * Idempotent on the `codebooks/primary.md` file.
  */
-export function ensurePrimaryCodebook(seedPath: string): {
+export function ensurePrimaryCodebook(
+  seedPath: string,
+  researcherId: string = resolveResearcherId({ seedPath }),
+): {
   id: string
   created: boolean
   artifact_id?: string
@@ -328,7 +332,7 @@ export function ensurePrimaryCodebook(seedPath: string): {
     stance: 'inductive',
     description:
       'Default codebook: every code lands here unless created with an explicit codebook. Edit the stance and description to fit the study, or add lenses with `compost codebook new`.',
-    author: { actorType: 'researcher', actorId: defaultResearcherId() },
+    author: { actorType: 'researcher', actorId: researcherId },
   })
   return { id: created.id, created: true, artifact_id: created.artifact_id }
 }
@@ -910,11 +914,11 @@ export function endorseArtifact(
   // one who endorses it (#236, defense-in-depth). The [draft]→endorsed gate is a
   // human approving an AI/agent suggestion; an agent endorsing under the same
   // actor_id it created with would collapse the gate. The endorsing identity is
-  // bound to $COMPOST_USER server-side (commands/endorse.ts), not a tool arg.
+  // resolved server-side (lib/identity.ts via commands/endorse.ts), not a tool arg.
   if (researcherId === createRow.actor_id) {
     throw new CompostError(
       'INVALID_INPUT',
-      `Refusing to self-endorse: "${researcherId}" is the actor that created this artifact. Endorsement is a second actor approving it — set COMPOST_USER (or pass --researcher) to a human reviewer distinct from the author.`,
+      `Refusing to self-endorse: "${researcherId}" is the actor that created this artifact. Endorsement is a second actor approving it — set your identity (compost config set user.email you@example.com --global, $COMPOST_USER, or --researcher) to a human reviewer distinct from the author.`,
     )
   }
 
@@ -1070,9 +1074,4 @@ export function updateArtifact(
   } finally {
     events.close()
   }
-}
-
-/** Read the configured researcher identity: COMPOST_USER env, else fallback. */
-export function defaultResearcherId(): string {
-  return process.env.COMPOST_USER || process.env.USER || 'researcher'
 }

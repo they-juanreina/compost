@@ -6,8 +6,8 @@ import { pathToFileURL } from 'node:url'
 import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
-import { defaultResearcherId } from './artifacts.js'
 import { emitAgentCreate, emitCreate, eventsDbPath, openSeedEvents } from './events.js'
+import { resolveResearcherId } from './identity.js'
 
 /**
  * Ingest provenance (ADR 0006, #325). A transcript is ingested *source* data —
@@ -217,7 +217,10 @@ export function recordTranscriptIngest(
         ? emitCreate(events, {
             artifactKind: INGEST_ARTIFACT_KIND,
             initialState: { ...payload },
-            author: { actorType: 'researcher', actorId: input.author.id ?? defaultResearcherId() },
+            author: {
+              actorType: 'researcher',
+              actorId: resolveResearcherId({ explicit: input.author.id, seedPath }),
+            },
           })
         : emitAgentCreate(events, {
             artifactKind: INGEST_ARTIFACT_KIND,

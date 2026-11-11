@@ -103,6 +103,28 @@ describe('runSetup', () => {
     assert.equal(report.ready, false)
   })
 
+  it('reports the researcher identity: a warn with the exact fix when unset, ok + source when set', async () => {
+    initSeed('demo', { cwd: work })
+    const base = {
+      cwd: work,
+      keychain: null,
+      home: join(work, 'compost-home'),
+      fetchImpl: fakeFetch({}),
+      exec: async () => ({ stdout: '', ok: false }),
+      gitConfig: () => undefined,
+    }
+    const unset = check(await runSetup({ ...base, env: {} }), 'identity')
+    assert.equal(unset.status, 'warn')
+    assert.equal(unset.fix, 'compost config set user.email you@example.com --global')
+
+    const set = check(
+      await runSetup({ ...base, env: { COMPOST_USER: 'juan@example.com' } }),
+      'identity',
+    )
+    assert.equal(set.status, 'ok')
+    assert.match(set.detail, /^juan@example\.com — from \$COMPOST_USER$/)
+  })
+
   it('docker + transcriber down stay warns, but NO engine at all is a fail (#242)', async () => {
     initSeed('demo', { cwd: work })
     const report = await runSetup({

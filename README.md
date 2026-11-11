@@ -54,6 +54,7 @@ Known limitations:
 - The cross-encoder rerank stage (`retrieval/src/rerank.ts`) is implemented and unit-tested but has no CLI caller yet, so the final `hybrid → rerank → top-N` step is effectively off — `search` and `chat` return RRF-fused results directly.
 - The web UI is an upcoming milestone.
 - `compost serve` is a stub.
+- Researcher identity is self-declared (git-style `user.email`); nothing signs or verifies it yet. Researcher writes refuse until one is set — see [docs/install.md](docs/install.md#tell-compost-who-you-are).
 
 See [ROADMAP.md](ROADMAP.md) for the full design + milestone breakdown.
 

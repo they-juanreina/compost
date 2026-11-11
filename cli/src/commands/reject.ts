@@ -1,6 +1,7 @@
 import type { Command } from 'commander'
 import { isCompostError } from '../errors.js'
-import { defaultResearcherId, rejectArtifact } from '../lib/artifacts.js'
+import { rejectArtifact } from '../lib/artifacts.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -21,13 +22,16 @@ export function registerReject(program: Command): void {
       'Id from `compost create` (C-slug / H-NNN / T-slug), SHA256 prefix, or latest:<kind>=<seed>',
     )
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
-    .option('--researcher <id>', 'Researcher identity (default: $COMPOST_USER)')
+    .option(
+      '--researcher <id>',
+      'Researcher identity (default: $COMPOST_USER, then user.email in compost config, then git)',
+    )
     .option('--note <text>', 'Why it was rejected (kept on the reject event for audit)')
     .action((artifactRef: string, flags: RejectFlags, cmd: Command) => {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-        const researcher = flags.researcher ?? defaultResearcherId()
+        const researcher = resolveResearcherId({ explicit: flags.researcher, seedPath })
         const result = rejectArtifact(seedPath, artifactRef, researcher, flags.note)
         // A second reject by the same researcher is a no-op — surface that
         // distinctly, mirroring endorse's `already_endorsed` (#169).
