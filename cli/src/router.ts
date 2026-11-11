@@ -22,6 +22,7 @@ import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
 import { registerRecode } from './commands/recode.js'
 import { registerReindex } from './commands/reindex.js'
+import { registerReject } from './commands/reject.js'
 import { registerRerun } from './commands/rerun.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
@@ -97,6 +98,7 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerSession(program)
   registerCreate(program)
   registerEndorse(program)
+  registerReject(program)
   registerSetup(program)
   registerChat(program)
   registerServe(program)

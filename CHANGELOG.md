@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Added
+
+- **`compost reject <artifact-ref>`** (+ the `compost_reject` MCP tool) — the
+  CLI verb over the existing `rejectArtifact` that CLAUDE.md and `memo --help`
+  already promised (ADR 0007 P1). Same ref forms, `--seed`, `--researcher` and
+  output shape as `endorse`, plus an optional `--note`. Reject archives — the
+  markdown and history stay — and emits a researcher `reject` event; a repeat
+  reject by the same researcher is a no-op (`status: already_rejected`). The MCP
+  tool is not AI-authored, binds identity server-side, and is documented as the
+  researcher's act, never to be called autonomously.
+
 ### Removed
 
 - **`compost synthesize` and `compost query`** — the two dangling stub verbs

@@ -401,6 +401,33 @@ export const TOOLS: ToolDef[] = [
     toArgv: (a) => ['endorse', String(a.artifact), ...(a.seed ? ['--seed', String(a.seed)] : [])],
   },
   {
+    name: 'compost_reject',
+    description:
+      "Reject an artifact — archives it (never deletes; history and current state are kept for audit) and records a reject event. This is the RESEARCHER's act: the host shows a confirmation, and approving it IS the rejection. Do not call autonomously — not to discard your own drafts, nor anyone else's.",
+    readOnly: false,
+    // Not aiAuthored: the reject event's actor is the researcher, exactly as for
+    // compost_endorse. The identity is bound server-side (the CLI's resolved
+    // researcher identity) — deliberately NOT a tool arg, so an agent can't
+    // reject under an arbitrary identity.
+    inputSchema: {
+      type: 'object',
+      required: ['artifact'],
+      properties: {
+        artifact: str(
+          'Id from create (C-slug / H-NNN / T-slug), SHA256 prefix, or latest:<kind>=<seed>',
+        ),
+        note: str('Why it was rejected (kept on the reject event)'),
+        seed: str('Seed'),
+      },
+    },
+    toArgv: (a) => [
+      'reject',
+      String(a.artifact),
+      ...(a.note ? ['--note', String(a.note)] : []),
+      ...(a.seed ? ['--seed', String(a.seed)] : []),
+    ],
+  },
+  {
     name: 'compost_rerun',
     description:
       'Rerun an AI/agent generation from its captured inputs. Default verifies the inputs are intact and reconstructable; with apply=true, regenerates a deterministic agent artifact and emits a chained diff. LLM regeneration is not wired yet.',
