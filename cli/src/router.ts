@@ -20,7 +20,6 @@ import { registerLabel } from './commands/label.js'
 import { registerMemo } from './commands/memo.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
-import { registerQuery } from './commands/query.js'
 import { registerRecode } from './commands/recode.js'
 import { registerReindex } from './commands/reindex.js'
 import { registerRerun } from './commands/rerun.js'
@@ -33,7 +32,6 @@ import { registerSession } from './commands/session.js'
 import { registerSetup } from './commands/setup.js'
 import { registerSnap } from './commands/snap.js'
 import { registerStatus } from './commands/status.js'
-import { registerSynthesize } from './commands/synthesize.js'
 import { registerTag } from './commands/tag.js'
 import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
@@ -94,14 +92,12 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerRecode(program)
   registerAgreement(program)
   registerRerun(program)
-  registerSynthesize(program)
   registerSearch(program)
   registerSecrets(program)
   registerSession(program)
   registerCreate(program)
   registerEndorse(program)
   registerSetup(program)
-  registerQuery(program)
   registerChat(program)
   registerServe(program)
   registerModels(program)

@@ -367,7 +367,7 @@ Tasks (quick_chat, synthesis, verification, embeddings, code-suggest, theme-draf
 
 ## Interfaces — CLI + local Next.js web
 
-- **CLI (`compost ...`)** — Node/TypeScript. Subcommands: `init`, `ingest`, `transcribe`, `watch`, `tag`, `code`, `synthesize`, `query`, `chat`, `status`, `blame`, `export`, `serve`, `migrate`, `reindex`, `models doctor`, `evals run`, `evals harness`, `config get|set`. JSON output by default (`--json`); TTY-pretty with `--human`.
+- **CLI (`compost ...`)** — Node/TypeScript. Subcommands: `init`, `ingest`, `transcribe`, `watch`, `tag`, `code`, `chat`, `status`, `blame`, `export`, `serve`, `migrate`, `reindex`, `models doctor`, `evals run`, `evals harness`, `config get|set`. JSON output by default (`--json`); TTY-pretty with `--human`.
 - **Local web UI (`compost serve`)** — Next.js App Router on `localhost:7860`. Synchronized transcript/video player with cue overlay + frame strip, drag-to-highlight, color-coded code palette, theme boards, provenance badges + lineage modals, chat-with-seed panel with citations, eval scores on AI artifacts, side-by-side cross-session comparison, glossary inline suggestions.
 
 Tauri-wrap into a desktop bundle later; not v1.

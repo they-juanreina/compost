@@ -34,7 +34,7 @@ Or try the bundled sample corpus without recording anything: `compost init sampl
 
 Three surfaces over one engine:
 
-- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `setup`, `config`, `secrets`, `models`, `status`, `jobs`, `ingest`, `import`, `transcribe`, `watch`, `snap`, `validate`, `reindex`, `backup`, `export`, `search`, `chat`, `session`, `create`, `tag`, `code`, `label`, `rescan`, `recode`, `rerun`, `memo`, `codebook`, `category`, `endorse`, `blame`, `saturate`, `agreement`, `evals` (plus the stubs `serve`, `query`, `synthesize`).
+- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `setup`, `config`, `secrets`, `models`, `status`, `jobs`, `ingest`, `import`, `transcribe`, `watch`, `snap`, `validate`, `reindex`, `backup`, `export`, `search`, `chat`, `session`, `create`, `tag`, `code`, `label`, `rescan`, `recode`, `rerun`, `memo`, `codebook`, `category`, `endorse`, `blame`, `saturate`, `agreement`, `evals` (plus the stub `serve`).
 - **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-codebook`, …) and 23 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
 - **Web UI** — a later milestone (transcript player, drag-to-highlight, theme board). Today the surfaces are the CLI and the plugin.
 
@@ -53,7 +53,7 @@ Retrieval is hybrid end to end: `compost watch` builds the LanceDB index by defa
 Known limitations:
 - The cross-encoder rerank stage (`retrieval/src/rerank.ts`) is implemented and unit-tested but has no CLI caller yet, so the final `hybrid → rerank → top-N` step is effectively off — `search` and `chat` return RRF-fused results directly.
 - The web UI is an upcoming milestone.
-- `compost serve`, `query`, and `synthesize` are stubs.
+- `compost serve` is a stub.
 
 See [ROADMAP.md](ROADMAP.md) for the full design + milestone breakdown.
 

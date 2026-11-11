@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Removed
+
+- **`compost synthesize` and `compost query`** — the two dangling stub verbs
+  (#59, #51) are gone. Theme synthesis is the researcher's or agent's
+  interpretive work (author themes with `compost create theme`); one-shot RAG is
+  `compost search` + `compost chat`. `compost serve` remains a stub.
+
 ## v0.2.2 — 2026-11-11
 
 Ships the **analytic memos** milestone, bring-your-own caption import, and
