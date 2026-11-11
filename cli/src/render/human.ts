@@ -1,4 +1,5 @@
 import type { DoctorReport } from '../lib/doctor.js'
+import type { EvidenceQuote, ListResult, ThemeEvidenceDetail } from '../lib/list.js'
 import type { StatusSnapshot } from '../lib/status.js'
 import { glyphs } from './glyphs.js'
 
@@ -26,6 +27,13 @@ export function renderStatus(s: StatusSnapshot): string {
     lines.push(
       `    memos: ${c.memos}   frames: ${c.frames}   insights: ${c.insights}   legacy: ${c.legacy_assets}`,
     )
+    if (seed.by_state !== undefined) {
+      const b = seed.by_state
+      const fmt = (k: keyof typeof b) =>
+        `${k} ${b[k].draft} draft / ${b[k].endorsed} endorsed / ${b[k].archived} archived`
+      lines.push(`    ledger:     ${fmt('highlights')}   ${fmt('codes')}`)
+      lines.push(`                ${fmt('themes')}   ${fmt('memos')}`)
+    }
     for (const w of seed.warnings) lines.push(`    ${g.warn} ${w}`)
   }
   return lines.join('\n')
@@ -86,6 +94,57 @@ export function renderDoctor(r: DoctorReport): string {
   if (unused.length > 0) {
     lines.push('  pulled but unconfigured:')
     for (const [p, ms] of unused) lines.push(`    ${p}: ${ms.join(', ')}`)
+  }
+  return lines.join('\n')
+}
+
+function truncate(text: string, max: number, ellipsis: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > max ? `${flat.slice(0, max - 1)}${ellipsis}` : flat
+}
+
+function quoteLine(q: EvidenceQuote, ellipsis: string): string {
+  const where = q.session_id !== null ? `${q.session_id}/${q.utterance_id ?? '?'}` : '?'
+  const quote = q.quote !== null ? `"${truncate(q.quote, 72, ellipsis)}"` : '(quote not found)'
+  return `${q.id} ${where} ${quote}`
+}
+
+/** `compost list <kind>` as a table: state, id, label, author, last change. */
+export function renderList(r: ListResult): string {
+  const g = glyphs()
+  const lines: string[] = [
+    `${r.count} ${r.kind}(s) — state: ${r.state === 'active' ? 'draft + endorsed' : r.state}${r.codebook !== undefined ? `, codebook: ${r.codebook}` : ''}`,
+  ]
+  if (r.items.length > 0) {
+    const idW = Math.min(40, Math.max(2, ...r.items.map((i) => i.id.length)))
+    lines.push('')
+    lines.push(
+      `  ${'STATE'.padEnd(9)} ${'ID'.padEnd(idW)}  ${'LABEL'.padEnd(40)}  ${'AUTHOR'.padEnd(36)}  UPDATED`,
+    )
+    for (const i of r.items) {
+      const author = truncate(`${i.author.actor_type}:${i.author.actor_id}`, 36, g.ellipsis)
+      lines.push(
+        `  ${i.state.padEnd(9)} ${i.id.padEnd(idW)}  ${truncate(i.label, 40, g.ellipsis).padEnd(40)}  ${author.padEnd(36)}  ${i.updated_at.slice(0, 16).replace('T', ' ')}`,
+      )
+      if (i.evidence === undefined) continue
+      for (const e of i.evidence) {
+        if ('highlights' in e) {
+          const t = e as ThemeEvidenceDetail
+          lines.push(
+            `      ${g.arrow} ${t.kind} ${t.ref}${t.highlights.length === 0 ? ' (no quotes)' : ''}`,
+          )
+          for (const q of t.highlights) lines.push(`          ${quoteLine(q, g.ellipsis)}`)
+        } else {
+          lines.push(`      ${g.arrow} ${quoteLine(e as EvidenceQuote, g.ellipsis)}`)
+        }
+      }
+    }
+  }
+  if (r.file_only.length > 0) {
+    lines.push('')
+    lines.push(
+      `  ${g.warn} ${r.file_only.length} ${r.kind} file(s) with no ledger record (no provenance, so no state): ${r.file_only.map((f) => f.id).join(', ')}`,
+    )
   }
   return lines.join('\n')
 }

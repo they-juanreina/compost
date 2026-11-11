@@ -9,6 +9,24 @@ import { eventsDbPath } from './events.js'
  * sort by recency ("recent activity on top") without a second query. */
 export interface SnapshotView extends Snapshot {
   last_event_ts: string
+  /** Timestamp of the artifact's first event in replay order (its create). */
+  created_at: string
+  /** Who authored the artifact — the actor of its first event. */
+  created_by: { actor_type: Event['actor_type']; actor_id: string }
+}
+
+/** Fold one artifact's replay-ordered events into its view. */
+function toView(events: Event[]): SnapshotView | null {
+  const snapshot = reduce(events)
+  const first = events[0]
+  const last = events[events.length - 1]
+  if (snapshot === null || first === undefined || last === undefined) return null
+  return {
+    ...snapshot,
+    last_event_ts: last.ts,
+    created_at: first.ts,
+    created_by: { actor_type: first.actor_type, actor_id: first.actor_id },
+  }
 }
 
 interface EventRow {
@@ -77,23 +95,20 @@ export function listArtifacts(
       .prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE artifact_kind = ? ORDER BY ts, id`)
       .all(kind) as EventRow[]
 
-    const byArtifact = new Map<string, { events: Event[]; lastTs: string }>()
+    // Rows arrive in replay order, so each bucket is already ordered.
+    const byArtifact = new Map<string, Event[]>()
     for (const row of rows) {
       const bucket = byArtifact.get(row.artifact_id)
-      if (bucket === undefined) {
-        byArtifact.set(row.artifact_id, { events: [rowToEvent(row)], lastTs: row.ts })
-      } else {
-        bucket.events.push(rowToEvent(row))
-        bucket.lastTs = row.ts // rows are ts-ordered, so the last seen is newest
-      }
+      if (bucket === undefined) byArtifact.set(row.artifact_id, [rowToEvent(row)])
+      else bucket.push(rowToEvent(row))
     }
 
     const views: SnapshotView[] = []
-    for (const { events, lastTs } of byArtifact.values()) {
-      const snapshot = reduce(events)
-      if (snapshot === null) continue
-      if (snapshot.archived && opts.includeArchived !== true) continue
-      views.push({ ...snapshot, last_event_ts: lastTs })
+    for (const events of byArtifact.values()) {
+      const view = toView(events)
+      if (view === null) continue
+      if (view.archived && opts.includeArchived !== true) continue
+      views.push(view)
     }
     // Newest activity first.
     views.sort((a, b) =>
@@ -134,10 +149,7 @@ export function getArtifact(seedPath: string, kind: string, ref: string): Snapsh
     const rows = db
       .prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE artifact_id = ? ORDER BY ts, id`)
       .all(artifactId) as EventRow[]
-    if (rows.length === 0) return null
-    const snapshot = reduce(rows.map(rowToEvent))
-    if (snapshot === null) return null
-    return { ...snapshot, last_event_ts: rows[rows.length - 1]?.ts ?? '' }
+    return toView(rows.map(rowToEvent))
   } finally {
     db.close()
   }

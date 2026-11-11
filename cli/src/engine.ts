@@ -94,6 +94,21 @@ export {
   readJournal,
   saveJournal,
 } from './lib/journal.js'
+// ---- list: state-aware artifact query (ADR 0007 P2)
+export {
+  ARTIFACT_STATES,
+  type ArtifactState,
+  artifactState,
+  countByState,
+  LISTABLE_KINDS,
+  type ListableKind,
+  type ListedArtifact,
+  type ListOptions,
+  type ListResult,
+  listByKind,
+  STATE_FILTERS,
+  type StateFilter,
+} from './lib/list.js'
 // ---- memos: analytic-memo artifact (ADR 0004)
 export {
   DEFAULT_MEMO_TYPE,

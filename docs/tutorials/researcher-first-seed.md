@@ -56,6 +56,8 @@ does for you. Group codes into a theme; AI-drafted themes wait for your
 compost create theme --seed data-hub --name "trust is earned" \
   --summary "Participants extend trust only after a visible track record" \
   --codes C-distrust-of-automation
+compost list theme --seed data-hub --evidence     # themes + the quotes they stand on
+compost list code --seed data-hub --state draft   # AI drafts awaiting endorse / reject
 ```
 
 Saturation pulses (`compost saturate`) tell you when to stop collecting.

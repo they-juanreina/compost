@@ -17,6 +17,7 @@ import { registerIngest } from './commands/ingest.js'
 import { registerInit } from './commands/init.js'
 import { registerJobs } from './commands/jobs.js'
 import { registerLabel } from './commands/label.js'
+import { registerList } from './commands/list.js'
 import { registerMemo } from './commands/memo.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
@@ -77,6 +78,7 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerJobs(program)
   registerSnap(program)
   registerStatus(program)
+  registerList(program)
   registerBlame(program)
   registerMigrate(program)
   registerExport(program)

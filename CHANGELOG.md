@@ -13,6 +13,21 @@
   tool is not AI-authored, binds identity server-side, and is documented as the
   researcher's act, never to be called autonomously.
 
+- **`compost list <kind>`** (+ the read-only `compost_list` MCP tool) — answers
+  "what is awaiting endorsement?" (ADR 0007 P2). `kind` is `highlight | code |
+  theme` (memos, codebooks and categories keep their own `list` verbs).
+  `--state draft|endorsed|archived|all` (default: not archived), `--codebook`
+  for codes/themes, and `--evidence` to expand a code to its highlight quotes
+  (quote, session, utterance) or a theme to its evidence set with quotes. Each
+  item carries its display id, `artifact_id`, state, label, author actor,
+  created/updated timestamps and endorsement / archive info. Markdown with no
+  ledger record is reported under `file_only` rather than silently dropped.
+- **`compost status` `by_state`** — a per-kind `{draft, endorsed, archived}`
+  split (highlights, codes, themes, memos) of the ledger, added alongside the
+  unchanged integer `counts`. `schema/status.schema.json` documents it, plus the
+  `duplicate_ingests`, `warnings` and `counts.memos` fields status already
+  emitted (additive; still `1.0`).
+
 ### Changed
 
 - **Deterministic replay order (ADR 0008 decision 3)** — every event fold and

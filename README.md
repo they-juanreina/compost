@@ -34,8 +34,8 @@ Or try the bundled sample corpus without recording anything: `compost init sampl
 
 Three surfaces over one engine:
 
-- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `setup`, `config`, `secrets`, `models`, `status`, `jobs`, `ingest`, `import`, `transcribe`, `watch`, `snap`, `validate`, `reindex`, `backup`, `export`, `search`, `chat`, `session`, `create`, `tag`, `code`, `label`, `rescan`, `recode`, `rerun`, `memo`, `codebook`, `category`, `endorse`, `reject`, `blame`, `saturate`, `agreement`, `evals` (plus the stub `serve`).
-- **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-codebook`, …) and 24 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
+- **CLI** — `compost <verb>`. JSON out by default (agents parse it), `--human` for pretty output. The full contract: `init`, `migrate`, `setup`, `config`, `secrets`, `models`, `status`, `list`, `jobs`, `ingest`, `import`, `transcribe`, `watch`, `snap`, `validate`, `reindex`, `backup`, `export`, `search`, `chat`, `session`, `create`, `tag`, `code`, `label`, `rescan`, `recode`, `rerun`, `memo`, `codebook`, `category`, `endorse`, `reject`, `blame`, `saturate`, `agreement`, `evals` (plus the stub `serve`).
+- **Claude Code / Cowork plugin** — slash commands (`/compost-setup`, `/compost-ingest`, `/compost-codebook`, …) and 25 MCP tools. The agent searches, reads sessions, and authors highlights/codes/themes; you endorse. See [docs/host-llm-routing.md](docs/host-llm-routing.md) for why the agent does the reasoning and compost does the retrieval + storage + provenance.
 - **Web UI** — a later milestone (transcript player, drag-to-highlight, theme board). Today the surfaces are the CLI and the plugin.
 
 ## Provenance

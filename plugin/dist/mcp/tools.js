@@ -69,10 +69,42 @@ function aiModel(args) {
 export const TOOLS = [
     {
         name: 'compost_status',
-        description: 'Kind-grouped counts for a seed (sessions, highlights, codes, themes, frames).',
+        description: 'Kind-grouped counts for a seed (sessions, highlights, codes, themes, frames), plus a per-kind draft / endorsed / archived split of the ledger (`by_state`).',
         readOnly: true,
         inputSchema: { type: 'object', properties: { seed: str('Seed name (optional)') } },
         toArgv: (a) => ['status', ...(a.seed ? ['--seed', String(a.seed)] : [])],
+    },
+    {
+        name: 'compost_list',
+        description: 'List highlights, codes, or themes with their trust state — draft (AI/agent suggestion awaiting a researcher’s endorse), endorsed, or archived (rejected). Read-only. Use it to answer "what is awaiting endorsement?" (state=draft) before asking the researcher to endorse or reject. evidence=true expands each code to its highlight quotes and each theme to its evidence set with quotes. Memos, codebooks and categories have their own list tools/verbs.',
+        readOnly: true,
+        inputSchema: {
+            type: 'object',
+            required: ['kind'],
+            properties: {
+                kind: {
+                    type: 'string',
+                    enum: ['highlight', 'code', 'theme'],
+                    description: 'Artifact kind',
+                },
+                state: {
+                    type: 'string',
+                    enum: ['draft', 'endorsed', 'archived', 'all'],
+                    description: 'Trust state filter (default: draft + endorsed, i.e. not archived)',
+                },
+                codebook: str('Only codes / themes in this frame (name or CB- id)'),
+                evidence: { type: 'boolean', description: 'Expand evidence down to quotes (code / theme)' },
+                seed: str('Seed'),
+            },
+        },
+        toArgv: (a) => [
+            'list',
+            String(a.kind),
+            ...(a.state ? ['--state', String(a.state)] : []),
+            ...(a.codebook ? ['--codebook', String(a.codebook)] : []),
+            ...(a.evidence === true ? ['--evidence'] : []),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
     },
     {
         name: 'compost_blame',

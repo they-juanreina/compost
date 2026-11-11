@@ -10,7 +10,7 @@ same domain core in `cli/src/lib` (see the repo-root `CLAUDE.md`):
   `pattern-coding`, `analytic-memos`, `codebook-lenses`, `intercoder-agreement`,
   `saturation-analysis`, `journey-mapping`, `querying-research-knowledge`. The
   skills do the interpreting; compost stores, computes, and records provenance.
-- **MCP server** (`mcp/`, 24 `compost_*` tools): status, blame, agreement,
+- **MCP server** (`mcp/`, 25 `compost_*` tools): status, list, blame, agreement,
   ingest, transcribe, export, models_doctor, search, get_session,
   create_highlight, create_code, create_theme, create_memo, list_memos, endorse,
   reject, rerun, code_suggest, code_apply, codebook_new, codebook_list,

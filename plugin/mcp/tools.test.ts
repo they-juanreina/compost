@@ -255,6 +255,21 @@ describe('MCP tool definitions', () => {
     assert.ok(!('researcher' in props))
   })
 
+  it('compost_list maps to `compost list <kind>` and is read-only', () => {
+    const list = tool('compost_list')
+    assert.ok(READ_ONLY_TOOLS.includes('compost_list'))
+    assert.deepEqual(list.toArgv({ kind: 'code' }), ['list', 'code'])
+    assert.deepEqual(
+      list.toArgv({ kind: 'theme', state: 'all', codebook: 'CB-x', evidence: true, seed: 'demo' }),
+      ['list', 'theme', '--state', 'all', '--codebook', 'CB-x', '--evidence', '--seed', 'demo'],
+    )
+    assert.deepEqual(list.toArgv({ kind: 'highlight', evidence: false }), ['list', 'highlight'])
+    const props = (list.inputSchema as { properties: Record<string, { enum?: string[] }> })
+      .properties
+    assert.deepEqual(props.kind?.enum, ['highlight', 'code', 'theme'])
+    assert.deepEqual(props.state?.enum, ['draft', 'endorsed', 'archived', 'all'])
+  })
+
   it('compost_reject maps to `compost reject` and is a non-AI mutation', () => {
     const reject = tool('compost_reject')
     assert.deepEqual(reject.toArgv({ artifact: 'C-x' }), ['reject', 'C-x'])
