@@ -45,7 +45,7 @@ export function isIngestPathAllowed(
 }
 
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
-export const PLUGIN_VERSION = '0.1.2'
+export const PLUGIN_VERSION = '0.2.2'
 
 export interface ToolDef {
   name: string

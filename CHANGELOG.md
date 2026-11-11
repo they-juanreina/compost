@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## v0.2.2 — 2026-11-11
+
+Ships the **analytic memos** milestone, bring-your-own caption import, and
+ingest provenance (ADR 0006). The plugin version now tracks the CLI
+(0.1.2 → 0.2.2), so AI-authored artifacts are stamped `claude-code:0.2.2:…`.
+
 Opens the **analytic memos** milestone (#9): a first-class, provenance-bearing,
 *codable* interpretive artifact — the analyst's dated, evolving record (Saldaña;
 ADR 0004). Built on a recorded maintainer override (kill filter clears 1–3;
