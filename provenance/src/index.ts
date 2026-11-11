@@ -4,6 +4,6 @@ export { type AiInputBundle, type AiInputRow, canonicalJson, inputId } from './i
 export { applyEvent, reduce, type Snapshot } from './reducer.js'
 export { SnapshotStore } from './snapshots.js'
 export type { Action, ActorType, Event, EventBase, EventInput } from './types.js'
-export { generateUlid, isUlid, type UlidOptions } from './ulid.js'
+export { generateUlid, isUlid, monotonicUlid, type UlidOptions } from './ulid.js'
 export { validateEvent } from './validate.js'
 export { EventWriter, type EventWriterOptions } from './writer.js'

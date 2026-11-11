@@ -80,7 +80,7 @@ export function eventsToProvO(eventsDbPath: string): ProvExport {
   try {
     rows = db
       .prepare(
-        'SELECT id, ts, artifact_kind, artifact_id, action, actor_type, actor_id, agent_name, agent_version, model, input_id, parent_event FROM events ORDER BY ts, rowid',
+        'SELECT id, ts, artifact_kind, artifact_id, action, actor_type, actor_id, agent_name, agent_version, model, input_id, parent_event FROM events ORDER BY ts, id',
       )
       .all() as EventRow[]
   } finally {

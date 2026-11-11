@@ -74,7 +74,7 @@ export function listArtifacts(
   if (db === null) return []
   try {
     const rows = db
-      .prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE artifact_kind = ? ORDER BY ts, rowid`)
+      .prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE artifact_kind = ? ORDER BY ts, id`)
       .all(kind) as EventRow[]
 
     const byArtifact = new Map<string, { events: Event[]; lastTs: string }>()
@@ -124,7 +124,7 @@ export function getArtifact(seedPath: string, kind: string, ref: string): Snapsh
     } else if (/^[a-f0-9]{8,64}$/i.test(ref)) {
       const bySha = db
         .prepare(
-          "SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' AND artifact_id LIKE ? ORDER BY ts, rowid LIMIT 1",
+          "SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' AND artifact_id LIKE ? ORDER BY ts, id LIMIT 1",
         )
         .get(kind, `${ref.toLowerCase()}%`) as { artifact_id: string } | undefined
       artifactId = bySha?.artifact_id
@@ -132,7 +132,7 @@ export function getArtifact(seedPath: string, kind: string, ref: string): Snapsh
     if (artifactId === undefined) return null
 
     const rows = db
-      .prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE artifact_id = ? ORDER BY ts, rowid`)
+      .prepare(`SELECT ${EVENT_COLUMNS} FROM events WHERE artifact_id = ? ORDER BY ts, id`)
       .all(artifactId) as EventRow[]
     if (rows.length === 0) return null
     const snapshot = reduce(rows.map(rowToEvent))

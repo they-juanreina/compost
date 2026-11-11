@@ -13,6 +13,16 @@
   tool is not AI-authored, binds identity server-side, and is documented as the
   researcher's act, never to be called autonomously.
 
+### Changed
+
+- **Deterministic replay order (ADR 0008 decision 3)** — every event fold and
+  event lookup now orders by `(ts, id)` instead of `(ts, rowid)`. `rowid` is
+  local insertion order and differs between machines once two ledgers are
+  merged; the event id is the same everywhere. Event ids are now minted by a
+  **monotonic** ULID generator (shared per process), so two events written in
+  the same millisecond — e.g. a create and its endorse — still replay in the
+  order they were written. Existing ledgers need no migration.
+
 ### Removed
 
 - **`compost synthesize` and `compost query`** — the two dangling stub verbs

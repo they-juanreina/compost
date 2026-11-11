@@ -21,6 +21,11 @@ export function badge(latest: Event, humanApproved: boolean): string {
   return `[researcher: ${latest.actor_id}]${humanApproved ? ' [endorsed]' : ''}`
 }
 
+/** Replay order (ADR 0008): timestamp, then event id — identical on every
+ * machine, unlike insertion order. */
+const byReplayOrder = (a: Event, b: Event): number =>
+  a.ts.localeCompare(b.ts) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+
 /** Order an event set into a lineage chain via parent_event (root first). */
 export function lineageChain(events: Event[]): Event[] {
   const byId = new Map(events.map((e) => [e.id, e]))
@@ -29,11 +34,11 @@ export function lineageChain(events: Event[]): Event[] {
     const key = e.parent_event ?? null
     children.set(key, [...(children.get(key) ?? []), e])
   }
-  const roots = (children.get(null) ?? []).sort((a, b) => a.ts.localeCompare(b.ts))
+  const roots = (children.get(null) ?? []).sort(byReplayOrder)
   const out: Event[] = []
   const walk = (e: Event) => {
     out.push(e)
-    for (const c of (children.get(e.id) ?? []).sort((a, b) => a.ts.localeCompare(b.ts))) walk(c)
+    for (const c of (children.get(e.id) ?? []).sort(byReplayOrder)) walk(c)
   }
   for (const r of roots) walk(r)
   // include any orphans (parent missing) so nothing is dropped

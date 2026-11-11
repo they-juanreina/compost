@@ -73,7 +73,7 @@ export function blame(query: string, opts: BlameOptions = {}): BlameResult {
   try {
     const artifactId = resolveArtifactId(db, query, seedName)
     const rows = db
-      .prepare('SELECT * FROM events WHERE artifact_id = ? ORDER BY ts, rowid')
+      .prepare('SELECT * FROM events WHERE artifact_id = ? ORDER BY ts, id')
       .all(artifactId) as EventRow[]
     return {
       schema_version: '1.0',
@@ -126,7 +126,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
     }
     const row = db
       .prepare(
-        'SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = ? ORDER BY ts DESC, rowid DESC LIMIT 1',
+        'SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = ? ORDER BY ts DESC, id DESC LIMIT 1',
       )
       .get(kind, 'create') as { artifact_id: string } | undefined
     if (row === undefined) {
@@ -140,7 +140,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
   // artifact with a human id, so its lineage is addressed by session.
   const ingest = db
     .prepare(
-      "SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' AND json_extract(payload, '$.session_id') = ? ORDER BY ts, rowid LIMIT 1",
+      "SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' AND json_extract(payload, '$.session_id') = ? ORDER BY ts, id LIMIT 1",
     )
     .get(INGEST_ARTIFACT_KIND, query) as { artifact_id: string } | undefined
   if (ingest !== undefined) return ingest.artifact_id

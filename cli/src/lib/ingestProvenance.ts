@@ -141,7 +141,7 @@ export function listTranscriptIngests(seedPath: string): TranscriptIngestPayload
   try {
     const rows = db
       .prepare(
-        "SELECT payload FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts, rowid",
+        "SELECT payload FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts, id",
       )
       .all(INGEST_ARTIFACT_KIND) as Array<{ payload: string }>
     return rows.map((r) => JSON.parse(r.payload) as TranscriptIngestPayload)

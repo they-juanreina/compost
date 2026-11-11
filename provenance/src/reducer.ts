@@ -108,7 +108,8 @@ export function applyEvent(snapshot: Snapshot | null, event: Event): Snapshot {
  * its current snapshot.
  *
  * Pure: same inputs → same output. Caller is responsible for sorting the
- * events by ts (or by ULID id, which is ts-prefixed) ascending.
+ * events into replay order — `ts`, then event `id` (ADR 0008). Never local
+ * insertion order (`rowid`): it differs between machines once ledgers merge.
  */
 export function reduce(events: Event[]): Snapshot | null {
   if (events.length === 0) return null

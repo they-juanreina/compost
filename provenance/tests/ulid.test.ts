@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 
-import { generateUlid, isUlid } from '../src/ulid.js'
+import { generateUlid, isUlid, monotonicUlid } from '../src/ulid.js'
 
 describe('ulid', () => {
   it('generates a 26-character Crockford base32 string', () => {
@@ -32,5 +32,37 @@ describe('ulid', () => {
     const u = generateUlid({ now: () => 0, random: () => 0n })
     assert.equal(u, '00000000000000000000000000')
     assert.match(u, /^[0-9A-HJKMNP-TV-Z]{26}$/)
+  })
+})
+
+describe('monotonicUlid (ADR 0008 replay order)', () => {
+  it('ids minted in the same millisecond sort in creation order', () => {
+    const next = monotonicUlid({ now: () => 1700000000000 })
+    const ids = Array.from({ length: 500 }, () => next())
+    assert.deepEqual([...ids].sort(), ids)
+    assert.equal(new Set(ids).size, ids.length)
+    assert.ok(
+      ids.every((u) => u.slice(0, 10) === ids[0]?.slice(0, 10)),
+      'time prefix held',
+    )
+  })
+
+  it('holds the timestamp when the clock steps backwards', () => {
+    let t = 1700000000005
+    const next = monotonicUlid({ now: () => t })
+    const a = next()
+    t = 1700000000001
+    const b = next()
+    assert.ok(a < b, `${a} should sort before ${b}`)
+  })
+
+  it('redraws randomness once the clock advances', () => {
+    let t = 1700000000000
+    const next = monotonicUlid({ now: () => t, random: () => 42n })
+    const a = next()
+    t += 1
+    const b = next()
+    assert.ok(a < b)
+    assert.equal(b.slice(10), a.slice(10), 'a fresh draw (same injected value), not an increment')
   })
 })
