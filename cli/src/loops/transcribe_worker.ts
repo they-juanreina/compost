@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs'
 
 import { errMessage } from '../errors.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
+import { recordQueueIngest } from '../lib/ingestProvenance.js'
 import { JobQueue, MAX_ATTEMPTS, resolveJobSource, stateDbPath } from '../lib/queue.js'
 import { writeTranscriptMd } from '../render/transcript_md.js'
 import { TranscriberClient, TranscriberServiceError } from '../transcriber_client.js'
@@ -46,12 +47,8 @@ export async function runTranscribeWorkerOnce(
       deps.onProgress?.(`transcribing ${sessionId} (this can take minutes)…`)
       try {
         const language = typeof job.payload.language === 'string' ? job.payload.language : undefined
-        const resp = await client.transcribe(
-          resolveJobSource(seedPath, job.source_path),
-          sessionId,
-          seedPath,
-          language,
-        )
+        const sourcePath = resolveJobSource(seedPath, job.source_path)
+        const resp = await client.transcribe(sourcePath, sessionId, seedPath, language)
         if (resp.status === 'failed_transcription') {
           queue.fail(job.id, 'service reported failed_transcription', MAX_ATTEMPTS)
           out.results.push({
@@ -74,6 +71,10 @@ export async function runTranscribeWorkerOnce(
           },
           agentName: AGENT_NAME,
           agentVersion: AGENT_VERSION,
+        })
+        recordQueueIngest(seedPath, resp.session_id, sourcePath, job.payload, {
+          parser: AGENT_NAME,
+          version: AGENT_VERSION,
         })
         out.results.push({
           job_id: job.id,

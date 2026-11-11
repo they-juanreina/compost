@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
+import { recordQueueIngest } from '../lib/ingestProvenance.js'
 import { isAppleSilicon, pickRuntime, resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { HF_ALIASES, resolveSecret } from '../lib/secrets.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
@@ -39,6 +40,26 @@ function finalizeTranscript(path: string): void {
   if (!existsSync(path)) return
   applySidecar(path)
   writeTranscriptMd(path)
+}
+
+/** A direct `compost transcribe` lands a transcript too, so it records the one
+ * ingest-provenance event (ADR 0006, #325). Actor `agent`: the transcriber
+ * produced it. Idempotent per (session, sha256) — re-transcribing the same
+ * source, or a session the queue worker already recorded, emits nothing. */
+function recordDirectIngest(
+  seedPath: string,
+  sessionId: string,
+  source: string,
+  path: string,
+): void {
+  if (!existsSync(path)) return
+  recordQueueIngest(
+    seedPath,
+    sessionId,
+    source,
+    {},
+    { parser: 'compost-transcribe', version: '0.1.0' },
+  )
 }
 
 export function registerTranscribe(program: Command): void {
@@ -128,6 +149,7 @@ export function registerTranscribe(program: Command): void {
             ...(hf ? { env: { HUGGINGFACE_TOKEN: hf.value } } : {}),
           })
           finalizeTranscript(resp.transcript_path)
+          recordDirectIngest(seedPath, resp.session_id, source, resp.transcript_path)
           emit(
             {
               status: resp.status,
@@ -158,6 +180,7 @@ export function registerTranscribe(program: Command): void {
         }
         const resp = await client.transcribe(source, sessionId, seedPath, flags.language)
         finalizeTranscript(resp.transcript_path)
+        recordDirectIngest(seedPath, resp.session_id, source, resp.transcript_path)
         emit(
           {
             status: resp.status,

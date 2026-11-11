@@ -14,6 +14,10 @@ import type { Transcript, TranscriptSpeaker, TranscriptUtterance } from './trans
  * import produce byte-identical transcript shapes.
  */
 
+/** Version of the `compost import` parsers — stamped on the transcript's
+ * `provenance.transcriber` and on its ingest-provenance event (#325). */
+export const IMPORT_PARSER_VERSION = '0.1.0'
+
 export interface ImportOptions {
   sessionId: string
   source?: string
@@ -250,6 +254,6 @@ function assembleTranscript(rows: AssembleRow[], opts: ImportOptions): Transcrip
     modality: ['audio'],
     speakers,
     utterances,
-    provenance: { transcriber: 'compost-import@0.1.0' },
+    provenance: { transcriber: `compost-import@${IMPORT_PARSER_VERSION}` },
   } as unknown as Transcript
 }

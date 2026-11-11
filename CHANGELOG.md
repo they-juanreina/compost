@@ -11,6 +11,17 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
 
 ### Added
 
+- **Ingest provenance (ADR 0006, #325)** — every transcript landing
+  (`compost import` .txt/.vtt/.srt, direct `compost transcribe`, and the
+  transcribe / legacy-ingest queue workers) now emits one append-only
+  `transcript_ingest` event: original name, source URI, format, parser + version,
+  timestamp, actor (`researcher` for `import`, `agent` for the transcriber and
+  workers) and the source file's sha256. Closes the §13 silent write. The
+  transcript stays attributed source data — no `[draft]`, no endorse gate.
+  Idempotent per (session, sha256). `compost blame <session-id>` shows the
+  ingest; `compost status` reports `duplicate_ingests` and `compost import`
+  returns `duplicate_of` when the same bytes land in another session (neither
+  blocks).
 - **`compost memo new|list|view|edit|cite`** — write and link analytic memos
   (`M-NNN`, `synthesis/memos/`). The id is **mechanical** (like a highlight's);
   the **title is optional** — brain-dump a thought and `memo list` shows the
