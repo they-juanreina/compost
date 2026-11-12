@@ -2,7 +2,7 @@
 
 *A pre-UX/UI design brief. Maps the qualitative research journey, locates where Compost helps and where work lands, assigns every task to a human or agentic solution, and proposes an information architecture and flow set for the forthcoming web UI.*
 
-**Status:** draft for review · **Scope target:** full web app, phased to the web-UI milestone · **Companion to:** `wiki/Usage-Guide.md`, [`adr/0001-codebook-multiplicity.md`](adr/0001-codebook-multiplicity.md), [`adr/0002-category-tier.md`](adr/0002-category-tier.md), [`adr/0004-analytic-memos.md`](adr/0004-analytic-memos.md), [`adr/0006-ingest-provenance.md`](adr/0006-ingest-provenance.md)
+**Status:** draft for review · **Scope target:** written for a full web app, phased to the web-UI milestone — since re-scoped by [ADR 0007](adr/0007-visual-surface-rescope.md) to a **review artifact** (read + endorse/reject, #334) plus a **local player** (`compost serve`: transcript, select-to-highlight, theme board); see the note at §7 · **Companion to:** `wiki/Usage-Guide.md`, [`adr/0001-codebook-multiplicity.md`](adr/0001-codebook-multiplicity.md), [`adr/0002-category-tier.md`](adr/0002-category-tier.md), [`adr/0004-analytic-memos.md`](adr/0004-analytic-memos.md), [`adr/0006-ingest-provenance.md`](adr/0006-ingest-provenance.md)
 
 ---
 
@@ -17,7 +17,7 @@ This is the map you make *before* you draw a single screen. It does four things,
 
 Diagrams are Mermaid; they render in GitHub, VS Code, and most Markdown viewers. Every flow is annotated with the CLI verb(s) it wraps, so the UI is never inventing capability the engine doesn't already have.
 
-A guiding principle, drawn straight from the project's own reading list: this tool's job is interpretation, and *interpretation can be a kind of violence done to the work* (Sontag). The UX's central responsibility is therefore not speed — it is keeping the human accountable and the machine's suggestions visibly provisional. Suchman's *Plans and Situated Actions* is the theory behind the endorsement gate; the UI is where that gate becomes felt.
+A guiding principle, drawn straight from the project's own reading list: this tool's job is to support interpretation (compost holds and verifies; the researcher and agent interpret — `CLAUDE.md` stance), and *interpretation can be a kind of violence done to the work* (Sontag). The UX's central responsibility is therefore not speed — it is keeping the human accountable and the machine's suggestions visibly provisional. Suchman's *Plans and Situated Actions* is the theory behind the endorsement gate; the UI is where that gate becomes felt.
 
 ---
 
@@ -35,8 +35,8 @@ A guiding principle, drawn straight from the project's own reading list: this to
 
 - Visual design, component library, color, type. This is structure and behavior only.
 - Recruitment, scheduling, incentives, consent logistics — Compost does not touch participant management; these appear in the lifecycle frame only as *upstream landing points*.
-- Real-time multi-user collaboration and auth. Compost is local-first and single-machine today; the IA leaves room for it but Milestone 1 assumes one researcher on one machine.
-- The stubbed `query` and `synthesize` verbs are treated as *future surfaces*, sketched but not detailed.
+- Real-time multi-user collaboration and auth. Compost is local-first and single-machine today; [ADR 0008](adr/0008-multiplayer-door.md) sets the multiplayer target as *async* multi-coder (each researcher on their own machine, ledgers merged later — no shared server, no sync built yet), and Milestone 1 assumes one researcher on one machine.
+- The former `query` and `synthesize` stubs — both removed in v0.2.2 (#333; killed in [review 2026-11](review-2026-11.md) §4).
 
 ### The orienting constraint
 
@@ -61,8 +61,10 @@ flowchart LR
     AI["AI-suggestion<br/>(model output)"] -->|"appears as [draft]"| GATE{"Researcher<br/>reviews"}
     AGENT["Agent<br/>(deterministic)"] -->|"records event"| LOG[("Append-only<br/>event log")]
     GATE -->|"endorse"| ENDORSED["Researcher-approved<br/>(enters exports)"]
-    GATE -->|"reject / ignore"| DRAFT["Stays [draft]<br/>(excluded from exports)"]
+    GATE -->|"reject"| ARCHIVED["Archived<br/>(kept, never deleted; excluded from exports)"]
+    GATE -->|"ignore"| DRAFT["Stays [draft]<br/>(excluded from exports)"]
     ENDORSED --> LOG
+    ARCHIVED --> LOG
     DRAFT --> LOG
     LOG -->|"compost blame"| LINEAGE["Three-actor<br/>lineage chain"]
 ```
@@ -123,7 +125,7 @@ flowchart TD
 
 This is the answer to *"where Compost helps and its landing points."* Compost helps in the analysis band; it lands work in at L1–L3 and lands work out at L4–L6, with L7 as the internal trust seam that the whole UX orbits.
 
-**Ingest provenance ([ADR 0006](adr/0006-ingest-provenance.md)).** A transcript that lands at L1–L2 is *attributed source*, not an endorsed artifact — it never crosses the L7 gate (only AI-authored codes/categories/themes/memos do). Every landing emits an append-only event, so `compost blame <session>` / `status` can answer where a session came from, in what format, and when. (The provenance event's implementation is tracked in #325.)
+**Ingest provenance ([ADR 0006](adr/0006-ingest-provenance.md)).** A transcript that lands at L1–L2 is *attributed source*, not an endorsed artifact — it never crosses the L7 gate (only AI-authored codes/categories/themes/memos do). Every landing emits an append-only event, so `compost blame <session>` / `status` can answer where a session came from, in what format, and when. (The `transcript_ingest` event shipped in v0.2.2, #325.)
 
 ---
 
@@ -163,6 +165,8 @@ Every task Compost supports, the solver it belongs to, and the CLI verb the UI w
 
 The column that matters most for design is **Solver**: it tells the UI who is acting, and therefore how the action should *look* — a system process, a confident human authoring act, or a provisional suggestion awaiting judgment.
 
+*The **Web surface** and **Phase** columns predate [ADR 0007](adr/0007-visual-surface-rescope.md). Rows whose surface ADR 0007 placed (or killed) are annotated; see §7 for the mapping.*
+
 ### 5.1 Setup & seed management
 
 | Task | Solver | CLI verb | Web surface | Phase |
@@ -194,33 +198,33 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 
 | Task | Solver | CLI verb | Web surface | Phase |
 |---|---|---|---|---|
-| Read a session transcript | 🧑 | `compost session` | **Transcript player** (M1 hero) | M1 |
+| Read a session transcript | 🧑 | `compost session` | **Transcript player** (M1 hero) — local player (ADR 0007, #124) | M1 |
 | Grounded passage search (no LLM) | 🔀 | `compost search` | Search panel + results | M1 |
-| Grounded RAG chat (cited or "insufficient evidence") | 🤖 | `compost chat` | Chat panel | M2 |
-| Inspect seed status / warnings | ⚙️ | `compost status` | Dashboard | M1 |
+| Grounded RAG chat (cited or "insufficient evidence") | 🤖 | `compost chat` | ~~Chat panel~~ — none: Claude is the chat (`/compost-chat`; ADR 0007 decision 3, #129 closed) | — |
+| Inspect seed status / warnings | ⚙️ | `compost status` (now with a draft/endorsed/archived `by_state` split) | Dashboard — review artifact overview (ADR 0007, #334) | M1 |
 
 ### 5.4 Authoring — highlight, code, category, theme
 
 | Task | Solver | CLI verb | Web surface | Phase |
 |---|---|---|---|---|
-| Create a highlight (anchor a span) | 🧑 | `compost create highlight` | **Drag-to-highlight** (M1 hero) | M1 |
+| Create a highlight (anchor a span) | 🧑 | `compost create highlight` | **Drag-to-highlight** (M1 hero) — select-to-highlight in the local player (ADR 0007, #124) | M1 |
 | Create a code (definition + evidence) | 🧑 | `compost create code` | Code authoring | M1 |
 | Suggest glossary terms | 🤖 | `compost tag` | Glossary suggestions `[draft]` | M2 |
 | Cluster highlights into draft codes | 🤖 | `compost code` | AI code suggestions `[draft]` | M2 |
 | Cross-session similarity scan → draft codes | 🤖 | `compost rescan` | "Find related" suggestions | M3 |
 | Create a category (group codes) | 🧑 | `compost category new` + `link` | Category board | M2 |
 | Suggest categories (centroid clustering) | 🤖 | `compost category suggest` | Category suggestions `[draft]` | M3 |
-| Create a theme (heterogeneous evidence) | 🧑 | `compost create theme` | **Theme board** (M1 hero) | M1 |
+| Create a theme (heterogeneous evidence) | 🧑 | `compost create theme` | **Theme board** (M1 hero) — in the local player, auto-layout, not saved; needs an evidence-set verb first (ADR 0007 decision 4, #127, #335) | M1 |
 | Author a cross-lens theme (≥2 codebooks) | 🧑 | `create theme --cross-lens` | Theme board (cross-lens mode) | M2 |
-| Write an analytic memo | 🧑 | `compost memo new` (`--ai` → 🤖 `[draft]`) | Memo editor | deferred |
-| Anchor / cite a memo (a memo is itself a coding target) | 🧑 | `compost memo cite` | Memo links | deferred |
+| Write an analytic memo | 🧑 | `compost memo new` (`--ai` → 🤖 `[draft]`) | None — authored via CLI or agent; read + endorsed in the review artifact (ADR 0007, #310 resolved) | — |
+| Anchor / cite a memo (a memo is itself a coding target) | 🧑 | `compost memo cite` | None — CLI or agent (ADR 0007, #310 resolved) | — |
 
 ### 5.5 Codebooks (lenses) & rigor
 
 | Task | Solver | CLI verb | Web surface | Phase |
 |---|---|---|---|---|
 | Declare an interpretive lens (stance) | 🧑 | `compost codebook new` | Codebook manager | M2 |
-| List / switch active lens | 🧑 | `compost codebook list` | Lens switcher | M2 |
+| List / switch active lens | 🧑 | `compost codebook list` | Lens switcher — codebook view is read-only in the review artifact (ADR 0007, #126) | M2 |
 | Duplicate a lens (independent frame) | 🔀 | `compost codebook duplicate` | Lens actions | M3 |
 | Merge one lens into another | 🔀 | `compost codebook merge` | Guided merge (dry-run first) | M3 |
 | Blind re-coding (human-only) | 🧑 | `compost recode` | Blind-coding mode | M3 |
@@ -231,8 +235,10 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 
 | Task | Solver | CLI verb | Web surface | Phase |
 |---|---|---|---|---|
-| Endorse a draft → researcher-approved | 🧑 | `compost endorse` | **Endorsement gate** (M1) | M1 |
-| Trace lineage of any artifact | ⚙️ | `compost blame` | Provenance inspector | M2 |
+| Endorse a draft → researcher-approved | 🧑 | `compost endorse` | **Endorsement gate** (M1) — review artifact (ADR 0007, #334) | M1 |
+| Reject a draft → archived (never deleted) | 🧑 | `compost reject` | Endorsement gate — review artifact (ADR 0007 P1, #334) | M1 |
+| List artifacts by state ("what awaits endorsement?") | ⚙️ | `compost list <highlight\|code\|theme> --state` | Endorsement queue — review artifact (ADR 0007 P2, #334) | M1 |
+| Trace lineage of any artifact | ⚙️ | `compost blame` | Provenance inspector — review artifact lineage (ADR 0007, #125 → #334) | M2 |
 | Verify an AI generation's inputs | ⚙️ | `compost rerun` | "Verify suggestion" | M3 |
 | Export transcripts (CSV/MD/EAF) | ⚙️ | `compost export` | Export dialog | M1 |
 | Export event log as W3C PROV | ⚙️ | `compost export --format prov` | "Export audit trail" | M2 |
@@ -272,6 +278,8 @@ sequenceDiagram
 ### 6.2 Search & grounded chat
 
 The trust rule is the whole point: chat answers only from retrieved passages, validates every citation verbatim, and says *insufficient evidence* rather than inventing. The UI must surface that refusal as a **feature, not an error**.
+
+*Per [ADR 0007](adr/0007-visual-surface-rescope.md) decision 3 there is no chat panel (#129 closed): Claude is the chat, via `compost chat` / `/compost-chat`. Read the "Web UI" lane below as that client.*
 
 ```mermaid
 sequenceDiagram
@@ -354,7 +362,12 @@ sequenceDiagram
         UI->>AG: compost endorse <ref> --researcher
         AG->>LOG: Endorsement event (now researcher-approved)
         UI-->>R: Artifact loses [draft], enters exports
-    else Researcher rejects / edits
+    else Researcher rejects
+        R->>UI: Reject
+        UI->>AG: compost reject <ref> --researcher
+        AG->>LOG: Reject event (archived, never deleted)
+        UI-->>R: Excluded from exports; history kept
+    else Researcher edits / leaves it
         R->>UI: Edit or leave as draft
         UI-->>R: Stays excluded from exports
     end
@@ -410,6 +423,13 @@ sequenceDiagram
 
 ## 7. Information architecture
 
+> **Re-scoped by [ADR 0007](adr/0007-visual-surface-rescope.md) (Accepted 2026-11-11).** The single web app below was replaced by two thin surfaces:
+> - **Review artifact** (#334) — read + endorse/reject over compost's local MCP server: seed overview (Dashboard, #123), the endorsement queue, codes and themes with evidence across sessions (#128), a read-only codebook view (#126), memos, and lineage (#125). It creates nothing — no highlights, codes, themes or memos.
+> - **Local player** (`compost serve`, #133) — the media player synced to the transcript (#124), select-to-highlight, the theme board (#127, auto-layout, after the evidence-set verb #335), and later the frame strip (#131).
+> - **Killed:** the chat panel (#129). Memos get no web authoring surface (#310 resolved).
+>
+> Other screens below (ingest zone, speaker labeling, setup/health, settings, search, categories, lens manager, agreement, saturation, export) are not in either surface's accepted scope; they stay on the CLI and agent. The review artifact's viability still depends on the P3 spike (ADR 0007, "P3 spike result").
+
 ### 7.1 Top-level structure
 
 Compost is a *single-seed-at-a-time workspace*. The IA is two-tier: a thin **seed-selection shell**, and inside it a **workspace** with a persistent left rail organized by the analysis loop, plus a right-hand **inspector** that is context-sensitive (its most important job is showing provenance and draft/endorsed state).
@@ -455,14 +475,14 @@ Compost
     │     └── Import existing transcript .................... M2
     ├── 3 · Explore ......................................... M1/M2
     │     ├── Search (grounded, no LLM) ..................... M1
-    │     └── Grounded chat (cited / insufficient) .......... M2
+    │     └── Grounded chat (cited / insufficient) .......... killed — Claude is the chat (ADR 0007, #129)
     ├── 4 · Analyze ......................................... M1
     │     ├── Drag-to-highlight ★HERO ....................... M1
     │     ├── Codes (author · define · evidence) ........... M1
     │     ├── AI code/glossary suggestions [draft] .......... M2
     │     ├── Categories (2nd-cycle board) .................. M2
-    │     ├── Theme board ★HERO ............................. M1
-    │     └── Memos (analytic record) ...................... Later (CLI+MCP shipped, ADR 0004)
+    │     ├── Theme board ★HERO ............................. M1 (local player, auto-layout; ADR 0007, #335)
+    │     └── Memos (analytic record) ...................... read + endorse in review artifact; authored via CLI/agent (ADR 0007, #310)
     ├── 5 · Codebooks (lenses) .............................. M2
     │     ├── Lens manager (stance) ......................... M2
     │     ├── Agreement (κ, α) .............................. M2
@@ -470,7 +490,7 @@ Compost
     │     ├── Duplicate / merge lens ........................ M3
     │     └── Blind re-coding ............................... M3
     ├── 6 · Provenance & trust .............................. M1/M2
-    │     ├── Drafts queue (endorse gate) ★ ................. M1
+    │     ├── Drafts queue (endorse / reject gate) ★ ........ M1 (review artifact; ADR 0007, #334)
     │     ├── Blame / lineage inspector ..................... M2
     │     └── Verify suggestion (rerun) ..................... M3
     └── 7 · Export .......................................... M1/M2
@@ -480,14 +500,14 @@ Compost
 
 ### 7.3 Milestone 1 — the buildable minimum that still tells the whole story
 
-The roadmap names three hero surfaces: **transcript player, drag-to-highlight, theme board**. The thinnest honest version of Compost wraps those with just enough scaffolding to complete one full loop and *demonstrate the trust model*:
+The roadmap names three hero surfaces: **transcript player, drag-to-highlight, theme board** — under ADR 0007 all three live in the local player, and the drafts queue + endorse/reject lives in the review artifact. The thinnest honest version of Compost wraps those with just enough scaffolding to complete one full loop and *demonstrate the trust model*:
 
 - **Sessions** (ingest + transcript player + speaker labeling) — get data in and readable.
 - **Analyze** (drag-to-highlight + hand-authored codes + theme board) — the human authoring core.
 - **Drafts queue + endorse** — even with minimal AI in M1, the gate must exist so the model is legible from day one.
 - **Dashboard + Export (transcripts)** — orient and get value out.
 
-Everything machine-generative (chat, AI code/category/glossary suggestions) can wait for M2 *as long as* the endorsement gate ships in M1 — because the gate is the idea, not the suggestions.
+Everything machine-generative (AI code/category/glossary suggestions; chat has no panel — ADR 0007) can wait for M2 *as long as* the endorsement gate ships in M1 — because the gate is the idea, not the suggestions.
 
 ---
 
@@ -545,11 +565,11 @@ The CLI audience lives on the keyboard; honor it. Highlighting, coding, endorsin
 
 These genuinely change the design and are yours to decide:
 
-1. **Memos — resolved; placement is the open part.** Since this brief was drafted, the analytic memo **shipped** as a first-class, codable, endorse-gated artifact ([ADR 0004](adr/0004-analytic-memos.md); `compost memo` on CLI + MCP; memos anchor to any artifact and are themselves a coding target). So the in/out question is answered — *in*. What remains is *placement*: consistent with this doc's thin-surface stance (and CLAUDE.md's live tension keeping such verbs off the web UI until it's designed), memos ship on CLI/MCP now and their web surface is intentionally deferred. The IA marks memos as a known, deferred surface rather than an open question.
-2. **Multi-user.** M1 assumes one researcher/one machine, but agreement and blind re-coding imply ≥2 coders. Is that two humans on one machine (turn-taking), or does collaboration/sync need a place in the IA sooner than M3?
-3. **`query` / `synthesize` stubs.** Should the IA reserve visible (disabled) homes for these now to set expectations, or stay silent until they're real?
-4. **Mobile/tablet.** Any need for a read-only review surface (e.g., a stakeholder reviewing themes), or is this desktop-only for the foreseeable future?
-5. **Where does write-up live?** Landing point L6 hands grounded answers to a downstream report. Is that always an export to another tool, or is there appetite for a lightweight in-Compost findings surface (the future `synthesize`)?
+1. **Memos — resolved; placement is the open part.** Since this brief was drafted, the analytic memo **shipped** as a first-class, codable, endorse-gated artifact ([ADR 0004](adr/0004-analytic-memos.md); `compost memo` on CLI + MCP; memos anchor to any artifact and are themselves a coding target). So the in/out question is answered — *in*. *Placement* is now decided too ([ADR 0007](adr/0007-visual-surface-rescope.md); #310 closed as resolved): memos are read and endorsed in the review artifact (#334) and authored via CLI or agent — there is no separate memo web surface.
+2. **Multi-user — direction decided.** M1 assumes one researcher/one machine, but agreement and blind re-coding imply ≥2 coders. [ADR 0008](adr/0008-multiplayer-door.md) sets the target: async multi-coder — each researcher codes on their own machine and ledgers are merged later; no shared server, and the merge verb is not built until a second coder exists.
+3. **`query` / `synthesize` stubs — resolved.** Both stubs were removed in v0.2.2 (#333; killed in [review 2026-11](review-2026-11.md) §4), so there is nothing to reserve a home for.
+4. **Mobile/tablet.** Any need for a read-only review surface (e.g., a stakeholder reviewing themes), or is this desktop-only for the foreseeable future? (ADR 0007: the review artifact is *not* team sharing — sharing stays an `export` question.)
+5. **Where does write-up live?** Landing point L6 hands grounded answers to a downstream report. Is that always an export to another tool, or is there appetite for a lightweight in-Compost findings surface? (`synthesize` was killed as interpretation, review 2026-11 §4; that review *proposes* — unvalidated — that stakeholder readouts stay with skills + artifacts, with no compost report engine.)
 
 ---
 
@@ -572,7 +592,7 @@ Methodology & theory grounding the task model (from the project's own reading li
 - Susan Leigh Star & James Griesemer, "Boundary Objects" — cross-lens themes shared across frames.
 - Susan Sontag, *Against Interpretation* — the objection the software must answer; why interpretation stays provisional.
 
-Compost internal sources: `wiki/Usage-Guide.md`, `wiki/CLI-Reference.md`, `wiki/Home.md`, [`adr/0001-codebook-multiplicity.md`](adr/0001-codebook-multiplicity.md), [`adr/0002-category-tier.md`](adr/0002-category-tier.md), [`adr/0004-analytic-memos.md`](adr/0004-analytic-memos.md), [`adr/0006-ingest-provenance.md`](adr/0006-ingest-provenance.md).
+Compost internal sources: `wiki/Usage-Guide.md`, `wiki/CLI-Reference.md`, `wiki/Home.md`, [`adr/0001-codebook-multiplicity.md`](adr/0001-codebook-multiplicity.md), [`adr/0002-category-tier.md`](adr/0002-category-tier.md), [`adr/0004-analytic-memos.md`](adr/0004-analytic-memos.md), [`adr/0006-ingest-provenance.md`](adr/0006-ingest-provenance.md), [`adr/0007-visual-surface-rescope.md`](adr/0007-visual-surface-rescope.md), [`adr/0008-multiplayer-door.md`](adr/0008-multiplayer-door.md), [`review-2026-11.md`](review-2026-11.md).
 
 
 

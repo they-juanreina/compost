@@ -12,7 +12,7 @@ A word on Sontag before the veins, because she sits slightly outside them and ye
 
 Sontag isn't grounding theory for Compost; she's the standard for *how* to write the thing you might write out of all this. But one of her books is also uncannily on-topic.
 
-- **Susan Sontag, *Against Interpretation and Other Essays* (1966)** `[essay]` `[start]` — The title essay argues that interpretation can be a kind of violence done to the work — "the revenge of the intellect upon art." For someone building a tool whose entire job is to interpret a corpus, this is the sharpest possible whetstone: read it as the objection your own software has to answer.
+- **Susan Sontag, *Against Interpretation and Other Essays* (1966)** `[essay]` `[start]` — The title essay argues that interpretation can be a kind of violence done to the work — "the revenge of the intellect upon art." For someone building a tool whose entire job is to hold and verify the interpretation of a corpus, this is the sharpest possible whetstone: read it as the objection your own software has to answer.
 - **Susan Sontag, *On Photography* (1977)** `[essay]` — On images as evidence, acquisition, and a way of refusing experience. Reads directly against the STS vein on how representations get made and trusted.
 - **Susan Sontag, *Regarding the Pain of Others* (2003)** `[essay]` — On witnessing, framing, and the ethics of looking. A companion to *On Photography* and to anything you write about whose suffering a research corpus contains and how it's shown.
 

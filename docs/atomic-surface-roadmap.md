@@ -4,6 +4,8 @@
 
 **Status:** draft for review · **Cadence assumption:** side project, ~weekly shippable increments · **Companion to:** [`ux-journey-and-ia.md`](ux-journey-and-ia.md) (the journey/IA brief) · **Phasing:** maps to that brief's M1 / M2 / M3.
 
+> **Re-scoped by [ADR 0007](adr/0007-visual-surface-rescope.md) (Accepted 2026-11-11).** "The web UI" is now two thin surfaces: a **local player** (`compost serve`: transcript + media sync, cue chips, select-to-highlight, theme board, later the frame strip — S0, S2's highlighting, part of S6) and a **review artifact** (read + endorse/reject over the local MCP server, #334 — S5's gate, S8's lineage, read-only codes/themes/memos). There is no chat panel. The ladder below is kept as written; rungs ADR 0007 placed or cut are annotated.
+
 ---
 
 ## 0. What "atomic surface" means here
@@ -74,13 +76,13 @@ Blue = Milestone 1 (next) · Green = Milestone 2 · Amber = Milestone 3 / Later.
 | **S2 Mark** | Multi-color highlighting + export (close reading) | ✅ ready (`create highlight`, `export`) | utterance+span | M1 |
 | **S3 Retrieve** | Find passages fast, jump to them | ✅ ready (`search`) | n/a | M2 |
 | **S4 Code** | First real coding; bands become defined codes | ✅ ready (`create code`) | evidence refs | M2 |
-| **S5 Suggest + Endorse** | The differentiator: AI drafts, human endorses | ✅ ready (`code`/`tag`/`endorse`/`blame`) | n/a | M2 |
-| **S6 Categories + Themes + Memos** | Second-cycle synthesis + analytic memos | ✅ ready (`category`, `create theme`, `memo`) | `{code\|category\|memo}` | M3 |
+| **S5 Suggest + Endorse** | The differentiator: AI drafts, human endorses | ✅ ready (`code`/`tag`/`endorse`/`reject`/`list`/`blame`) | n/a | M2 |
+| **S6 Categories + Themes + Memos** | Second-cycle synthesis + analytic memos | ✅ ready (`category`, `create theme`, `memo`) · ⚠️ theme board needs an evidence-set verb (#335) | `{code\|category\|memo}` | M3 |
 | **S7 Lenses + Rigor** | Multiplicity, κ/α, saturation | ✅ ready (`codebook`, `agreement`, `saturate`) | per-frame | M3 |
 | **S8 Provenance + PROV** | Audit trail, reproducibility | ✅ ready (`blame`, `export --format prov`) | event log | M2/M3 |
 | **Later Correct** | Trustworthy ground truth | ⚠️ **engine work** (no `edit` verb; re-embed; anchor migration) | mutates tokens | Later |
 
-The happy headline: **every surface except correction wraps capability the engine already has.** The web UI is overwhelmingly a client-building exercise — ideal for a weekly side-project cadence.
+The happy headline: **every surface except correction (and the theme board's evidence-set verb, #335) wraps capability the engine already has.** The web UI is overwhelmingly a client-building exercise — ideal for a weekly side-project cadence.
 
 ---
 
@@ -152,13 +154,13 @@ Watch-outs: bands are proto-codes — design them so S4 can promote a band into 
 Where Compost stops being a nice reader and becomes a coding tool with its distinctive provenance model.
 
 ### S3 · Retrieve (grounded search)
-Read-only hybrid search (`compost search`) over the corpus; results deep-link into the player. Find-then-highlight closes a loop with S2. Backend ready; pure client. *(Grounded chat with validated citations can ride in here or wait — chat is `compost chat`, M2/M3.)*
+Read-only hybrid search (`compost search`) over the corpus; results deep-link into the player. Find-then-highlight closes a loop with S2. Backend ready; pure client. *(No chat panel: ADR 0007 decision 3 kills it — Claude is the chat, via `compost chat` / `/compost-chat`; #129 closed.)*
 
 ### S4 · Code (first real coding)
 Author a code with a definition and evidence (`compost create code`), and **promote a S2 band into a code** in one step. This is the first surface that asks for *definitions* — the move from informal color to accountable category. Evidence links point back to highlights in the player.
 
 ### S5 · Suggest + Endorse (the differentiator finally lands)
-AI proposes codes/glossary as `[draft]` (`compost code`, `compost tag`); the researcher reviews lineage (`compost blame`) and endorses (`compost endorse`). This is the keystone interaction from the design brief: nothing AI-authored reaches an export without a human endorsement. It arrives at S5 — *after* there's real coding to assist — rather than first, which keeps M1 free of model dependencies.
+AI proposes codes/glossary as `[draft]` (`compost code`, `compost tag`); the researcher reviews lineage (`compost blame`) and endorses (`compost endorse`) or rejects (`compost reject`, which archives). Under ADR 0007 the review/endorse/reject half lives in the review artifact (#334), fed by `compost list --state draft`; the artifact creates nothing, so suggestions are requested via CLI or agent. This is the keystone interaction from the design brief: nothing AI-authored reaches an export without a human endorsement. It arrives at S5 — *after* there's real coding to assist — rather than first, which keeps M1 free of model dependencies.
 
 ```mermaid
 sequenceDiagram
@@ -175,13 +177,13 @@ sequenceDiagram
 ```
 
 ### S8 · Provenance + PROV export
-Can land in M2 alongside S5 (the blame inspector is what makes endorsement legible) or in M3. `compost blame` as an inspector; `export --format prov` as the reproducibility deliverable.
+Can land in M2 alongside S5 (the blame inspector is what makes endorsement legible) or in M3. ADR 0007 puts lineage in the review artifact next to endorse/reject (#125 → #334). `compost blame` as an inspector; `export --format prov` as the reproducibility deliverable.
 
 ---
 
 ## 5. Milestone 3 — second cycle, multiplicity, and (finally) correction
 
-- **S6 · Categories + Themes + Memos** — second-cycle grouping (`category`) and the theme board (`create theme`, including cross-lens themes as boundary objects). A theme's evidence set is heterogeneous — `{code | category | memo}` — so **analytic memos** ([ADR 0004](adr/0004-analytic-memos.md); `compost memo`) are both first-class evidence here and themselves a coding target. The backend is ready (`memo` on CLI + MCP), so it's a client-only surface like the rest.
+- **S6 · Categories + Themes + Memos** — second-cycle grouping (`category`) and the theme board (`create theme`, including cross-lens themes as boundary objects). ADR 0007 decision 4 puts the theme board in the local player with auto-layout (no saved positions), after a CLI verb that changes a theme's evidence set (#335, #127). A theme's evidence set is heterogeneous — `{code | category | memo}` — so **analytic memos** ([ADR 0004](adr/0004-analytic-memos.md); `compost memo`) are both first-class evidence here and themselves a coding target. Memos have no web authoring surface: they are read and endorsed in the review artifact and authored via CLI or agent (ADR 0007; #310 resolved).
 - **S7 · Lenses + Rigor** — declare interpretive lenses (`codebook new`), measure agreement (κ/α) and saturation *per frame*. Persistent "which lens am I in?" indicator.
 - **Later · Correct transcript** — the one surface that needs engine work and breaks the append-only invariant. Schedule it deliberately, with: a `compost edit`-style verb (a tracked before/after event, not a silent overwrite), **anchor migration** for span-based highlights, and a **re-embed/reindex** hook so search and grounding don't drift off corrected text. By the time you build it you'll have lived in the data model for months — which is exactly the point of deferring it.
 
@@ -218,8 +220,8 @@ gantt
 1. **Word-level timing — resolved at the schema.** The transcript schema already defines an optional per-utterance `words[]` array (`schema/transcript.schema.json`, `cli/src/lib/transcript.ts`), so word-sync needs no schema change — only a transcript that populates it. The remaining question is operational: confirm the ASR worker actually emits `words[]`, and decide whether word-sync is worth the render cost over utterance-level.
 2. **Band ↔ code mapping.** Confirm S2 bands are modeled so S4 promotion is migration-free (a band carries a stable id that a code can adopt). Decide now; it's cheap now and expensive later.
 3. **New cue types — mostly a UI question.** The schema already allows an arbitrary cue `kind` plus a free-text `annotation`, so `note`/`gesture` need no schema/validator change. The open question is only the UI vocabulary and validation policy for human-authored cues.
-4. **Does chat ride with S3 or wait?** Grounded chat is higher-wow but higher-risk (citation UI, "insufficient evidence" state). Bundle with search, or hold for its own rung?
-5. **When does S8 land?** Provenance inspector is most useful *with* the endorsement gate (S5). Pull it into M2, or keep M2 lean and ship it in M3?
+4. **Does chat ride with S3 or wait? — resolved: neither.** ADR 0007 decision 3 kills the chat panel (#129 closed); Claude is the chat via `compost chat` / `/compost-chat`.
+5. **When does S8 land? — resolved by surface.** ADR 0007 puts lineage in the review artifact alongside endorse/reject (#125 → #334), so the inspector ships *with* the gate.
 6. **Correction scope when it comes.** Full token editing, or a narrower "fix this word / merge these utterances / re-label speaker" set that covers 90% of real corrections with less anchor-migration surface?
 
 ---
