@@ -11,4 +11,6 @@ Status vocabulary: **Proposed** (under discussion) · **Accepted** (the decision
 | [0003](./0003-interfaces-monorepo-plugin-tauri.md) | Interfaces: monorepo, plugin-first, Tauri-wrap for native | Accepted |
 | [0004](./0004-analytic-memos.md) | Analytic memos (first-class, codable interpretive artifact) | Accepted |
 | [0005](./0005-reference-key-and-rename-model.md) | Reference key & rename model (slugs cosmetic, artifact_id is the FK) | Accepted (impl deferred) |
-| [0006](./0006-ingest-provenance.md) | Ingest provenance (transcript is attributed source, not an endorsable artifact) | Accepted (impl deferred) |
+| [0006](./0006-ingest-provenance.md) | Ingest provenance (transcript is attributed source, not an endorsable artifact) | Accepted |
+| [0007](./0007-visual-surface-rescope.md) | Visual surface re-scope (review artifact + local player, not a web app) | Accepted |
+| [0008](./0008-multiplayer-door.md) | Multiplayer door (async multi-coder, merge-safe ledgers, no server) | Accepted (sync not built) |

@@ -1,9 +1,15 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { basename, extname, join } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { basename, extname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { parseCaptionTranscript, parseTextTranscript } from '../lib/importTranscript.js'
+import {
+  IMPORT_PARSER_VERSION,
+  parseCaptionTranscript,
+  parseTextTranscript,
+} from '../lib/importTranscript.js'
+import { ingestFormatOf, recordTranscriptIngest, sha256Bytes } from '../lib/ingestProvenance.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { assertSessionContained } from '../lib/sessionId.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -50,7 +56,8 @@ export function registerImport(program: Command): void {
           ...(flags.language !== undefined ? { language: flags.language } : {}),
         }
         const ext = extname(file).toLowerCase()
-        const raw = readFileSync(file, 'utf8')
+        const bytes = readFileSync(file)
+        const raw = bytes.toString('utf8')
         const transcript =
           ext === '.vtt' || ext === '.srt'
             ? parseCaptionTranscript(raw, parseOpts)
@@ -66,7 +73,26 @@ export function registerImport(program: Command): void {
           )
         }
         writeFileSync(transcriptPath, `${JSON.stringify(transcript, null, 2)}\n`, 'utf8')
-        writeTranscriptMd(transcriptPath)
+        // The landing emits exactly one ingest-provenance event (ADR 0006, #325);
+        // if it can't be recorded, roll the transcript back — no silent write.
+        let ingest: ReturnType<typeof recordTranscriptIngest>
+        try {
+          writeTranscriptMd(transcriptPath)
+          ingest = recordTranscriptIngest(seedPath, {
+            sessionId,
+            originalName: basename(file),
+            sourceUri: pathToFileURL(resolve(file)).href,
+            format: ingestFormatOf(file),
+            parser: 'compost-import',
+            parserVersion: IMPORT_PARSER_VERSION,
+            sha256: sha256Bytes(bytes),
+            author: { type: 'researcher' },
+          })
+        } catch (err) {
+          rmSync(transcriptPath, { force: true })
+          rmSync(join(dir, 'transcript.md'), { force: true })
+          throw err
+        }
 
         emit(
           {
@@ -76,6 +102,7 @@ export function registerImport(program: Command): void {
             transcript_path: transcriptPath,
             speakers: transcript.speakers.length,
             utterances: transcript.utterances.length,
+            ...(ingest.duplicate_of.length > 0 ? { duplicate_of: ingest.duplicate_of } : {}),
           },
           out,
         )

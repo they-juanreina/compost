@@ -10,6 +10,7 @@ import {
   LegacyServiceError,
 } from '../legacy_client.js'
 import { emitAgentCreate, openSeedEvents } from '../lib/events.js'
+import { recordQueueIngest } from '../lib/ingestProvenance.js'
 import { legacyIngestNative } from '../lib/legacyNative.js'
 import { resolveNativeRuntime } from '../lib/nativeRuntime.js'
 import { JobQueue, MAX_ATTEMPTS, resolveJobSource, stateDbPath } from '../lib/queue.js'
@@ -224,6 +225,14 @@ export async function runLegacyWorkerOnce(
           agentName: AGENT_NAME,
           agentVersion: AGENT_VERSION,
         })
+        // A transcript landed in the session only when linkNormalizedDoc wrote it;
+        // that is the sole case that earns an ingest-provenance event (#325).
+        if (linked.transcript_path !== undefined && typeof job.payload.session_id === 'string') {
+          recordQueueIngest(seedPath, job.payload.session_id, sourcePath, job.payload, {
+            parser: AGENT_NAME,
+            version: AGENT_VERSION,
+          })
+        }
         const warnings = [...(resp.warnings ?? []), ...linked.warnings]
         out.results.push({
           job_id: job.id,

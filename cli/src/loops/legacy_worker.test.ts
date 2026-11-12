@@ -17,6 +17,11 @@ import {
   type LegacyIngestResponse,
   LegacyServiceError,
 } from '../legacy_client.js'
+import {
+  listTranscriptIngests,
+  recordTranscriptIngest,
+  sha256Bytes,
+} from '../lib/ingestProvenance.js'
 import { JobQueue, stateDbPath } from '../lib/queue.js'
 import { initSeed } from '../lib/seed.js'
 import { linkNormalizedDoc, runLegacyWorkerOnce } from './legacy_worker.js'
@@ -401,5 +406,73 @@ describe('runLegacyWorkerOnce auto-link', () => {
     assert.equal(r.transcript_path, join(path, 'sessions/S001/transcript.json'))
     assert.equal(r.normalized_path, join(path, 'legacy/S001-haraway-interview.json'))
     assert.ok(existsSync(join(path, 'sessions/S001/transcript.json')))
+  })
+})
+
+describe('runLegacyWorkerOnce ingest provenance (#325)', () => {
+  let work: string
+  beforeEach(() => {
+    work = mkdtempSync(join(tmpdir(), 'compost-legacy-prov-'))
+  })
+  afterEach(() => rmSync(work, { recursive: true, force: true }))
+
+  function enqueueInboxDoc(path: string): void {
+    mkdirSync(join(path, 'sessions/S001'), { recursive: true })
+    const src = join(path, 'sessions/S001/source.pdf')
+    writeFileSync(src, '%PDF-fake')
+    const q = new JobQueue(stateDbPath(path))
+    q.enqueue('legacy-ingest', src, {
+      category: 'document',
+      session_id: 'S001',
+      original_name: 'haraway-interview.pdf',
+    })
+    q.close()
+  }
+
+  const okClient = () =>
+    new FakeClient((req) => {
+      const normalized = join(req.seed_path, 'legacy/source.json')
+      writeFileSync(normalized, JSON.stringify(normalizedDocFixture()))
+      return {
+        source_path: req.source_path,
+        normalized_path: normalized,
+        utterance_count: 1,
+        status: 'ok',
+      }
+    })
+
+  it('emits one agent event when the doc lands as the session transcript', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    enqueueInboxDoc(path)
+    // biome-ignore lint/suspicious/noExplicitAny: fake client
+    await runLegacyWorkerOnce(path, { client: okClient() as any })
+
+    const events = listTranscriptIngests(path)
+    assert.equal(events.length, 1)
+    assert.equal(events[0]?.actor, 'agent')
+    assert.equal(events[0]?.format, 'pdf')
+    assert.equal(events[0]?.original_name, 'haraway-interview.pdf')
+    assert.equal(events[0]?.parser, 'legacy-ingest-worker')
+    assert.equal(events[0]?.sha256, sha256Bytes(Buffer.from('%PDF-fake')))
+  })
+
+  it('emits nothing when the session already has a transcript (no double-emit across paths)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    enqueueInboxDoc(path)
+    // `compost import` already landed S001 from the same bytes.
+    writeFileSync(join(path, 'sessions/S001/transcript.json'), '{"existing":true}')
+    recordTranscriptIngest(path, {
+      sessionId: 'S001',
+      originalName: 'haraway-interview.pdf',
+      format: 'pdf',
+      parser: 'compost-import',
+      parserVersion: '0.1.0',
+      sha256: sha256Bytes(Buffer.from('%PDF-fake')),
+      author: { type: 'researcher', id: 'juan' },
+    })
+    // biome-ignore lint/suspicious/noExplicitAny: fake client
+    await runLegacyWorkerOnce(path, { client: okClient() as any })
+    assert.equal(listTranscriptIngests(path).length, 1)
+    assert.equal(listTranscriptIngests(path)[0]?.actor, 'researcher')
   })
 })

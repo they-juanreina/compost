@@ -1,6 +1,6 @@
 # ADR 0006: Ingest provenance — a transcript is attributed source, not an endorsable artifact
 
-- **Status:** Accepted (decision); **implementation deferred** to #325. Parsing shipped ahead of the event in #323.
+- **Status:** Accepted; **implemented** (#325, 2026-11-11). Parsing shipped ahead of the event in #323.
 - **Date:** 2026-07-04
 - **Deciders:** Juan (maintainer)
 - **Related:** [ADR 0004 — Analytic memos](./0004-analytic-memos.md) (the endorsable-artifact / three-actor model this ADR draws the line against), #323 (shipped `.vtt`/`.srt` caption import, declared *"Provenance impact: No"*), #325 (implementation follow-up), #322 (tamper-evidence research — an orthogonal axis), `CLAUDE.md` §13 (no silent writes), §15 (local-first).
@@ -75,3 +75,16 @@ provenance but is never endorsed? This ADR settles both.
   event, not hardening it against a motivated forger.
 - **Out of scope:** PDF/DOCX ingest re-architecture, word-level timings, and
   transport connectors remain out (see #325).
+
+## Implementation note (2026-11-11)
+
+Decision 2 assumed the sync and async paths converge on a shared transcript
+assembler. They don't: `assembleTranscript` is used only by `compost import`;
+queued audio/video transcripts are written by the Python transcriber and
+documents by `linkNormalizedDoc` in the legacy worker. The single seam is
+therefore `recordTranscriptIngest()` in `cli/src/lib/ingestProvenance.ts`,
+called at every landing site (`import`, direct `transcribe`, transcribe worker,
+legacy worker) and made idempotent per `(session_id, sha256)` so a retry or a
+second path cannot double-emit. The payload adds `session_id` (needed to link
+the event to `blame <session>`); `source_uri` is omitted when the inbox moved the
+file, because the original location no longer exists.
