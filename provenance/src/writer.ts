@@ -8,7 +8,7 @@ import { type AiInputBundle, type AiInputRow, inputId } from './inputs.js'
 import { applyMigrations } from './migrations/index.js'
 import { SnapshotStore } from './snapshots.js'
 import type { Event, EventInput } from './types.js'
-import { generateUlid, type UlidOptions } from './ulid.js'
+import { monotonicUlid, type UlidOptions } from './ulid.js'
 import { validateEvent } from './validate.js'
 
 const INSERT_SQL = `
@@ -28,6 +28,11 @@ VALUES (@input_id, @model, @params, @system_prompt, @prompt, @context)
 ON CONFLICT(input_id) DO NOTHING
 `
 
+/** One monotonic id source per process, shared by every EventWriter: the CLI
+ * opens a fresh writer per mutation, so a per-instance generator would lose the
+ * same-millisecond ordering guarantee between e.g. a create and its endorse. */
+const processUlid = monotonicUlid()
+
 export interface EventWriterOptions {
   dbPath: string
   ulid?: UlidOptions
@@ -38,7 +43,7 @@ export class EventWriter {
   private readonly insert: Database.Statement
   private readonly insertInputs: Database.Statement
   private readonly selectInputs: Database.Statement
-  private readonly ulidOpts: UlidOptions
+  private readonly nextId: () => string
 
   constructor(opts: EventWriterOptions) {
     if (opts.dbPath.trim().length === 0) {
@@ -54,7 +59,7 @@ export class EventWriter {
     this.insert = this.db.prepare(INSERT_SQL)
     this.insertInputs = this.db.prepare(INSERT_INPUTS_SQL)
     this.selectInputs = this.db.prepare('SELECT * FROM ai_inputs WHERE input_id = ?')
-    this.ulidOpts = opts.ulid ?? {}
+    this.nextId = opts.ulid !== undefined ? monotonicUlid(opts.ulid) : processUlid
   }
 
   /**
@@ -132,7 +137,7 @@ export class EventWriter {
   private materialize(input: EventInput): Event {
     return {
       ...input,
-      id: input.id ?? generateUlid(this.ulidOpts),
+      id: input.id ?? this.nextId(),
       ts: input.ts ?? new Date().toISOString(),
     }
   }

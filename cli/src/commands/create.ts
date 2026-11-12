@@ -1,14 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs'
 import type { Command } from 'commander'
 import { CompostError, isCompostError } from '../errors.js'
-import {
-  type CreatedArtifact,
-  createCode,
-  createHighlight,
-  createTheme,
-  defaultResearcherId,
-} from '../lib/artifacts.js'
+import { type CreatedArtifact, createCode, createHighlight, createTheme } from '../lib/artifacts.js'
 import type { AiInputBundle, Author } from '../lib/events.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import type { ThemeEvidence, ThemeEvidenceKind } from '../lib/themes.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -61,7 +56,7 @@ export function loadInputs(flags: CommonFlags): AiInputBundle | undefined {
  * fail-fast gate that keeps a missing --model/--prompt-hash from orphaning a
  * .md (#165).
  */
-export function resolveAuthor(flags: CommonFlags): Author {
+export function resolveAuthor(flags: CommonFlags, seedPath?: string): Author {
   if (flags.ai === true) {
     // AI-authored events MUST record actor_id, model, and a prompt_hash (the
     // events schema requires model + prompt_hash for actor_type=ai). Validate
@@ -90,7 +85,10 @@ export function resolveAuthor(flags: CommonFlags): Author {
       promptHash: flags.promptHash as string,
     }
   }
-  return { actorType: 'researcher', actorId: flags.actorId ?? defaultResearcherId() }
+  return {
+    actorType: 'researcher',
+    actorId: resolveResearcherId({ explicit: flags.actorId, seedPath }),
+  }
 }
 
 function emitCreated(kind: string, created: CreatedArtifact, cmd: Command): void {
@@ -170,7 +168,7 @@ export function registerCreate(program: Command): void {
         utteranceId: flags.utterance,
         span,
         text: flags.text,
-        author: resolveAuthor(flags),
+        author: resolveAuthor(flags, seedPath),
         ...(inputs !== undefined ? { inputs } : {}),
       })
       emitCreated('highlight', created, cmd)
@@ -203,7 +201,7 @@ export function registerCreate(program: Command): void {
         definition: flags.definition,
         evidence: parseList(flags.evidence),
         ...(flags.codebook !== undefined ? { codebookId: flags.codebook } : {}),
-        author: resolveAuthor(flags),
+        author: resolveAuthor(flags, seedPath),
         ...(inputs !== undefined ? { inputs } : {}),
       })
       emitCreated('code', created, cmd)
@@ -251,7 +249,7 @@ export function registerCreate(program: Command): void {
         summary: flags.summary,
         evidence,
         ...(codebookId !== undefined ? { codebookId } : {}),
-        author: resolveAuthor(flags),
+        author: resolveAuthor(flags, seedPath),
         ...(inputs !== undefined ? { inputs } : {}),
       })
       emitCreated('theme', created, cmd)

@@ -2,6 +2,62 @@
 
 ## Unreleased
 
+### Added
+
+- **`compost reject <artifact-ref>`** (+ the `compost_reject` MCP tool) — the
+  CLI verb over the existing `rejectArtifact` that CLAUDE.md and `memo --help`
+  already promised (ADR 0007 P1). Same ref forms, `--seed`, `--researcher` and
+  output shape as `endorse`, plus an optional `--note`. Reject archives — the
+  markdown and history stay — and emits a researcher `reject` event; a repeat
+  reject by the same researcher is a no-op (`status: already_rejected`). The MCP
+  tool is not AI-authored, binds identity server-side, and is documented as the
+  researcher's act, never to be called autonomously.
+
+- **`compost list <kind>`** (+ the read-only `compost_list` MCP tool) — answers
+  "what is awaiting endorsement?" (ADR 0007 P2). `kind` is `highlight | code |
+  theme` (memos, codebooks and categories keep their own `list` verbs).
+  `--state draft|endorsed|archived|all` (default: not archived), `--codebook`
+  for codes/themes, and `--evidence` to expand a code to its highlight quotes
+  (quote, session, utterance) or a theme to its evidence set with quotes. Each
+  item carries its display id, `artifact_id`, state, label, author actor,
+  created/updated timestamps and endorsement / archive info. Markdown with no
+  ledger record is reported under `file_only` rather than silently dropped.
+- **`compost status` `by_state`** — a per-kind `{draft, endorsed, archived}`
+  split (highlights, codes, themes, memos) of the ledger, added alongside the
+  unchanged integer `counts`. `schema/status.schema.json` documents it, plus the
+  `duplicate_ingests`, `warnings` and `counts.memos` fields status already
+  emitted (additive; still `1.0`).
+
+### Changed
+
+- **Deterministic replay order (ADR 0008 decision 3)** — every event fold and
+  event lookup now orders by `(ts, id)` instead of `(ts, rowid)`. `rowid` is
+  local insertion order and differs between machines once two ledgers are
+  merged; the event id is the same everywhere. Event ids are now minted by a
+  **monotonic** ULID generator (shared per process), so two events written in
+  the same millisecond — e.g. a create and its endorse — still replay in the
+  order they were written. Existing ledgers need no migration.
+
+- **Git-style researcher identity (ADR 0008 decision 2)** — one lib function
+  (`cli/src/lib/identity.ts`) resolves who a researcher-authored write belongs
+  to, for every surface (CLI, MCP via the CLI, web): `--researcher` (or
+  `--actor-id` / `--coder`) → `$COMPOST_USER` → the seed's `user.email` → the
+  global `~/.compost/config.toml` `user.email` → `git config user.email` (only
+  if git is installed). The `$USER` and literal `researcher` fallbacks are
+  **gone**: with nothing set, researcher writes refuse with `IDENTITY_UNSET` and
+  the exact fix (`compost config set user.email you@example.com --global`). AI
+  and agent actors are unaffected. `user.name` is a display label. `compost
+  config get|set|show` gain `--global`; `config show` reports the resolved
+  identity and its source, and `compost setup` adds an identity line. Existing
+  events keep their old actor ids (no migration).
+
+### Removed
+
+- **`compost synthesize` and `compost query`** — the two dangling stub verbs
+  (#59, #51) are gone. Theme synthesis is the researcher's or agent's
+  interpretive work (author themes with `compost create theme`); one-shot RAG is
+  `compost search` + `compost chat`. `compost serve` remains a stub.
+
 ## v0.2.2 — 2026-11-11
 
 Ships the **analytic memos** milestone, bring-your-own caption import, and

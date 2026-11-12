@@ -62,6 +62,8 @@ compost chat "¿por qué desconfían de las alertas?" --seed sample --human
 ## 4. Start your own
 
 ```sh
+# once per machine, unless git already knows you (git config user.email)
+compost config set user.email you@example.com --global
 compost init my-study
 # drop recordings + legacy PDFs/DOCX/PPTX/CSV here:
 open Seeds/my-study/sessions/_inbox

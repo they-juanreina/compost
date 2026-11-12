@@ -2,8 +2,8 @@ import { suggestCodeClusters } from '@they-juanreina/compost-retrieval'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { defaultResearcherId } from '../lib/artifacts.js'
 import { loadEmbeddedHighlights } from '../lib/embeddedHighlights.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { type Regenerator, rerunEvent } from '../lib/rerun.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -84,7 +84,7 @@ export function registerRerun(program: Command): void {
           apply: flags.apply === true,
           ...(flags.model !== undefined ? { modelOverride: flags.model } : {}),
           regenerate: makeDefaultRegenerator(seedPath),
-          researcherId: defaultResearcherId(),
+          researcherId: resolveResearcherId({ seedPath }),
         })
         emit({ command: 'rerun', ...report }, out)
       } catch (err) {

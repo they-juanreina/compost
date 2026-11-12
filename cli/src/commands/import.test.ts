@@ -18,14 +18,21 @@ describe('compost import emits one ingest-provenance event (#325)', () => {
   let work: string
   let seed: string
   let prevCwd: string
+  let prevUser: string | undefined
 
   beforeEach(() => {
+    // `import` authors as the researcher; pin the identity so the test never
+    // depends on the machine's git config (CI has none).
+    prevUser = process.env.COMPOST_USER
+    process.env.COMPOST_USER = 'juan@example.com'
     prevCwd = process.cwd()
     work = mkdtempSync(join(tmpdir(), 'compost-import-'))
     seed = initSeed('demo', { cwd: work }).path
     process.chdir(work)
   })
   afterEach(() => {
+    if (prevUser === undefined) delete process.env.COMPOST_USER
+    else process.env.COMPOST_USER = prevUser
     process.chdir(prevCwd)
     rmSync(work, { recursive: true, force: true })
   })

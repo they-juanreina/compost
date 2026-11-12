@@ -48,15 +48,19 @@ shows the full lineage. (Drag-to-highlight in the web UI arrives with
 
 ## 4. Synthesize
 
-> **Upcoming — not implemented yet** ([#59](https://github.com/they-juanreina/compost/issues/59)).
-> `compost synthesize` will draft themes/journey-maps from the coded corpus:
+Synthesis is your (or your agent's) interpretive work, not something compost
+does for you. Group codes into a theme; AI-drafted themes wait for your
+`compost endorse`:
 
 ```sh
-compost synthesize --seed data-hub --kind themes   # [not implemented yet]
+compost create theme --seed data-hub --name "trust is earned" \
+  --summary "Participants extend trust only after a visible track record" \
+  --codes C-distrust-of-automation
+compost list theme --seed data-hub --evidence     # themes + the quotes they stand on
+compost list code --seed data-hub --state draft   # AI drafts awaiting endorse / reject
 ```
 
-Saturation pulses will tell you when to stop collecting; journey-map drafts pull
-from your coded data.
+Saturation pulses (`compost saturate`) tell you when to stop collecting.
 
 ## 5. Export
 

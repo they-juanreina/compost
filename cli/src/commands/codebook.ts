@@ -7,7 +7,6 @@ import {
   type CodebookStance,
   createCodebook,
   DEFAULT_CODEBOOK_ID,
-  defaultResearcherId,
 } from '../lib/artifacts.js'
 import {
   applyCodebookMigration,
@@ -19,6 +18,7 @@ import {
   planCodeIdMigration,
   planMerge,
 } from '../lib/codebooks.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
@@ -92,7 +92,7 @@ export function registerCodebook(program: Command): void {
           name,
           stance: flags.stance as CodebookStance,
           ...(flags.description !== undefined ? { description: flags.description } : {}),
-          author: { actorType: 'researcher', actorId: defaultResearcherId() },
+          author: { actorType: 'researcher', actorId: resolveResearcherId({ seedPath }) },
         })
         emit(
           {
@@ -187,7 +187,7 @@ export function registerCodebook(program: Command): void {
           )
           return
         }
-        const result = applyCodebookMigration(seedPath, defaultResearcherId())
+        const result = applyCodebookMigration(seedPath, resolveResearcherId({ seedPath }))
         emit(
           {
             status: 'ok',
@@ -248,7 +248,7 @@ export function registerCodebook(program: Command): void {
             'Refusing --apply: the git working tree has uncommitted changes. Commit or stash first so you have an undo point, or pass --force.',
           )
         }
-        const result = applyCodeIdMigration(seedPath, defaultResearcherId())
+        const result = applyCodeIdMigration(seedPath, resolveResearcherId({ seedPath }))
         emit(
           {
             status: 'ok',
@@ -286,9 +286,15 @@ export function registerCodebook(program: Command): void {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-        const result = duplicateCodebook(seedPath, source, newName, defaultResearcherId(), {
-          ...(flags.from !== undefined ? { fromSeed: flags.from } : {}),
-        })
+        const result = duplicateCodebook(
+          seedPath,
+          source,
+          newName,
+          resolveResearcherId({ seedPath }),
+          {
+            ...(flags.from !== undefined ? { fromSeed: flags.from } : {}),
+          },
+        )
         emit(
           {
             status: 'ok',
@@ -360,7 +366,7 @@ export function registerCodebook(program: Command): void {
             'Refusing --apply: the git working tree has uncommitted changes. Commit or stash first so you have an undo point, or pass --force.',
           )
         }
-        const result = applyMerge(seedPath, from, into, defaultResearcherId())
+        const result = applyMerge(seedPath, from, into, resolveResearcherId({ seedPath }))
         emit(
           {
             status: 'ok',

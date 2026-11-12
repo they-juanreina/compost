@@ -18,7 +18,7 @@ describe('parseActor', () => {
     delete process.env.COMPOST_USER
   })
 
-  it('falls back to the OS user as a researcher when no header is present', () => {
+  it('falls back to the resolved researcher identity when no header is present', () => {
     assert.deepEqual(parseActor(req()), {
       actorType: 'researcher',
       actorId: 'fallback@example.com',

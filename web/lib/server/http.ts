@@ -50,6 +50,7 @@ function fromCompostError(err: CompostError): ApiError {
     case 'SCHEMA_VIOLATION':
       return new ApiError('SCHEMA_ERROR', err.message)
     case 'INVALID_INPUT':
+    case 'IDENTITY_UNSET':
       return new ApiError('INVALID_INPUT', err.message)
     case 'NOT_IMPLEMENTED':
       return new ApiError('NOT_IMPLEMENTED', err.message)

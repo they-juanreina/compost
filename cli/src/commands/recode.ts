@@ -2,7 +2,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { defaultResearcherId, resolveCodebookId } from '../lib/artifacts.js'
+import { resolveCodebookId } from '../lib/artifacts.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import { blindRecode } from '../lib/recode.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -59,7 +60,10 @@ export function registerRecode(program: Command): void {
       'JSON file mapping highlight id → array of code names, e.g. {"H-001":["distrust"]}',
     )
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
-    .option('--coder <id>', 'Researcher id for these codings (default: $COMPOST_USER)')
+    .option(
+      '--coder <id>',
+      'Researcher id for these codings (default: $COMPOST_USER, then user.email in compost config, then git)',
+    )
     .option(
       '--codebook <ref>',
       'Codebook (frame) these codings are under; agreement is scoped per frame (default: primary)',
@@ -72,7 +76,7 @@ export function registerRecode(program: Command): void {
         const codebookId = resolveCodebookId(seedPath, flags.codebook)
         const result = blindRecode(seedPath, {
           assignments,
-          researcherId: flags.coder ?? defaultResearcherId(),
+          researcherId: resolveResearcherId({ explicit: flags.coder, seedPath }),
           codebookId,
         })
         emit({ status: 'ok', command: 'recode', blind: true, codebook: codebookId, ...result }, out)

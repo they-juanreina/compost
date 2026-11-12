@@ -247,7 +247,7 @@ export function applyCodebookMigration(
   researcherId: string,
 ): CodebookMigrationResult {
   const plan = planCodebookMigration(seedPath)
-  const primary = ensurePrimaryCodebook(seedPath)
+  const primary = ensurePrimaryCodebook(seedPath, researcherId)
   const author = { actorType: 'researcher' as const, actorId: researcherId }
 
   const updated: CodebookMigrationResult['updated'] = []

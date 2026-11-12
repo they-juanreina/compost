@@ -29,10 +29,19 @@ describe('renderStatus', () => {
             legacy_assets: 4,
           },
           warnings: ['sessions/foo: not canonical'],
+          duplicate_ingests: [],
+          by_state: {
+            highlights: { draft: 2, endorsed: 3, archived: 0 },
+            codes: { draft: 1, endorsed: 1, archived: 0 },
+            themes: { draft: 1, endorsed: 0, archived: 0 },
+            memos: { draft: 0, endorsed: 3, archived: 0 },
+          },
         },
       ],
     }
     const out = renderStatus(snap)
+    assert.match(out, /highlights 2 draft \/ 3 endorsed \/ 0 archived/)
+    assert.match(out, /themes 1 draft \/ 0 endorsed/)
     assert.match(out, /study\s+\[active\]/)
     assert.match(out, /sessions:\s+3 \(2 transcribed, 1 queued, 0 in _inbox\)/)
     assert.match(out, /highlights: 5\s+codes: 2\s+themes: 1/)

@@ -2,6 +2,7 @@ export type CompostErrorCode =
   | 'NOT_IMPLEMENTED'
   | 'NOT_IN_SEED'
   | 'INVALID_INPUT'
+  | 'IDENTITY_UNSET'
   | 'FILE_NOT_FOUND'
   | 'IO_ERROR'
   | 'CONFIG_ERROR'
