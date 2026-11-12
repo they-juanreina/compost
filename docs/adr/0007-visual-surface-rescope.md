@@ -104,6 +104,9 @@ can do.
 | P2 | `compost list <kind>` (highlight \| code \| theme) with `--state draft\|endorsed\|archived` and evidence expansion, + matching MCP tool; `status` gains a draft/endorsed split | §8 readable state; a query over local durable state |
 | P3 | Spike (do first): confirm a **plugin-bundled** MCP server is reachable from an artifact as `host:<name>` | The capability documents servers "from the user's MCP configuration"; whether a plugin's server counts is unverified. Fallback: register the server in the user's MCP config during `compost setup` |
 
+**P3 was run on 2026-11-11 and did not pass as configured — see
+[P3 spike result](#p3-spike-result-2026-11-11) below.**
+
 P1 and P2 are a day or two of work and useful to a CLI-only researcher today. P3
 is an hour and decides whether surface 1 is viable at all — do it first.
 
@@ -164,3 +167,84 @@ P1–P3.
   would resolve most of the black-box visibility issues it hit, and found the
   endorsement step heavy. Reviewing dozens of drafts one `blame` at a time in a
   terminal is the weakest part of the endorse gate today.
+
+## P3 spike result (2026-11-11)
+
+**Result: no, not as configured.** An artifact cannot reach a compost server
+that a Claude Code session started from a project `.mcp.json`. The fallback in
+the P3 row is still open, but it means something narrower than "the user's MCP
+config", and it has not been tested yet.
+
+### What was run
+
+- Server: project `.mcp.json` entry `compost` (`node plugin/dist/mcp/server.js`),
+  connected in a Claude Code session in the desktop app (Code tab, macOS). In
+  that session `compost_status` for seed `sample` answered with root
+  `<repo>/Seeds` (1 session, 2 highlights, 2 codes, 1 theme). The server
+  process's working directory was the repo root, inherited from the session.
+- Page: a one-button probe, published privately, declaring only
+  `mcp: {servers: [{server: "host:compost", tools: ["compost_status",
+  "compost_blame"]}]}` (no `db`, no `assets`). Publishing accepted the
+  declaration.
+- The maintainer opened the page in the artifact pane beside that same session
+  and pressed the button.
+
+### What happened
+
+- `claude.use("mcp")` resolved, so the capability is present in the app pane.
+- A consent prompt for the page appeared on the first call and was allowed (its
+  wording was not captured).
+- The call then rejected with `server_not_connected`. The page showed its
+  "compost server is not connected here" state; no data was read, so the
+  working directory and seed root as seen from an artifact were **not
+  observed**.
+- The app's `main.log` shows `[ArtifactHostTools] bridge offered` for the page
+  and no `[ArtifactHostTools] call` line: the app has a host bridge on this
+  surface, but `compost` was not in the list of servers it offered, so the call
+  never reached it.
+
+### Why
+
+Read from the installed desktop app's code, not from documentation, so treat
+it as true for this build only: the bridge builds its list from the desktop
+app's **own** local MCP servers (the `mcpServers` block of
+`claude_desktop_config.json`, plus installed desktop extensions). Servers that a
+Claude Code session starts (project `.mcp.json`, user-scope Claude Code config,
+plugin `mcpServers`) are children of the CLI process and are not in that list.
+On this machine `claude_desktop_config.json` has no `mcpServers`.
+
+### What this means for the decision
+
+- **Plugin-bundled server: not tested, expected to fail the same way.** It is
+  started by the same CLI process as the `.mcp.json` server. Confirming it needs
+  the plugin installed and the probe re-pointed at the plugin server's name.
+- **The fallback changes.** "Register the server in the user's MCP config" has
+  to mean the **desktop app's** config (or shipping compost as a desktop
+  extension), not Claude Code's. `compost setup` would write to a second,
+  app-owned config file, and the app must be restarted to pick it up. Untested.
+- **Seed root becomes a real problem.** A desktop-app server entry takes
+  `command`, `args` and `env` only; there is no working-directory field. The
+  compost server resolves seeds from `<cwd>/Seeds`, so a server started by the
+  app would not find the researcher's seeds. The review page needs an explicit
+  seed root (an environment variable or setting read in `cli/src/lib`), not the
+  process's working directory.
+- **Read tools need annotations.** compost's MCP tools declare no
+  `readOnlyHint`. The platform contract says the app may ask the viewer to
+  confirm any host call not annotated read-only, so `compost_status`,
+  `compost_blame` and a future `compost_list` should declare it; `endorse` and
+  `reject` would be confirmed by the app as well as by the page.
+- **Documented limits, not observed here:** host servers answer only inside the
+  Claude app (elsewhere `server_not_connected`), and only the artifact's owner
+  can use them for now. The second fits "published to the researcher's own
+  account" and confirms the page is not team sharing.
+
+### Still to test before surface 1 is called viable
+
+1. Register compost in the desktop app's config with an explicit seed root,
+   restart the app, press the probe again. Record the consent wording, the seed
+   root the server reports, and whether the app asks to confirm each call.
+2. The same with the plugin-bundled server, to confirm it is not offered.
+3. The probe opened in a browser tab (expected `server_not_connected`).
+
+If step 1 fails, the "Revisit when" clause applies: the review surface becomes
+a second local page in `serve`.

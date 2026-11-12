@@ -34,7 +34,7 @@ export function isIngestPathAllowed(rawPath, env = process.env, cwd = process.cw
     });
 }
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
-export const PLUGIN_VERSION = '0.1.2';
+export const PLUGIN_VERSION = '0.2.2';
 const str = (desc) => ({ type: 'string', description: desc });
 /** A session-id arg constrained at the schema boundary to a bare label, so a
  * host agent can't pass a path-traversal value (mirrors assertSessionId in the
