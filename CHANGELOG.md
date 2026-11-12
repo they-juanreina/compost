@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+## v0.2.2 — 2026-11-11
+
+Ships the **analytic memos** milestone, bring-your-own caption import, and
+ingest provenance (ADR 0006). The plugin version now tracks the CLI
+(0.1.2 → 0.2.2), so AI-authored artifacts are stamped `claude-code:0.2.2:…`.
+
+Also lands the small core fixes from ADR 0007 / ADR 0008: `compost reject` and
+`compost list`, git-style researcher identity, deterministic replay, and the
+removal of the `query` / `synthesize` stubs. **Heads-up:** researcher writes now
+refuse when no identity is set — see *Changed* below for the one-line fix.
+
+Opens the **analytic memos** milestone (#9): a first-class, provenance-bearing,
+*codable* interpretive artifact — the analyst's dated, evolving record (Saldaña;
+ADR 0004). Built on a recorded maintainer override (kill filter clears 1–3;
+"validated need" is grounded-but-not-demonstrated against the single-study
+dogfood — see [`docs/design-analytic-memos.md`](docs/design-analytic-memos.md)).
+The web surface is deliberately deferred (CLAUDE.md live tension).
+
 ### Added
 
 - **`compost reject <artifact-ref>`** (+ the `compost_reject` MCP tool) — the
@@ -27,52 +45,6 @@
   unchanged integer `counts`. `schema/status.schema.json` documents it, plus the
   `duplicate_ingests`, `warnings` and `counts.memos` fields status already
   emitted (additive; still `1.0`).
-
-### Changed
-
-- **Deterministic replay order (ADR 0008 decision 3)** — every event fold and
-  event lookup now orders by `(ts, id)` instead of `(ts, rowid)`. `rowid` is
-  local insertion order and differs between machines once two ledgers are
-  merged; the event id is the same everywhere. Event ids are now minted by a
-  **monotonic** ULID generator (shared per process), so two events written in
-  the same millisecond — e.g. a create and its endorse — still replay in the
-  order they were written. Existing ledgers need no migration.
-
-- **Git-style researcher identity (ADR 0008 decision 2)** — one lib function
-  (`cli/src/lib/identity.ts`) resolves who a researcher-authored write belongs
-  to, for every surface (CLI, MCP via the CLI, web): `--researcher` (or
-  `--actor-id` / `--coder`) → `$COMPOST_USER` → the seed's `user.email` → the
-  global `~/.compost/config.toml` `user.email` → `git config user.email` (only
-  if git is installed). The `$USER` and literal `researcher` fallbacks are
-  **gone**: with nothing set, researcher writes refuse with `IDENTITY_UNSET` and
-  the exact fix (`compost config set user.email you@example.com --global`). AI
-  and agent actors are unaffected. `user.name` is a display label. `compost
-  config get|set|show` gain `--global`; `config show` reports the resolved
-  identity and its source, and `compost setup` adds an identity line. Existing
-  events keep their old actor ids (no migration).
-
-### Removed
-
-- **`compost synthesize` and `compost query`** — the two dangling stub verbs
-  (#59, #51) are gone. Theme synthesis is the researcher's or agent's
-  interpretive work (author themes with `compost create theme`); one-shot RAG is
-  `compost search` + `compost chat`. `compost serve` remains a stub.
-
-## v0.2.2 — 2026-11-11
-
-Ships the **analytic memos** milestone, bring-your-own caption import, and
-ingest provenance (ADR 0006). The plugin version now tracks the CLI
-(0.1.2 → 0.2.2), so AI-authored artifacts are stamped `claude-code:0.2.2:…`.
-
-Opens the **analytic memos** milestone (#9): a first-class, provenance-bearing,
-*codable* interpretive artifact — the analyst's dated, evolving record (Saldaña;
-ADR 0004). Built on a recorded maintainer override (kill filter clears 1–3;
-"validated need" is grounded-but-not-demonstrated against the single-study
-dogfood — see [`docs/design-analytic-memos.md`](docs/design-analytic-memos.md)).
-The web surface is deliberately deferred (CLAUDE.md live tension).
-
-### Added
-
 - **Ingest provenance (ADR 0006, #325)** — every transcript landing
   (`compost import` .txt/.vtt/.srt, direct `compost transcribe`, and the
   transcribe / legacy-ingest queue workers) now emits one append-only
@@ -114,6 +86,36 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
   markup stripped, cue end-times preserved) instead of routing them through
   document legacy-ingest as an untyped "asset" (dogfood 2026-07-01). Caption files
   with no speaker labels become a single honest `other`-type speaker.
+
+### Changed
+
+- **Deterministic replay order (ADR 0008 decision 3)** — every event fold and
+  event lookup now orders by `(ts, id)` instead of `(ts, rowid)`. `rowid` is
+  local insertion order and differs between machines once two ledgers are
+  merged; the event id is the same everywhere. Event ids are now minted by a
+  **monotonic** ULID generator (shared per process), so two events written in
+  the same millisecond — e.g. a create and its endorse — still replay in the
+  order they were written. Existing ledgers need no migration.
+
+- **Git-style researcher identity (ADR 0008 decision 2)** — one lib function
+  (`cli/src/lib/identity.ts`) resolves who a researcher-authored write belongs
+  to, for every surface (CLI, MCP via the CLI, web): `--researcher` (or
+  `--actor-id` / `--coder`) → `$COMPOST_USER` → the seed's `user.email` → the
+  global `~/.compost/config.toml` `user.email` → `git config user.email` (only
+  if git is installed). The `$USER` and literal `researcher` fallbacks are
+  **gone**: with nothing set, researcher writes refuse with `IDENTITY_UNSET` and
+  the exact fix (`compost config set user.email you@example.com --global`). AI
+  and agent actors are unaffected. `user.name` is a display label. `compost
+  config get|set|show` gain `--global`; `config show` reports the resolved
+  identity and its source, and `compost setup` adds an identity line. Existing
+  events keep their old actor ids (no migration).
+
+### Removed
+
+- **`compost synthesize` and `compost query`** — the two dangling stub verbs
+  (#59, #51) are gone. Theme synthesis is the researcher's or agent's
+  interpretive work (author themes with `compost create theme`); one-shot RAG is
+  `compost search` + `compost chat`. `compost serve` remains a stub.
 
 ### Fixed
 
