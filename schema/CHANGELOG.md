@@ -2,6 +2,30 @@
 
 All notable changes to the JSON Schemas under `schema/`. Each schema is independently versioned; breaking changes bump the major.
 
+## status.schema.json
+
+### 1.0 — 2026-11-11 (additive: trust-state split, ingest duplicates)
+
+Backward-compatible additions; no existing field changed type or became
+required, so earlier 1.0 snapshots still validate and `schema_version` stays
+`"1.0"`.
+
+- `seeds[].by_state` (ADR 0007 P2): `{highlights, codes, themes, memos}`, each
+  `{draft, endorsed, archived}` integer counts of the artifacts recorded in the
+  ledger. The existing integer `counts` are unchanged (they count markdown
+  files).
+- `seeds[].duplicate_ingests` (ADR 0006, #325): transcript files with the same
+  sha256 ingested into more than one session — `{sha256, count, sessions,
+  original_names}`. Emitted since v0.2.2 but previously missing from the schema.
+- Also documents two fields `compost status` already emitted but the schema
+  (with `additionalProperties: false`) rejected: `seeds[].warnings` (string
+  array) and `counts.memos` (integer, optional).
+
+### 1.0 — initial
+
+Kind-grouped counts per seed: `sessions{total, transcribed, queued, inbox}`,
+`highlights`, `codes`, `themes`, `frames`, `insights`, `legacy_assets`.
+
 ## transcript.schema.json
 
 ### 1.0 — 2026-06-03 (additive: document ingest)

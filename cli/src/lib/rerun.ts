@@ -29,7 +29,7 @@ function resolveCreateEvent(db: Database.Database, ref: string): CreateRow | und
     if (row.action === 'create') return row
     return db
       .prepare(
-        `SELECT ${cols} FROM events WHERE artifact_id = ? AND action='create' ORDER BY ts, rowid LIMIT 1`,
+        `SELECT ${cols} FROM events WHERE artifact_id = ? AND action='create' ORDER BY ts, id LIMIT 1`,
       )
       .get(row.artifact_id) as CreateRow | undefined
   }
@@ -37,7 +37,7 @@ function resolveCreateEvent(db: Database.Database, ref: string): CreateRow | und
   if (HUMAN_REF_RE.test(ref)) {
     return db
       .prepare(
-        `SELECT ${cols} FROM events WHERE action='create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1`,
+        `SELECT ${cols} FROM events WHERE action='create' AND json_extract(payload, '$.id') = ? ORDER BY ts, id LIMIT 1`,
       )
       .get(ref) as CreateRow | undefined
   }
@@ -46,7 +46,7 @@ function resolveCreateEvent(db: Database.Database, ref: string): CreateRow | und
   if (latest) {
     return db
       .prepare(
-        `SELECT ${cols} FROM events WHERE artifact_kind = ? AND action='create' ORDER BY ts DESC, rowid DESC LIMIT 1`,
+        `SELECT ${cols} FROM events WHERE artifact_kind = ? AND action='create' ORDER BY ts DESC, id DESC LIMIT 1`,
       )
       .get(latest[1] as string) as CreateRow | undefined
   }
@@ -54,7 +54,7 @@ function resolveCreateEvent(db: Database.Database, ref: string): CreateRow | und
   if (/^[a-f0-9]{8,64}$/i.test(ref)) {
     return db
       .prepare(
-        `SELECT ${cols} FROM events WHERE artifact_id LIKE ? AND action='create' ORDER BY ts, rowid LIMIT 1`,
+        `SELECT ${cols} FROM events WHERE artifact_id LIKE ? AND action='create' ORDER BY ts, id LIMIT 1`,
       )
       .get(`${ref.toLowerCase()}%`) as CreateRow | undefined
   }

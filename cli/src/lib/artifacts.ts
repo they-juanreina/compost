@@ -17,6 +17,7 @@ import {
   openReadonlyEvents,
   openSeedEvents,
 } from './events.js'
+import { resolveResearcherId } from './identity.js'
 import {
   assertMemoType,
   DEFAULT_MEMO_TYPE,
@@ -315,7 +316,10 @@ export function createCategory(seedPath: string, input: CreateCategoryInput): Cr
  * human invoked init/create), so it is born endorsed rather than [draft].
  * Idempotent on the `codebooks/primary.md` file.
  */
-export function ensurePrimaryCodebook(seedPath: string): {
+export function ensurePrimaryCodebook(
+  seedPath: string,
+  researcherId: string = resolveResearcherId({ seedPath }),
+): {
   id: string
   created: boolean
   artifact_id?: string
@@ -328,7 +332,7 @@ export function ensurePrimaryCodebook(seedPath: string): {
     stance: 'inductive',
     description:
       'Default codebook: every code lands here unless created with an explicit codebook. Edit the stance and description to fit the study, or add lenses with `compost codebook new`.',
-    author: { actorType: 'researcher', actorId: defaultResearcherId() },
+    author: { actorType: 'researcher', actorId: researcherId },
   })
   return { id: created.id, created: true, artifact_id: created.artifact_id }
 }
@@ -368,7 +372,7 @@ export function resolveCodebookId(seedPath: string, ref: string | undefined): st
       const names = (
         db
           .prepare(
-            "SELECT json_extract(payload, '$.id') AS id FROM events WHERE artifact_kind = 'codebook' AND action = 'create' ORDER BY ts, rowid",
+            "SELECT json_extract(payload, '$.id') AS id FROM events WHERE artifact_kind = 'codebook' AND action = 'create' ORDER BY ts, id",
           )
           .all() as Array<{ id: string }>
       ).map((r) => r.id)
@@ -779,7 +783,7 @@ export function tryResolveHumanRef(
   if (!HUMAN_REF_RE.test(ref)) return undefined
   const exact = db
     .prepare(
-      "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, rowid LIMIT 1",
+      "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND json_extract(payload, '$.id') = ? ORDER BY ts, id LIMIT 1",
     )
     .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
   if (exact !== undefined) return exact
@@ -791,7 +795,7 @@ export function tryResolveHumanRef(
   if (/^C-[^/]+$/.test(ref)) {
     const rows = db
       .prepare(
-        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND json_extract(payload, '$.id') LIKE 'C-%/' || ? ORDER BY ts, rowid",
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND json_extract(payload, '$.id') LIKE 'C-%/' || ? ORDER BY ts, id",
       )
       .all(ref.slice(2)) as (CreateEventRow & { artifact_id: string })[]
     if (rows.length === 1) return rows[0]
@@ -804,7 +808,7 @@ export function tryResolveHumanRef(
   if (ref.startsWith('C-')) {
     const renamed = db
       .prepare(
-        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND artifact_id IN (SELECT artifact_id FROM events WHERE action = 'update' AND json_extract(payload, '$.field') = 'id' AND json_extract(payload, '$.after') = ?) ORDER BY ts, rowid LIMIT 1",
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE action = 'create' AND artifact_kind = 'code' AND artifact_id IN (SELECT artifact_id FROM events WHERE action = 'update' AND json_extract(payload, '$.field') = 'id' AND json_extract(payload, '$.after') = ?) ORDER BY ts, id LIMIT 1",
       )
       .get(ref) as (CreateEventRow & { artifact_id: string }) | undefined
     if (renamed !== undefined) return renamed
@@ -831,14 +835,14 @@ function findCreateEvent(
     const kind = latest[1] as string
     return db
       .prepare(
-        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, rowid DESC LIMIT 1",
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE artifact_kind = ? AND action = 'create' ORDER BY ts DESC, id DESC LIMIT 1",
       )
       .get(kind) as (CreateEventRow & { artifact_id: string }) | undefined
   }
   if (/^[a-f0-9]{8,64}$/i.test(artifactRef)) {
     return db
       .prepare(
-        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, rowid LIMIT 1",
+        "SELECT id, artifact_kind, artifact_id, actor_id FROM events WHERE artifact_id LIKE ? AND action = 'create' ORDER BY ts, id LIMIT 1",
       )
       .get(`${artifactRef.toLowerCase()}%`) as
       | (CreateEventRow & { artifact_id: string })
@@ -860,7 +864,7 @@ function findCreateEvent(
  * event chains to (vs endorse, which chains to create for #168 round-tripping). */
 function latestEventId(db: Database.Database, artifactId: string): string | undefined {
   const row = db
-    .prepare('SELECT id FROM events WHERE artifact_id = ? ORDER BY ts DESC, rowid DESC LIMIT 1')
+    .prepare('SELECT id FROM events WHERE artifact_id = ? ORDER BY ts DESC, id DESC LIMIT 1')
     .get(artifactId) as { id: string } | undefined
   return row?.id
 }
@@ -892,7 +896,7 @@ export function endorseArtifact(
     if (createRow !== undefined) {
       existingEndorse = db
         .prepare(
-          "SELECT id, parent_event FROM events WHERE artifact_id = ? AND action = 'endorse' AND actor_id = ? ORDER BY ts, rowid LIMIT 1",
+          "SELECT id, parent_event FROM events WHERE artifact_id = ? AND action = 'endorse' AND actor_id = ? ORDER BY ts, id LIMIT 1",
         )
         .get(createRow.artifact_id, researcherId) as
         | { id: string; parent_event: string | null }
@@ -910,11 +914,11 @@ export function endorseArtifact(
   // one who endorses it (#236, defense-in-depth). The [draft]→endorsed gate is a
   // human approving an AI/agent suggestion; an agent endorsing under the same
   // actor_id it created with would collapse the gate. The endorsing identity is
-  // bound to $COMPOST_USER server-side (commands/endorse.ts), not a tool arg.
+  // resolved server-side (lib/identity.ts via commands/endorse.ts), not a tool arg.
   if (researcherId === createRow.actor_id) {
     throw new CompostError(
       'INVALID_INPUT',
-      `Refusing to self-endorse: "${researcherId}" is the actor that created this artifact. Endorsement is a second actor approving it — set COMPOST_USER (or pass --researcher) to a human reviewer distinct from the author.`,
+      `Refusing to self-endorse: "${researcherId}" is the actor that created this artifact. Endorsement is a second actor approving it — set your identity (compost config set user.email you@example.com --global, $COMPOST_USER, or --researcher) to a human reviewer distinct from the author.`,
     )
   }
 
@@ -973,7 +977,7 @@ export function rejectArtifact(
     if (createRow !== undefined) {
       existingReject = db
         .prepare(
-          "SELECT id, parent_event FROM events WHERE artifact_id = ? AND action = 'reject' AND actor_id = ? ORDER BY ts, rowid LIMIT 1",
+          "SELECT id, parent_event FROM events WHERE artifact_id = ? AND action = 'reject' AND actor_id = ? ORDER BY ts, id LIMIT 1",
         )
         .get(createRow.artifact_id, researcherId) as
         | { id: string; parent_event: string | null }
@@ -1070,9 +1074,4 @@ export function updateArtifact(
   } finally {
     events.close()
   }
-}
-
-/** Read the configured researcher identity: COMPOST_USER env, else fallback. */
-export function defaultResearcherId(): string {
-  return process.env.COMPOST_USER || process.env.USER || 'researcher'
 }

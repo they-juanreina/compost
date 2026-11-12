@@ -12,6 +12,7 @@ import {
   kindFromSegment,
   listArtifactsOfKind,
   reject,
+  resolveSeed,
   update,
 } from '../actions.js'
 import { parseActor, researcherId } from './actor.js'
@@ -49,7 +50,7 @@ export function collectionRoute(segment: string) {
     }),
     POST: route<SeedCtx>(async (req, ctx) => {
       const { seed } = await ctx.params
-      const author = parseActor(req)
+      const author = parseActor(req, resolveSeed(seed))
       const body = await readJson(req)
       return jsonOk(createArtifact(seed, kind, author, body), { status: 201 })
     }),
@@ -66,7 +67,7 @@ export function itemRoute(segment: string) {
     }),
     PATCH: route<SeedItemCtx>(async (req, ctx) => {
       const { seed, id } = await ctx.params
-      const author = parseActor(req)
+      const author = parseActor(req, resolveSeed(seed))
       const body = await readJson(req)
       const field = body.field
       if (typeof field !== 'string' || field.trim() === '') {
@@ -88,7 +89,7 @@ export function itemRoute(segment: string) {
     }),
     DELETE: route<SeedItemCtx>(async (req, ctx) => {
       const { seed, id } = await ctx.params
-      const author = parseActor(req)
+      const author = parseActor(req, resolveSeed(seed))
       const note = new URL(req.url).searchParams.get('note') ?? undefined
       const ev = expectedVersion(req)
       return jsonOk(
@@ -107,7 +108,7 @@ export function endorseRoute(segment: string) {
   return {
     POST: route<SeedItemCtx>(async (req, ctx) => {
       const { seed, id } = await ctx.params
-      const author = parseActor(req)
+      const author = parseActor(req, resolveSeed(seed))
       const body = await readJson(req).catch(() => ({}) as Record<string, unknown>)
       return jsonOk(endorse(seed, kind, id, researcherId(author), expectedVersion(req, body)))
     }),
@@ -120,7 +121,7 @@ export function rejectRoute(segment: string) {
   return {
     POST: route<SeedItemCtx>(async (req, ctx) => {
       const { seed, id } = await ctx.params
-      const author = parseActor(req)
+      const author = parseActor(req, resolveSeed(seed))
       const body = await readJson(req).catch(() => ({}) as Record<string, unknown>)
       const note = typeof body.note === 'string' ? body.note : undefined
       const ev = expectedVersion(req, body)

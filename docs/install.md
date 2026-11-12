@@ -80,6 +80,23 @@ A checklist prints. `❌ fail` blocks the core loop (fix those first); `⚠️ w
 blocks only a specific feature (transcription, diarization) and can wait until
 you need it. When `ready` is true you're done.
 
+### Tell compost who you are
+
+Every researcher decision (create, endorse, reject, memo, …) is recorded under
+your identity. compost uses your git identity when one exists; otherwise set it
+once, git-style:
+
+```sh
+compost config set user.email you@example.com --global
+compost config set user.name "Your Name" --global      # display label (optional)
+```
+
+`--global` writes `~/.compost/config.toml`; drop it inside a seed to set the
+identity for that seed only. `$COMPOST_USER` and `--researcher` still take
+precedence. With nothing set, researcher writes refuse (`IDENTITY_UNSET`) rather
+than guess; AI and agent drafts are unaffected. `compost setup` and
+`compost config show` show the resolved identity and where it came from.
+
 ## 4. Install the plugin (optional, for Claude Code / Cowork)
 
 The plugin gives you slash commands and MCP tools so an agent can drive compost.

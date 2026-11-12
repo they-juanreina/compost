@@ -4,6 +4,8 @@ import { join, resolve } from 'node:path'
 import { CompostError } from '../errors.js'
 import { isCanonicalSession } from './canonicalSessions.js'
 import { codeMarkdownPaths } from './codeRefs.js'
+import { type DuplicateIngest, findDuplicateIngests } from './ingestProvenance.js'
+import { countByState, type StateCounts } from './list.js'
 import { JobQueue, stateDbPath } from './queue.js'
 
 export interface SessionCounts {
@@ -34,6 +36,21 @@ export interface SeedStatus {
   /** Non-canonical content found under the seed (e.g. legacy folders that
    * survived migration). Empty when the seed is clean. */
   warnings: string[]
+  /** Transcript files (same sha256) ingested into more than one session of this
+   * seed (#325). Informational — ingest never blocks on a duplicate. */
+  duplicate_ingests: DuplicateIngest[]
+  /** Per-kind trust-state split of the artifacts recorded in the ledger
+   * (ADR 0007 P2) — "what is awaiting endorsement". `counts` counts markdown
+   * files; this counts ledger records, so a file with no create event (e.g. the
+   * bundled sample) appears in `counts` but not here. */
+  by_state: ByState
+}
+
+export interface ByState {
+  highlights: StateCounts
+  codes: StateCounts
+  themes: StateCounts
+  memos: StateCounts
 }
 
 export interface StatusSnapshot {
@@ -95,6 +112,12 @@ function readSeed(name: string, path: string): SeedStatus {
       `${deadJobs} permanently failed job(s) in the queue — run \`compost jobs requeue\``,
     )
   }
+  const duplicateIngests = findDuplicateIngests(path)
+  if (duplicateIngests.length > 0) {
+    warnings.push(
+      `${duplicateIngests.length} transcript file(s) ingested into more than one session (same sha256) — see duplicate_ingests`,
+    )
+  }
   return {
     name,
     path,
@@ -112,6 +135,13 @@ function readSeed(name: string, path: string): SeedStatus {
       legacy_assets: countFiles(join(path, 'legacy')),
     },
     warnings,
+    duplicate_ingests: duplicateIngests,
+    by_state: {
+      highlights: countByState(path, 'highlight'),
+      codes: countByState(path, 'code'),
+      themes: countByState(path, 'theme'),
+      memos: countByState(path, 'memo'),
+    },
   }
 }
 

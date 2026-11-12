@@ -23,7 +23,7 @@ ON CONFLICT(artifact_kind, artifact_id) DO UPDATE SET
 const SELECT_EVENTS_FOR_ARTIFACT_SQL = `
 SELECT * FROM events
 WHERE artifact_kind = ? AND artifact_id = ?
-ORDER BY ts, rowid
+ORDER BY ts, id
 `
 
 const SELECT_DISTINCT_ARTIFACTS_SQL = `

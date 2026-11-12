@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## v0.2.2 — 2026-11-11
+
+Ships the **analytic memos** milestone, bring-your-own caption import, and
+ingest provenance (ADR 0006). The plugin version now tracks the CLI
+(0.1.2 → 0.2.2), so AI-authored artifacts are stamped `claude-code:0.2.2:…`.
+
+Also lands the small core fixes from ADR 0007 / ADR 0008: `compost reject` and
+`compost list`, git-style researcher identity, deterministic replay, and the
+removal of the `query` / `synthesize` stubs. **Heads-up:** researcher writes now
+refuse when no identity is set — see *Changed* below for the one-line fix.
+
 Opens the **analytic memos** milestone (#9): a first-class, provenance-bearing,
 *codable* interpretive artifact — the analyst's dated, evolving record (Saldaña;
 ADR 0004). Built on a recorded maintainer override (kill filter clears 1–3;
@@ -11,6 +22,40 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
 
 ### Added
 
+- **`compost reject <artifact-ref>`** (+ the `compost_reject` MCP tool) — the
+  CLI verb over the existing `rejectArtifact` that CLAUDE.md and `memo --help`
+  already promised (ADR 0007 P1). Same ref forms, `--seed`, `--researcher` and
+  output shape as `endorse`, plus an optional `--note`. Reject archives — the
+  markdown and history stay — and emits a researcher `reject` event; a repeat
+  reject by the same researcher is a no-op (`status: already_rejected`). The MCP
+  tool is not AI-authored, binds identity server-side, and is documented as the
+  researcher's act, never to be called autonomously.
+
+- **`compost list <kind>`** (+ the read-only `compost_list` MCP tool) — answers
+  "what is awaiting endorsement?" (ADR 0007 P2). `kind` is `highlight | code |
+  theme` (memos, codebooks and categories keep their own `list` verbs).
+  `--state draft|endorsed|archived|all` (default: not archived), `--codebook`
+  for codes/themes, and `--evidence` to expand a code to its highlight quotes
+  (quote, session, utterance) or a theme to its evidence set with quotes. Each
+  item carries its display id, `artifact_id`, state, label, author actor,
+  created/updated timestamps and endorsement / archive info. Markdown with no
+  ledger record is reported under `file_only` rather than silently dropped.
+- **`compost status` `by_state`** — a per-kind `{draft, endorsed, archived}`
+  split (highlights, codes, themes, memos) of the ledger, added alongside the
+  unchanged integer `counts`. `schema/status.schema.json` documents it, plus the
+  `duplicate_ingests`, `warnings` and `counts.memos` fields status already
+  emitted (additive; still `1.0`).
+- **Ingest provenance (ADR 0006, #325)** — every transcript landing
+  (`compost import` .txt/.vtt/.srt, direct `compost transcribe`, and the
+  transcribe / legacy-ingest queue workers) now emits one append-only
+  `transcript_ingest` event: original name, source URI, format, parser + version,
+  timestamp, actor (`researcher` for `import`, `agent` for the transcriber and
+  workers) and the source file's sha256. Closes the §13 silent write. The
+  transcript stays attributed source data — no `[draft]`, no endorse gate.
+  Idempotent per (session, sha256). `compost blame <session-id>` shows the
+  ingest; `compost status` reports `duplicate_ingests` and `compost import`
+  returns `duplicate_of` when the same bytes land in another session (neither
+  blocks).
 - **`compost memo new|list|view|edit|cite`** — write and link analytic memos
   (`M-NNN`, `synthesis/memos/`). The id is **mechanical** (like a highlight's);
   the **title is optional** — brain-dump a thought and `memo list` shows the
@@ -42,7 +87,58 @@ The web surface is deliberately deferred (CLAUDE.md live tension).
   document legacy-ingest as an untyped "asset" (dogfood 2026-07-01). Caption files
   with no speaker labels become a single honest `other`-type speaker.
 
+### Changed
+
+- **Deterministic replay order (ADR 0008 decision 3)** — every event fold and
+  event lookup now orders by `(ts, id)` instead of `(ts, rowid)`. `rowid` is
+  local insertion order and differs between machines once two ledgers are
+  merged; the event id is the same everywhere. Event ids are now minted by a
+  **monotonic** ULID generator (shared per process), so two events written in
+  the same millisecond — e.g. a create and its endorse — still replay in the
+  order they were written. Existing ledgers need no migration.
+
+- **Git-style researcher identity (ADR 0008 decision 2)** — one lib function
+  (`cli/src/lib/identity.ts`) resolves who a researcher-authored write belongs
+  to, for every surface (CLI, MCP via the CLI, web): `--researcher` (or
+  `--actor-id` / `--coder`) → `$COMPOST_USER` → the seed's `user.email` → the
+  global `~/.compost/config.toml` `user.email` → `git config user.email` (only
+  if git is installed). The `$USER` and literal `researcher` fallbacks are
+  **gone**: with nothing set, researcher writes refuse with `IDENTITY_UNSET` and
+  the exact fix (`compost config set user.email you@example.com --global`). AI
+  and agent actors are unaffected. `user.name` is a display label. `compost
+  config get|set|show` gain `--global`; `config show` reports the resolved
+  identity and its source, and `compost setup` adds an identity line. Existing
+  events keep their old actor ids (no migration).
+
+### Removed
+
+- **`compost synthesize` and `compost query`** — the two dangling stub verbs
+  (#59, #51) are gone. Theme synthesis is the researcher's or agent's
+  interpretive work (author themes with `compost create theme`); one-shot RAG is
+  `compost search` + `compost chat`. `compost serve` remains a stub.
+
 ### Fixed
+
+- **Installs on Node 26 (Homebrew default); no more GC abort on long
+  `reindex --vectors`.** `better-sqlite3` `^11` has no prebuilt for Node 26 and
+  its source doesn't compile against that V8 (`no member named 'GetPrototype'
+  in 'v8::Object'`), so `npm i -g @they-juanreina/compost-cli` failed on a
+  fresh Mac; under node@24 the same 11.x aborted mid-run during garbage
+  collection on long vector reindexes (`Statement::~Statement` →
+  `RemoveEnvironmentCleanupHook … Assertion failed: (env) != nullptr`). Bumped
+  to `^12.11.1` (prebuilds for Node 20–26) across cli / provenance / evals /
+  web so the workspace resolves one native build. No API changes for the
+  calls compost makes (`new Database`, `pragma`, `prepare`, `transaction`,
+  `exec`).
+- **`reindex --vectors` no longer dies on seeds past ~256 chunks with Ollama.**
+  The embed worker sent up to 500 texts per `/api/embed` request; bge-m3 on a
+  default Ollama answers `400 … Post ".../tokenize": EOF` (or `connection reset
+  by peer`) deterministically above ~256 inputs — batches of 128 and 256
+  passed, 500 failed every time on a 1975-chunk seed. The default cap is now
+  **128**, configurable per provider as `providers.<name>.embed_batch_cap`
+  (positive integer; an invalid value is a `CONFIG_ERROR` naming the fix, not a
+  silent fallback). When Ollama does reject a batch, the error now names the
+  batch size and the knob to lower instead of a raw HTTP dump.
 
 - **`slug()` is now diacritic-folding** — accented / non-ASCII Latin names no
   longer degrade in artifact ids and filenames. NFKD-normalize + strip combining

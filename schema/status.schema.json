@@ -35,7 +35,18 @@
           "items": { "type": "string" }
         },
         "created_at": { "type": ["string", "null"] },
-        "counts": { "$ref": "#/$defs/counts" }
+        "counts": { "$ref": "#/$defs/counts" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Non-canonical content or queue problems found under the seed. Empty when clean."
+        },
+        "duplicate_ingests": {
+          "type": "array",
+          "description": "Transcript files (same sha256) ingested into more than one session of this seed (ADR 0006). Informational; ingest never blocks on a duplicate.",
+          "items": { "$ref": "#/$defs/duplicateIngest" }
+        },
+        "by_state": { "$ref": "#/$defs/byState" }
       }
     },
     "counts": {
@@ -55,6 +66,7 @@
         "highlights": { "type": "integer", "minimum": 0 },
         "codes": { "type": "integer", "minimum": 0 },
         "themes": { "type": "integer", "minimum": 0 },
+        "memos": { "type": "integer", "minimum": 0 },
         "frames": { "type": "integer", "minimum": 0 },
         "insights": { "type": "integer", "minimum": 0 },
         "legacy_assets": { "type": "integer", "minimum": 0 }
@@ -69,6 +81,55 @@
         "transcribed": { "type": "integer", "minimum": 0 },
         "queued": { "type": "integer", "minimum": 0 },
         "inbox": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "duplicateIngest": {
+      "type": "object",
+      "required": ["sha256", "count", "sessions", "original_names"],
+      "additionalProperties": false,
+      "properties": {
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "count": {
+          "type": "integer",
+          "minimum": 2,
+          "description": "Number of sessions ingested from these exact bytes."
+        },
+        "sessions": { "type": "array", "items": { "type": "string" } },
+        "original_names": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "byState": {
+      "type": "object",
+      "description": "Per-kind trust-state split of the artifacts recorded in the ledger (events.sqlite). `counts` counts markdown files; this counts ledger records, so a file with no create event appears in `counts` only.",
+      "required": ["highlights", "codes", "themes", "memos"],
+      "additionalProperties": false,
+      "properties": {
+        "highlights": { "$ref": "#/$defs/stateCounts" },
+        "codes": { "$ref": "#/$defs/stateCounts" },
+        "themes": { "$ref": "#/$defs/stateCounts" },
+        "memos": { "$ref": "#/$defs/stateCounts" }
+      }
+    },
+    "stateCounts": {
+      "type": "object",
+      "required": ["draft", "endorsed", "archived"],
+      "additionalProperties": false,
+      "properties": {
+        "draft": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Not human-approved: an AI/agent suggestion awaiting endorse."
+        },
+        "endorsed": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Human-approved: endorsed, or researcher-authored."
+        },
+        "archived": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Rejected (archived, never deleted)."
+        }
       }
     }
   }

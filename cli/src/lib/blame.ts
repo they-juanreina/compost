@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { HUMAN_REF_RE, tryResolveHumanRef } from './artifacts.js'
+import { INGEST_ARTIFACT_KIND, type TranscriptIngestPayload } from './ingestProvenance.js'
 
 export interface BlameEvent {
   id: string
@@ -72,7 +73,7 @@ export function blame(query: string, opts: BlameOptions = {}): BlameResult {
   try {
     const artifactId = resolveArtifactId(db, query, seedName)
     const rows = db
-      .prepare('SELECT * FROM events WHERE artifact_id = ? ORDER BY ts, rowid')
+      .prepare('SELECT * FROM events WHERE artifact_id = ? ORDER BY ts, id')
       .all(artifactId) as EventRow[]
     return {
       schema_version: '1.0',
@@ -125,7 +126,7 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
     }
     const row = db
       .prepare(
-        'SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = ? ORDER BY ts DESC, rowid DESC LIMIT 1',
+        'SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = ? ORDER BY ts DESC, id DESC LIMIT 1',
       )
       .get(kind, 'create') as { artifact_id: string } | undefined
     if (row === undefined) {
@@ -133,6 +134,16 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
     }
     return row.artifact_id
   }
+
+  // Session id (S001, a slug from `compost import`) → the artifact that records
+  // how that session was ingested (#325). A transcript is source data, not an
+  // artifact with a human id, so its lineage is addressed by session.
+  const ingest = db
+    .prepare(
+      "SELECT artifact_id FROM events WHERE artifact_kind = ? AND action = 'create' AND json_extract(payload, '$.session_id') = ? ORDER BY ts, id LIMIT 1",
+    )
+    .get(INGEST_ARTIFACT_KIND, query) as { artifact_id: string } | undefined
+  if (ingest !== undefined) return ingest.artifact_id
 
   if (!ARTIFACT_PREFIX_RE.test(query)) {
     throw new CompostError(
@@ -250,6 +261,13 @@ export function renderHuman(result: BlameResult): string {
     if (e.parent_event !== null) lines.push(`  parent ${e.parent_event}`)
     if (e.batch_id !== null) lines.push(`  batch  ${e.batch_id}`)
     if (e.prompt_hash !== null) lines.push(`  prompt ${e.prompt_hash.slice(0, 12)}…`)
+    if (e.artifact_kind === INGEST_ARTIFACT_KIND) {
+      const p = e.payload as Partial<TranscriptIngestPayload>
+      lines.push(
+        `  ingested ${p.original_name ?? '?'} (${p.format ?? '?'}) into ${p.session_id ?? '?'} via ${p.parser ?? '?'}@${p.parser_version ?? '?'}`,
+        `  sha256 ${(p.sha256 ?? '').slice(0, 12)}…`,
+      )
+    }
   }
   return lines.join('\n')
 }

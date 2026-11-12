@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
 
+import { listTranscriptIngests, sha256Bytes } from '../lib/ingestProvenance.js'
 import { JobQueue, stateDbPath } from '../lib/queue.js'
 import { initSeed } from '../lib/seed.js'
 import type { TranscribeResponse } from '../transcriber_client.js'
@@ -74,6 +75,13 @@ function poisonClient(poisonSession: string, seedPath: string) {
   }
 }
 
+// The worker hashes the source file for its ingest-provenance event (#325), so
+// a job that reaches a successful transcription has a real source on disk.
+function writeSource(seedPath: string, sessionId: string): void {
+  mkdirSync(join(seedPath, 'sessions', sessionId), { recursive: true })
+  writeFileSync(join(seedPath, 'sessions', sessionId, 'source.mp4'), `media ${sessionId}`)
+}
+
 describe('runTranscribeWorkerOnce', () => {
   let work: string
   beforeEach(() => {
@@ -83,6 +91,7 @@ describe('runTranscribeWorkerOnce', () => {
 
   it('processes a queued transcribe job, writes transcript.md, completes', async () => {
     const { path } = initSeed('demo', { cwd: work })
+    writeSource(path, 'S001')
     const q = new JobQueue(stateDbPath(path))
     q.enqueue('transcribe', join(path, 'sessions/S001/source.mp4'), { session_id: 'S001' })
     q.close()
@@ -96,6 +105,36 @@ describe('runTranscribeWorkerOnce', () => {
     const q2 = new JobQueue(stateDbPath(path))
     assert.equal(q2.list('done').length, 1)
     q2.close()
+  })
+
+  it('records one agent ingest-provenance event for the landed transcript (#325)', async () => {
+    const { path } = initSeed('demo', { cwd: work })
+    const src = join(path, 'sessions/S001/source.mp4')
+    mkdirSync(join(path, 'sessions/S001'), { recursive: true })
+    writeFileSync(src, 'media bytes')
+    const q = new JobQueue(stateDbPath(path))
+    q.enqueue('transcribe', src, { session_id: 'S001', original_name: 'Call 1.MP4' })
+    q.close()
+
+    // biome-ignore lint/suspicious/noExplicitAny: fake client for test
+    await runTranscribeWorkerOnce(path, { client: fakeClient('ok', path) as any })
+    const events = listTranscriptIngests(path)
+    assert.equal(events.length, 1)
+    assert.equal(events[0]?.actor, 'agent')
+    assert.equal(events[0]?.session_id, 'S001')
+    assert.equal(events[0]?.original_name, 'Call 1.MP4')
+    assert.equal(events[0]?.format, 'mp4')
+    assert.equal(events[0]?.parser, 'transcribe-worker')
+    assert.equal(events[0]?.sha256, sha256Bytes(Buffer.from('media bytes')))
+    assert.equal(events[0]?.source_uri, undefined, 'inbox file was moved; no truthful URI')
+
+    // A requeued/retried pass over the same bytes + session must not double-emit.
+    const q2 = new JobQueue(stateDbPath(path))
+    q2.enqueue('transcribe', src, { session_id: 'S001' }) // unique on source → dedup'd by queue
+    q2.close()
+    // biome-ignore lint/suspicious/noExplicitAny: fake client for test
+    await runTranscribeWorkerOnce(path, { client: fakeClient('ok', path) as any })
+    assert.equal(listTranscriptIngests(path).length, 1)
   })
 
   it('does not process legacy-ingest jobs', async () => {
@@ -125,6 +164,7 @@ describe('runTranscribeWorkerOnce', () => {
     const { path } = initSeed('demo', { cwd: work })
     const q = new JobQueue(stateDbPath(path))
     // S001 (lowest id, claimed first) is the poison file; S002 must still process.
+    writeSource(path, 'S002')
     q.enqueue('transcribe', join(path, 'sessions/S001/source.mp4'), { session_id: 'S001' })
     q.enqueue('transcribe', join(path, 'sessions/S002/source.mp4'), { session_id: 'S002' })
     q.close()
@@ -144,6 +184,7 @@ describe('runTranscribeWorkerOnce', () => {
 
   it('surfaces needs_speaker_labels status', async () => {
     const { path } = initSeed('demo', { cwd: work })
+    writeSource(path, 'S001')
     const q = new JobQueue(stateDbPath(path))
     q.enqueue('transcribe', join(path, 'sessions/S001/source.mp4'), { session_id: 'S001' })
     q.close()

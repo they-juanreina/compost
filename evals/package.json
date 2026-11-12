@@ -1,6 +1,6 @@
 {
   "name": "@they-juanreina/compost-evals",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Eval surfaces: versioned LLM-as-judge rubric, eval-grader loop, skill golden-set runner.",
   "type": "module",
   "repository": {
@@ -24,7 +24,7 @@
     "test": "node --import tsx --test 'src/**/*.test.ts'"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0"
+    "better-sqlite3": "^12.11.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.11",

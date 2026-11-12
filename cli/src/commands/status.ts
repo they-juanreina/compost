@@ -13,7 +13,7 @@ export function registerStatus(program: Command): void {
   program
     .command('status')
     .description(
-      'Print kind-grouped counts (sessions, transcripts, highlights, codes, themes, memos, frames) for the current seed',
+      'Print kind-grouped counts (sessions, transcripts, highlights, codes, themes, memos, frames) and the draft / endorsed / archived split for the current seed',
     )
     .option(
       '--seed <name>',

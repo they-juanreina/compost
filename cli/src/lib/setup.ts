@@ -5,8 +5,10 @@ import { promisify } from 'node:util'
 import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
 import { scrubbedEnv } from './childEnv.js'
+import { type IdentityOptions, resolveIdentity, SET_IDENTITY_COMMAND } from './identity.js'
 import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
 import { auditSecretsPerms, HF_ALIASES, type KeychainBackend, resolveSecret } from './secrets.js'
+import { resolveSeedPath } from './seedResolve.js'
 import { checkVersionStatus, UPGRADE_COMMAND } from './version.js'
 
 const execFileAsync = promisify(execFile)
@@ -49,6 +51,8 @@ export interface SetupDeps {
   home?: string
   /** Keychain backend for HF-token resolution; `null` forces file-only (tests). */
   keychain?: KeychainBackend | null
+  /** `git config` reader for the identity check (tests); default shells out. */
+  gitConfig?: IdentityOptions['gitConfig']
 }
 
 const PYANNOTE_GATED_REPOS = ['pyannote/speaker-diarization-3.1', 'pyannote/segmentation-3.0']
@@ -377,7 +381,40 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
     )
   }
 
-  // 9. Secret-file permissions. A group/world-readable token file is a real
+  // 9. Researcher identity (ADR 0008): who researcher-authored writes belong
+  // to. Unset is a warn, not a fail — ingest/transcribe and agent drafts still
+  // work; only researcher writes (create, endorse, reject, memo, …) refuse.
+  let seedPath: string | undefined
+  try {
+    seedPath = resolveSeedPath(cwd)
+  } catch {
+    seedPath = undefined // no seed / several seeds: check env, global, git only
+  }
+  const identity = resolveIdentity({
+    seedPath,
+    env: deps.home !== undefined ? { ...env, COMPOST_HOME: deps.home } : env,
+    ...(deps.gitConfig !== undefined ? { gitConfig: deps.gitConfig } : {}),
+  })
+  checks.push(
+    identity !== null
+      ? {
+          id: 'identity',
+          label: 'Researcher identity',
+          status: 'ok',
+          detail: `${identity.id}${identity.name !== null ? ` (${identity.name})` : ''} — from ${identity.source_detail}`,
+          fix: null,
+        }
+      : {
+          id: 'identity',
+          label: 'Researcher identity',
+          status: 'warn',
+          detail:
+            'not set (no $COMPOST_USER, user.email in compost config, or git user.email) — researcher writes will refuse',
+          fix: SET_IDENTITY_COMMAND,
+        },
+  )
+
+  // 10. Secret-file permissions. A group/world-readable token file is a real
   // leak, but with a one-line fix — surface it as a warn (the startup
   // autoloader independently *refuses* to read an insecure secrets.env). Only
   // emitted when there's something to flag; POSIX-only (Windows uses ACLs).

@@ -8,9 +8,14 @@ import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
  * User-level config at `~/.compost/config.toml`: machine-wide answers the
  * setup wizard collects once (model routing, provider tweaks) so every seed
  * scaffolded afterwards inherits them instead of the template's guesses.
- * Seeds stay the source of truth — this file is only an overlay applied at
+ * Seeds stay the source of truth — the model/provider overlay is applied at
  * `compost init` time, never read at run time, so a shared seed behaves the
  * same on every machine.
+ *
+ * The one exception is the `[user]` table (`user.email`, `user.name`): the
+ * researcher's git-style identity (ADR 0008), read at run time by
+ * `lib/identity.ts` because identity belongs to the person, not the seed.
+ * Written with `compost config set user.email … --global`.
  */
 export interface UserConfig {
   defaults?: Record<string, string>
@@ -20,6 +25,29 @@ export interface UserConfig {
 export function userConfigPath(env: NodeJS.ProcessEnv = process.env): string {
   const home = env.COMPOST_HOME ?? join(homedir(), '.compost')
   return join(home, 'config.toml')
+}
+
+/** The whole user config as raw TOML, or `{}` when absent or unparseable (a
+ * hand-edited broken file must not take a write path down with it). */
+export function loadUserConfigRaw(env: NodeJS.ProcessEnv = process.env): Record<string, unknown> {
+  const path = userConfigPath(env)
+  if (!existsSync(path)) return {}
+  try {
+    return parseToml(readFileSync(path, 'utf8')) as Record<string, unknown>
+  } catch {
+    return {}
+  }
+}
+
+/** Write the raw TOML object to the user config and return its path. */
+export function saveUserConfigRaw(
+  raw: Record<string, unknown>,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const path = userConfigPath(env)
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, `${stringifyToml(raw)}\n`, 'utf8')
+  return path
 }
 
 export function loadUserConfig(env: NodeJS.ProcessEnv = process.env): UserConfig | null {
@@ -49,7 +77,11 @@ export function saveUserConfig(update: UserConfig, env: NodeJS.ProcessEnv = proc
     defaults: { ...existing.defaults, ...update.defaults },
     providers: { ...existing.providers, ...update.providers },
   }
-  const doc: Record<string, unknown> = {}
+  // Keep every other table (e.g. `[user]`, the identity) — the wizard only
+  // owns `defaults` and `providers`.
+  const doc: Record<string, unknown> = { ...loadUserConfigRaw(env) }
+  delete doc.defaults
+  delete doc.providers
   if (merged.defaults && Object.keys(merged.defaults).length > 0) doc.defaults = merged.defaults
   if (merged.providers && Object.keys(merged.providers).length > 0) doc.providers = merged.providers
   mkdirSync(dirname(path), { recursive: true })

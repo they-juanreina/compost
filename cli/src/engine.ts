@@ -44,7 +44,6 @@ export {
   createMemo,
   createTheme,
   DEFAULT_CODEBOOK_ID,
-  defaultResearcherId,
   type EditMemoInput,
   editMemo,
   endorseArtifact,
@@ -85,6 +84,13 @@ export {
   emitUpdate,
   openSeedEvents,
 } from './lib/events.js'
+// ---- identity: git-style researcher identity (ADR 0008)
+export {
+  type IdentitySource,
+  type ResearcherIdentity,
+  resolveIdentity,
+  resolveResearcherId,
+} from './lib/identity.js'
 // ---- prompt journal: AGENTS.md read/parse/save (#122)
 export {
   agentsPath,
@@ -94,6 +100,21 @@ export {
   readJournal,
   saveJournal,
 } from './lib/journal.js'
+// ---- list: state-aware artifact query (ADR 0007 P2)
+export {
+  ARTIFACT_STATES,
+  type ArtifactState,
+  artifactState,
+  countByState,
+  LISTABLE_KINDS,
+  type ListableKind,
+  type ListedArtifact,
+  type ListOptions,
+  type ListResult,
+  listByKind,
+  STATE_FILTERS,
+  type StateFilter,
+} from './lib/list.js'
 // ---- memos: analytic-memo artifact (ADR 0004)
 export {
   DEFAULT_MEMO_TYPE,

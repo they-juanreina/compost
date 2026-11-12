@@ -1,7 +1,8 @@
 import type { Command } from 'commander'
 
 import { CompostError, isCompostError } from '../errors.js'
-import { citeMemo, createMemo, defaultResearcherId, editMemo } from '../lib/artifacts.js'
+import { citeMemo, createMemo, editMemo } from '../lib/artifacts.js'
+import { resolveResearcherId } from '../lib/identity.js'
 import {
   displayTitle,
   getMemo,
@@ -138,7 +139,7 @@ export function registerMemo(program: Command): void {
         ...(flags.type !== undefined ? { type: flags.type as MemoType } : {}),
         anchors: parseAnchors(flags.anchor),
         ...(codebookId !== undefined ? { codebookId } : {}),
-        author: resolveAuthor(flags),
+        author: resolveAuthor(flags, seedPath),
         ...(inputs !== undefined ? { inputs } : {}),
       })
       emit(
@@ -240,7 +241,7 @@ export function registerMemo(program: Command): void {
           ...(flags.content !== undefined ? { content: flags.content } : {}),
           ...(flags.title !== undefined ? { title: flags.title } : {}),
           ...(flags.type !== undefined ? { type: flags.type as MemoType } : {}),
-          author: { actorType: 'researcher', actorId: defaultResearcherId() },
+          author: { actorType: 'researcher', actorId: resolveResearcherId({ seedPath }) },
         })
         emit({ status: 'ok', command: 'memo edit', ...result }, out)
       } catch (err) {
@@ -270,7 +271,7 @@ export function registerMemo(program: Command): void {
         }
         const result = citeMemo(seedPath, ref, add, {
           actorType: 'researcher',
-          actorId: defaultResearcherId(),
+          actorId: resolveResearcherId({ seedPath }),
         })
         emit({ status: 'ok', command: 'memo cite', ...result }, out)
       } catch (err) {
@@ -291,7 +292,10 @@ export function registerMemo(program: Command): void {
       const out = getOutputOpts(cmd)
       try {
         const seedPath = resolveSeedPath(process.cwd(), flags.seed)
-        const author = { actorType: 'researcher' as const, actorId: defaultResearcherId() }
+        const author = {
+          actorType: 'researcher' as const,
+          actorId: resolveResearcherId({ seedPath }),
+        }
         if (flags.all === true) {
           const targets = listMemos(seedPath).filter(
             (m) => m.title.trim().length === 0 && m.suggested_title === undefined,

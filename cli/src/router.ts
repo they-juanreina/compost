@@ -17,12 +17,13 @@ import { registerIngest } from './commands/ingest.js'
 import { registerInit } from './commands/init.js'
 import { registerJobs } from './commands/jobs.js'
 import { registerLabel } from './commands/label.js'
+import { registerList } from './commands/list.js'
 import { registerMemo } from './commands/memo.js'
 import { registerMigrate } from './commands/migrate.js'
 import { registerModels } from './commands/models.js'
-import { registerQuery } from './commands/query.js'
 import { registerRecode } from './commands/recode.js'
 import { registerReindex } from './commands/reindex.js'
+import { registerReject } from './commands/reject.js'
 import { registerRerun } from './commands/rerun.js'
 import { registerRescan } from './commands/rescan.js'
 import { registerSaturate } from './commands/saturate.js'
@@ -33,7 +34,6 @@ import { registerSession } from './commands/session.js'
 import { registerSetup } from './commands/setup.js'
 import { registerSnap } from './commands/snap.js'
 import { registerStatus } from './commands/status.js'
-import { registerSynthesize } from './commands/synthesize.js'
 import { registerTag } from './commands/tag.js'
 import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
@@ -78,6 +78,7 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerJobs(program)
   registerSnap(program)
   registerStatus(program)
+  registerList(program)
   registerBlame(program)
   registerMigrate(program)
   registerExport(program)
@@ -94,14 +95,13 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerRecode(program)
   registerAgreement(program)
   registerRerun(program)
-  registerSynthesize(program)
   registerSearch(program)
   registerSecrets(program)
   registerSession(program)
   registerCreate(program)
   registerEndorse(program)
+  registerReject(program)
   registerSetup(program)
-  registerQuery(program)
   registerChat(program)
   registerServe(program)
   registerModels(program)

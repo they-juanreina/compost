@@ -34,7 +34,7 @@ export function isIngestPathAllowed(rawPath, env = process.env, cwd = process.cw
     });
 }
 /** Plugin version stamped into AI-authored artifacts' actor_id. */
-export const PLUGIN_VERSION = '0.1.2';
+export const PLUGIN_VERSION = '0.2.2';
 const str = (desc) => ({ type: 'string', description: desc });
 /** A session-id arg constrained at the schema boundary to a bare label, so a
  * host agent can't pass a path-traversal value (mirrors assertSessionId in the
@@ -69,10 +69,42 @@ function aiModel(args) {
 export const TOOLS = [
     {
         name: 'compost_status',
-        description: 'Kind-grouped counts for a seed (sessions, highlights, codes, themes, frames).',
+        description: 'Kind-grouped counts for a seed (sessions, highlights, codes, themes, frames), plus a per-kind draft / endorsed / archived split of the ledger (`by_state`).',
         readOnly: true,
         inputSchema: { type: 'object', properties: { seed: str('Seed name (optional)') } },
         toArgv: (a) => ['status', ...(a.seed ? ['--seed', String(a.seed)] : [])],
+    },
+    {
+        name: 'compost_list',
+        description: 'List highlights, codes, or themes with their trust state — draft (AI/agent suggestion awaiting a researcher’s endorse), endorsed, or archived (rejected). Read-only. Use it to answer "what is awaiting endorsement?" (state=draft) before asking the researcher to endorse or reject. evidence=true expands each code to its highlight quotes and each theme to its evidence set with quotes. Memos, codebooks and categories have their own list tools/verbs.',
+        readOnly: true,
+        inputSchema: {
+            type: 'object',
+            required: ['kind'],
+            properties: {
+                kind: {
+                    type: 'string',
+                    enum: ['highlight', 'code', 'theme'],
+                    description: 'Artifact kind',
+                },
+                state: {
+                    type: 'string',
+                    enum: ['draft', 'endorsed', 'archived', 'all'],
+                    description: 'Trust state filter (default: draft + endorsed, i.e. not archived)',
+                },
+                codebook: str('Only codes / themes in this frame (name or CB- id)'),
+                evidence: { type: 'boolean', description: 'Expand evidence down to quotes (code / theme)' },
+                seed: str('Seed'),
+            },
+        },
+        toArgv: (a) => [
+            'list',
+            String(a.kind),
+            ...(a.state ? ['--state', String(a.state)] : []),
+            ...(a.codebook ? ['--codebook', String(a.codebook)] : []),
+            ...(a.evidence === true ? ['--evidence'] : []),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
     },
     {
         name: 'compost_blame',
@@ -340,7 +372,8 @@ export const TOOLS = [
         readOnly: false,
         // Not aiAuthored: the endorse event's actor is the researcher (the human
         // who approves the mutation), not Claude Code. The endorsing IDENTITY is
-        // bound server-side to $COMPOST_USER (the CLI default) — deliberately NOT a
+        // bound server-side to the CLI's resolved researcher identity
+        // (lib/identity.ts: $COMPOST_USER → config user.email → git) — deliberately NOT a
         // tool arg, so an agent can't endorse under an arbitrary/author identity and
         // the CLI's self-endorse refusal can't be sidestepped (#236).
         inputSchema: {
@@ -352,6 +385,30 @@ export const TOOLS = [
             },
         },
         toArgv: (a) => ['endorse', String(a.artifact), ...(a.seed ? ['--seed', String(a.seed)] : [])],
+    },
+    {
+        name: 'compost_reject',
+        description: "Reject an artifact — archives it (never deletes; history and current state are kept for audit) and records a reject event. This is the RESEARCHER's act: the host shows a confirmation, and approving it IS the rejection. Do not call autonomously — not to discard your own drafts, nor anyone else's.",
+        readOnly: false,
+        // Not aiAuthored: the reject event's actor is the researcher, exactly as for
+        // compost_endorse. The identity is bound server-side (the CLI's resolved
+        // researcher identity) — deliberately NOT a tool arg, so an agent can't
+        // reject under an arbitrary identity.
+        inputSchema: {
+            type: 'object',
+            required: ['artifact'],
+            properties: {
+                artifact: str('Id from create (C-slug / H-NNN / T-slug), SHA256 prefix, or latest:<kind>=<seed>'),
+                note: str('Why it was rejected (kept on the reject event)'),
+                seed: str('Seed'),
+            },
+        },
+        toArgv: (a) => [
+            'reject',
+            String(a.artifact),
+            ...(a.note ? ['--note', String(a.note)] : []),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
     },
     {
         name: 'compost_rerun',
@@ -422,7 +479,7 @@ export const TOOLS = [
         readOnly: false,
         // Not aiAuthored: `compost codebook new` authors as the researcher (a lens is
         // structural setup, not an interpretive suggestion) and the CLI verb has no
-        // --ai path. Identity is the CLI default ($COMPOST_USER), as for endorse.
+        // --ai path. Identity is the CLI's resolved researcher identity, as for endorse.
         inputSchema: {
             type: 'object',
             required: ['name', 'stance'],

@@ -45,7 +45,7 @@ describe('createCodebook / ensurePrimaryCodebook', () => {
 
   it('ensurePrimaryCodebook materializes a researcher-authored, endorsed primary', () => {
     const { path } = initSeed('demo', { cwd: work })
-    const primary = ensurePrimaryCodebook(path)
+    const primary = ensurePrimaryCodebook(path, RESEARCHER.actorId)
     assert.equal(primary.created, true)
     assert.equal(primary.id, DEFAULT_CODEBOOK_ID)
     assert.ok(existsSync(join(path, 'codebooks', 'primary.md')))
@@ -101,9 +101,9 @@ describe('createCodebook / ensurePrimaryCodebook', () => {
 
   it('ensurePrimaryCodebook is idempotent on the file', () => {
     const { path } = initSeed('demo', { cwd: work })
-    const first = ensurePrimaryCodebook(path)
+    const first = ensurePrimaryCodebook(path, RESEARCHER.actorId)
     assert.equal(first.created, true)
-    const again = ensurePrimaryCodebook(path)
+    const again = ensurePrimaryCodebook(path, RESEARCHER.actorId)
     assert.equal(again.created, false)
     assert.equal(again.id, DEFAULT_CODEBOOK_ID)
     assert.equal(listCodebooks(path).length, 1)

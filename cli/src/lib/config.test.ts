@@ -3,7 +3,16 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, it } from 'node:test'
-import { getConfigValue, loadConfig, saveConfig, setConfigValue } from './config.js'
+import { CompostError } from '../errors.js'
+import {
+  DEFAULT_EMBED_BATCH_CAP,
+  getConfigValue,
+  loadConfig,
+  parseConfig,
+  providerEmbedBatchCap,
+  saveConfig,
+  setConfigValue,
+} from './config.js'
 import { initSeed } from './seed.js'
 
 describe('config get/set', () => {
@@ -93,3 +102,36 @@ describe('config get/set', () => {
 
 // Dispatch tests for .txt and .xlsx live in ingest.test.ts alongside the
 // existing `describe('classify', ...)` block.
+
+describe('providerEmbedBatchCap', () => {
+  it('defaults to DEFAULT_EMBED_BATCH_CAP (128) when unset', () => {
+    const cfg = parseConfig('[providers.ollama]\nbase_url = "http://localhost:11434"\n')
+    assert.equal(DEFAULT_EMBED_BATCH_CAP, 128)
+    assert.equal(providerEmbedBatchCap(cfg, 'ollama'), 128)
+    assert.equal(providerEmbedBatchCap(cfg, 'never-configured'), 128)
+  })
+
+  it('reads providers.<name>.embed_batch_cap per provider', () => {
+    const cfg = parseConfig(
+      '[providers.ollama]\nembed_batch_cap = 64\n\n[providers.openai]\nembed_batch_cap = 2048\n',
+    )
+    assert.equal(providerEmbedBatchCap(cfg, 'ollama'), 64)
+    assert.equal(providerEmbedBatchCap(cfg, 'openai'), 2048)
+    assert.equal(providerEmbedBatchCap(cfg, 'lmstudio'), DEFAULT_EMBED_BATCH_CAP)
+  })
+
+  it('rejects a set-but-invalid cap with an actionable CONFIG_ERROR', () => {
+    for (const literal of ['0', '-5', '2.5', '"128"', 'true']) {
+      const cfg = parseConfig(`[providers.ollama]\nembed_batch_cap = ${literal}\n`)
+      assert.throws(
+        () => providerEmbedBatchCap(cfg, 'ollama'),
+        (e: unknown) =>
+          e instanceof CompostError &&
+          e.code === 'CONFIG_ERROR' &&
+          /providers\.ollama\.embed_batch_cap/.test(e.message) &&
+          /--type=int/.test(e.message),
+        `embed_batch_cap = ${literal} should be rejected`,
+      )
+    }
+  })
+})
