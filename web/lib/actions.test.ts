@@ -200,8 +200,8 @@ describe('createArtifact theme — evidence vocabulary', () => {
 
   it('rejects cross_lens together with codebook, and malformed evidence', () => {
     seedCodes()
-    assert.equal(
-      apiCode(() =>
+    assert.throws(
+      () =>
         createArtifact('demo', 'theme', AI, {
           name: 'X',
           summary: 's',
@@ -209,8 +209,7 @@ describe('createArtifact theme — evidence vocabulary', () => {
           cross_lens: true,
           codebook: 'CB-x',
         }),
-      ),
-      'SCHEMA_ERROR',
+      (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
     )
     assert.equal(
       apiCode(() =>

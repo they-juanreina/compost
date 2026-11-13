@@ -140,18 +140,14 @@ export function createArtifact(
       const codes = optStringArray(body, 'codes')
       const codebook = optString(body, 'codebook')
       const crossLens = optBoolean(body, 'cross_lens')
-      if (crossLens === true && codebook !== undefined) {
-        throw new ApiError('SCHEMA_ERROR', '"cross_lens" and "codebook" are mutually exclusive.')
-      }
-      // undefined = infer frame; null = cross-lens; CB-id = scoped.
-      const codebookId = crossLens === true ? null : codebook
       created = createTheme(seedPath, {
         name: reqString(body, 'name'),
         summary: reqString(body, 'summary'),
         author,
         ...(evidenceRefs !== undefined ? { evidence: parseEvidence(evidenceRefs.join(',')) } : {}),
         ...(codes !== undefined ? { codes } : {}),
-        ...(codebookId !== undefined ? { codebookId } : {}),
+        ...(codebook !== undefined ? { codebookId: codebook } : {}),
+        ...(crossLens === true ? { crossLens: true } : {}),
       })
       break
     }
