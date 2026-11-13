@@ -2,16 +2,21 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { runTool, TOOLS } from './tools.js';
-export function createServer() {
-    const server = new Server({ name: 'compost', version: '0.0.0' }, { capabilities: { tools: {} } });
-    server.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: TOOLS.map((t) => ({
-            name: t.name,
-            description: `${t.description}${t.readOnly ? ' [read-only]' : ' [mutation]'}`,
-            inputSchema: t.inputSchema,
-        })),
+import { PLUGIN_VERSION, runTool, TOOLS } from './tools.js';
+/** The `tools/list` payload for a set of tool definitions (pure, so it is testable). */
+export function toolListing(tools) {
+    return tools.map((t) => ({
+        name: t.name,
+        description: `${t.description}${t.readOnly ? ' [read-only]' : ' [mutation]'}`,
+        inputSchema: t.inputSchema,
+        annotations: t.readOnly
+            ? { readOnlyHint: true }
+            : { readOnlyHint: false, destructiveHint: false },
     }));
+}
+export function createServer() {
+    const server = new Server({ name: 'compost', version: PLUGIN_VERSION }, { capabilities: { tools: {} } });
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolListing(TOOLS) }));
     server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
         const result = await runTool(name, (args ?? {}));

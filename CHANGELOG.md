@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- MCP server: `tools/list` now emits `annotations` (`readOnlyHint`, and
+  `destructiveHint: false` on mutations) so clients can tell read-only tools
+  from mutations; the server reports `PLUGIN_VERSION` instead of `0.0.0`; the
+  `serve` stub points at #133 (was closed #32). Refs #334.
+
 ## v0.2.2 — 2026-11-11
 
 Ships the **analytic memos** milestone, bring-your-own caption import, and
