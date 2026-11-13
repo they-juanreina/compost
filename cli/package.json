@@ -39,7 +39,7 @@
     "prepack": "node scripts/copy-transcriber.mjs",
     "pretest": "node scripts/generate-schemas.mjs",
     "dev": "tsx src/index.ts",
-    "test": "node --import tsx --test 'src/**/*.test.ts'"
+    "test": "node --import tsx --import ./scripts/test-isolation.mjs --test 'src/**/*.test.ts'"
   },
   "dependencies": {
     "@they-juanreina/compost-evals": "workspace:*",

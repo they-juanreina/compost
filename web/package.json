@@ -10,7 +10,7 @@
     "build:next": "next build",
     "dev": "next dev -p 7860",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test 'lib/**/*.test.ts'"
+    "test": "node --import tsx --import ../cli/scripts/test-isolation.mjs --test 'lib/**/*.test.ts'"
   },
   "dependencies": {
     "@they-juanreina/compost-cli": "workspace:*",

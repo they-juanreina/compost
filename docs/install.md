@@ -67,7 +67,8 @@ pnpm build
 This produces `cli/bin/compost.js`. Make it callable as `compost` either by
 linking it (`pnpm --filter compost-cli link --global`) or by adding `cli/bin`
 to your `PATH`. The plugin's MCP server finds the CLI via `compost` on PATH, or
-via a `COMPOST_CLI` env var pointing at `cli/dist/index.js` — see
+via a `COMPOST_CLI` env var pointing at `cli/bin/compost.js` (not
+`cli/dist/index.js`, which only exports the entry point and exits silently) — see
 [host-llm-routing.md](host-llm-routing.md).
 
 ## 3. Verify

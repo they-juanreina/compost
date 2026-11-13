@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline/promises'
 import { Writable } from 'node:stream'
 
@@ -8,6 +8,7 @@ import type { Command } from 'commander'
 
 import { isCompostError } from '../errors.js'
 import { provisionNativeVenv } from '../lib/provisionNative.js'
+import { resolveSeedsRoot } from '../lib/seedResolve.js'
 import { runSetup } from '../lib/setup.js'
 import { runSetupWizard, type WizardIO } from '../lib/setupWizard.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
@@ -58,11 +59,11 @@ function terminalIO(): { io: WizardIO; close: () => void } {
   return { io, close: () => rl.close() }
 }
 
-/** Seed dirs under <cwd>/Seeds that already have a config.toml. */
+/** Seed dirs under the Seeds root that already have a config.toml. */
 function existingSeeds(cwd: string): string[] {
-  const root = resolve(cwd, 'Seeds')
-  if (!existsSync(root)) return []
   try {
+    const { root } = resolveSeedsRoot({ cwd })
+    if (!existsSync(root)) return []
     return readdirSync(root)
       .filter((e) => !e.startsWith('.'))
       .map((e) => join(root, e))
