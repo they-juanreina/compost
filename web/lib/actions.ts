@@ -15,6 +15,7 @@ import {
   endorseArtifact,
   getArtifact,
   listArtifacts,
+  parseEvidence,
   rejectArtifact,
   resolveSeedPath,
   type SnapshotView,
@@ -57,6 +58,24 @@ function reqString(body: Record<string, unknown>, field: string): string {
   const v = body[field]
   if (typeof v !== 'string' || v.trim() === '') {
     throw new ApiError('SCHEMA_ERROR', `Field "${field}" must be a non-empty string`)
+  }
+  return v
+}
+
+function optString(body: Record<string, unknown>, field: string): string | undefined {
+  const v = body[field]
+  if (v === undefined) return undefined
+  if (typeof v !== 'string' || v.trim() === '') {
+    throw new ApiError('SCHEMA_ERROR', `Field "${field}" must be a non-empty string`)
+  }
+  return v
+}
+
+function optBoolean(body: Record<string, unknown>, field: string): boolean | undefined {
+  const v = body[field]
+  if (v === undefined) return undefined
+  if (typeof v !== 'boolean') {
+    throw new ApiError('SCHEMA_ERROR', `Field "${field}" must be a boolean`)
   }
   return v
 }
@@ -115,12 +134,24 @@ export function createArtifact(
       break
     }
     case 'theme': {
+      // `evidence` is the vocabulary ("kind:ref" strings, same syntax as the
+      // CLI's --evidence); `codes` is a deprecated alias the core still maps.
+      const evidenceRefs = optStringArray(body, 'evidence')
       const codes = optStringArray(body, 'codes')
+      const codebook = optString(body, 'codebook')
+      const crossLens = optBoolean(body, 'cross_lens')
+      if (crossLens === true && codebook !== undefined) {
+        throw new ApiError('SCHEMA_ERROR', '"cross_lens" and "codebook" are mutually exclusive.')
+      }
+      // undefined = infer frame; null = cross-lens; CB-id = scoped.
+      const codebookId = crossLens === true ? null : codebook
       created = createTheme(seedPath, {
         name: reqString(body, 'name'),
         summary: reqString(body, 'summary'),
         author,
+        ...(evidenceRefs !== undefined ? { evidence: parseEvidence(evidenceRefs.join(',')) } : {}),
         ...(codes !== undefined ? { codes } : {}),
+        ...(codebookId !== undefined ? { codebookId } : {}),
       })
       break
     }

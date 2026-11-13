@@ -22,7 +22,9 @@ untrusted until a researcher runs `compost endorse` (or archives them with
 `compost reject`). `theme_add` / `theme_remove` edit an existing theme's evidence
 as the AI actor, so the core only lets them touch a theme that is still a
 `[draft]`; on an endorsed theme they are refused and the change is the
-researcher's to make (`compost theme add|remove`).
+researcher's to make (`compost theme add|remove`). `create_theme` takes
+`evidence` (`kind:ref`, code or category), `codebook` and `cross_lens`, like the
+CLI; `codes` is a deprecated alias kept for one release.
 
 The manifest is `.claude-plugin/plugin.json`. Marketplace distribution is not set
 up yet: the committed `dist/` still needs this workspace's `node_modules` and a

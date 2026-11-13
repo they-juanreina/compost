@@ -316,6 +316,41 @@ describe('MCP tool definitions', () => {
     assert.equal(argv[mIdx + 1], 'claude-opus-4-8')
   })
 
+  it('compost_create_theme maps evidence / codebook / cross_lens to the CLI flags', () => {
+    const theme = tool('compost_create_theme')
+    const argv = buildArgv(theme, {
+      name: 't',
+      summary: 's',
+      evidence: 'code:C-a,category:CAT-b',
+      codebook: 'CB-x',
+    })
+    assert.equal(argv[argv.indexOf('--evidence') + 1], 'code:C-a,category:CAT-b')
+    assert.equal(argv[argv.indexOf('--codebook') + 1], 'CB-x')
+    assert.ok(!argv.includes('--cross-lens'))
+    const cross = buildArgv(theme, {
+      name: 't',
+      summary: 's',
+      evidence: 'C-a,C-b',
+      cross_lens: true,
+    })
+    assert.ok(cross.includes('--cross-lens'))
+    assert.ok(
+      !buildArgv(theme, { name: 't', summary: 's', cross_lens: false }).includes('--cross-lens'),
+    )
+  })
+
+  it('compost_create_theme keeps `codes` as a deprecated alias and passes both through', () => {
+    const theme = tool('compost_create_theme')
+    const props = (theme.inputSchema as { properties: Record<string, { description: string }> })
+      .properties
+    assert.match(props.codes?.description ?? '', /DEPRECATED.*evidence/)
+    const alias = buildArgv(theme, { name: 't', summary: 's', codes: 'C-a,C-b' })
+    assert.equal(alias[alias.indexOf('--codes') + 1], 'C-a,C-b')
+    assert.ok(!alias.includes('--evidence'))
+    const both = buildArgv(theme, { name: 't', summary: 's', codes: 'C-a', evidence: 'C-b' })
+    assert.ok(both.includes('--codes') && both.includes('--evidence')) // the CLI decides: evidence wins
+  })
+
   it('aiActorId is deterministic on args and stamped with plugin version', () => {
     const a = aiActorId({ name: 'x', definition: 'y' })
     const b = aiActorId({ name: 'x', definition: 'y' })
