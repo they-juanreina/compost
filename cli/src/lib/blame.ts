@@ -1,11 +1,17 @@
 import { existsSync, readdirSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 import Database from 'better-sqlite3'
 
 import { CompostError } from '../errors.js'
 import { HUMAN_REF_RE, tryResolveHumanRef } from './artifacts.js'
 import { INGEST_ARTIFACT_KIND, type TranscriptIngestPayload } from './ingestProvenance.js'
+import {
+  requireSeedsRoot,
+  resolveSeedsRoot,
+  type SeedsRootOptions,
+  seedPathUnder,
+} from './seedResolve.js'
 
 export interface BlameEvent {
   id: string
@@ -35,6 +41,8 @@ export interface BlameResult {
 export interface BlameOptions {
   cwd?: string
   seed?: string
+  /** Env for the Seeds-root resolution ($COMPOST_SEEDS_DIR, $COMPOST_HOME). */
+  env?: NodeJS.ProcessEnv
 }
 
 const ARTIFACT_PREFIX_RE = /^[a-f0-9]{8,64}$/i
@@ -58,9 +66,10 @@ interface EventRow {
 }
 
 export function blame(query: string, opts: BlameOptions = {}): BlameResult {
-  const cwd = opts.cwd ?? process.cwd()
-  const seedName = resolveSeedForBlame(query, opts.seed, cwd)
-  const eventsDb = resolve(cwd, 'Seeds', seedName, '.compost', 'events.sqlite')
+  const rootOpts: SeedsRootOptions = { cwd: opts.cwd ?? process.cwd(), env: opts.env }
+  const seedName = resolveSeedForBlame(query, opts.seed, rootOpts)
+  const { root } = requireSeedsRoot(rootOpts)
+  const eventsDb = join(seedPathUnder(root, seedName), '.compost', 'events.sqlite')
 
   if (!existsSync(eventsDb)) {
     throw new CompostError(
@@ -187,7 +196,11 @@ function resolveArtifactId(db: Database.Database, query: string, seed: string): 
  * `compost blame latest:ingest_job=Lineage` errored in a multi-seed workspace
  * even though the ref already named the seed.
  */
-function resolveSeedForBlame(query: string, seedFlag: string | undefined, cwd: string): string {
+function resolveSeedForBlame(
+  query: string,
+  seedFlag: string | undefined,
+  rootOpts: SeedsRootOptions,
+): string {
   const latestMatch = LATEST_REF_RE.exec(query)
   const seedFromRef = latestMatch !== null ? latestMatch[2] : undefined
 
@@ -201,7 +214,7 @@ function resolveSeedForBlame(query: string, seedFlag: string | undefined, cwd: s
     // even when only 'Seeds/Lineage' is on disk. readdir gives us the actual
     // directory entry names.
     if (seedFlag.toLowerCase() === seedFromRef.toLowerCase()) {
-      const root = resolve(cwd, 'Seeds')
+      const { root } = resolveSeedsRoot(rootOpts)
       const entries = existsSync(root) ? readdirSync(root) : []
       if (!entries.includes(seedFlag)) {
         throw new CompostError(
@@ -215,17 +228,11 @@ function resolveSeedForBlame(query: string, seedFlag: string | undefined, cwd: s
       `--seed "${seedFlag}" disagrees with ref-embedded seed "${seedFromRef}"`,
     )
   }
-  return seedFlag ?? seedFromRef ?? findSingletonSeed(cwd)
+  return seedFlag ?? seedFromRef ?? findSingletonSeed(rootOpts)
 }
 
-function findSingletonSeed(cwd: string): string {
-  const root = resolve(cwd, 'Seeds')
-  if (!existsSync(root)) {
-    throw new CompostError(
-      'NOT_IN_SEED',
-      `No Seeds/ at ${root}. Pass --seed <name> or run from a directory containing one.`,
-    )
-  }
+function findSingletonSeed(rootOpts: SeedsRootOptions): string {
+  const { root } = requireSeedsRoot(rootOpts)
   const entries = readdirSync(root).filter(
     (e) => !e.startsWith('.') && statSync(join(root, e)).isDirectory(),
   )

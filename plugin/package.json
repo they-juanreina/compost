@@ -17,7 +17,7 @@
   "scripts": {
     "build": "tsc -p .",
     "typecheck": "tsc -p . --noEmit",
-    "test": "node --import tsx --test 'mcp/**/*.test.ts'"
+    "test": "node --import tsx --import ../cli/scripts/test-isolation.mjs --test 'mcp/**/*.test.ts'"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"

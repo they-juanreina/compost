@@ -35,6 +35,18 @@
     reads the ledger — agree after an edit.
   - No web action yet: the board that wraps this verb is #127.
 
+- Explicit Seeds root: `$COMPOST_SEEDS_DIR`, then the global `seeds.dir` key
+  (`compost config set seeds.dir /abs/path/Seeds --global`), then `<cwd>/Seeds`.
+  This lets a process that doesn't start in your project find your seeds, for
+  example an MCP server launched by the Claude desktop app. One resolver in
+  `cli/src/lib/seedResolve.ts` now serves every command, including `init`,
+  `status`, `blame` and `setup`. Nothing changes when neither is set. A relative
+  value is refused with a fix. A missing root names the source that supplied
+  it, and the #211 containment check applies to the resolved root. The MCP
+  `compost_ingest` allowed roots are **not** widened. ADR 0007 gains the
+  desktop-app `mcpServers` snippet and a three-step checklist for the P3 spike.
+  Refs #334.
+
 ### Changed
 
 - `parseEvidence` (the `kind:ref` parser behind `create theme --evidence`) moved
@@ -42,6 +54,10 @@
   `theme add|remove` share one parser. No behavior change.
 
 ### Fixed
+
+- Docs: `COMPOST_CLI` must point at `cli/bin/compost.js`. The previously
+  documented `cli/dist/index.js` only exports the entry point and exits
+  silently.
 
 - MCP server: `tools/list` now emits `annotations` (`readOnlyHint`; no
   `destructiveHint`, so the spec default applies) so clients can tell read-only tools

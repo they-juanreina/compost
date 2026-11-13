@@ -3,6 +3,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { CompostError } from '../errors.js'
+import { requireSeedsRoot, resolveSeedsRoot, seedPathUnder } from './seedResolve.js'
 import { loadTemplate, render } from './templates.js'
 import { applyUserConfig, loadUserConfig } from './userConfig.js'
 
@@ -66,7 +67,14 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
   const cwd = opts.cwd ?? process.cwd()
   const force = opts.force === true
   const now = (opts.now ?? (() => new Date()))()
-  const seedPath = resolve(cwd, 'Seeds', name)
+  const env = opts.env ?? process.env
+  // The Seeds root ($COMPOST_SEEDS_DIR → global seeds.dir → <cwd>/Seeds). The
+  // ./Seeds default is created on demand as before; an explicit root must
+  // already exist — a typo'd env var or config key must not silently scaffold
+  // a stray tree somewhere else.
+  const seedsRoot = resolveSeedsRoot({ cwd, env })
+  if (seedsRoot.source !== 'cwd') requireSeedsRoot({ cwd, env })
+  const seedPath = seedPathUnder(seedsRoot.root, name)
   const createdAt = now.toISOString()
 
   if (existsSync(seedPath) && !force) {
@@ -92,10 +100,7 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
   // The setup wizard's machine-wide answers (model routing, provider tweaks)
   // overlay the template, so a new seed starts with routes that actually
   // resolve on this machine instead of the template's guesses.
-  const configToml = applyUserConfig(
-    render(loadTemplate('config.toml'), vars),
-    loadUserConfig(opts.env ?? process.env),
-  )
+  const configToml = applyUserConfig(render(loadTemplate('config.toml'), vars), loadUserConfig(env))
   const files: Array<{ path: string; content: string }> = [
     { path: 'seed.md', content: render(loadTemplate('seed.md'), vars) },
     { path: '.compost/AGENTS.md', content: render(loadTemplate('AGENTS.md'), vars) },
@@ -121,7 +126,7 @@ export function initSeed(name: string, opts: InitOptions = {}): InitResult {
   // empty codebooks/ directory, a sibling of codebook/.
 
   const warnings: string[] = []
-  if (basename(cwd) === 'Seeds') {
+  if (seedsRoot.source === 'cwd' && basename(cwd) === 'Seeds') {
     // Init always scaffolds <cwd>/Seeds/<name>; run from inside a folder named
     // Seeds that nests Seeds/Seeds/ — almost always a walkthrough mistake, and
     // hand-moving the seed afterwards strands its job queue (#241, #240).
