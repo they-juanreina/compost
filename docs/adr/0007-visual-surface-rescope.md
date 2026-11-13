@@ -293,8 +293,11 @@ into an existing `mcpServers` object rather than replacing the file:
   reported the `COMPOST_SEEDS_DIR` root.
 - The seed root does **not** widen `compost_ingest`. Its allowed roots are still
   the server's working directory plus `$COMPOST_INGEST_ROOTS`. Under an app
-  launch that working directory is not the project and may be `/`. Not
-  observed; check before relying on the ingest guard there.
+  launch that working directory is not the project and may be `/`. If it is
+  `/`, the guard allows every path. Not observed yet. **Do not call
+  `compost_ingest` from an app-launched server until the reported working
+  directory is confirmed.** The review artifact needs only read and
+  endorse/reject tools.
 
 Checklist:
 
@@ -304,4 +307,5 @@ Checklist:
    `compost` shows as connected in its connector or developer settings.
 3. Open the review artifact probe, press its button, and accept the consent
    prompt. Record the consent wording, the `root` the server reports, and
-   whether the app asks to confirm each call.
+   whether the app asks to confirm each call. Do not call `compost_ingest`
+   during the probe (see the ingest note above).
