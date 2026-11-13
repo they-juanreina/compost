@@ -248,3 +248,60 @@ On this machine `claude_desktop_config.json` has no `mcpServers`.
 
 If step 1 fails, the "Revisit when" clause applies: the review surface becomes
 a second local page in `serve`.
+
+#### Spike kit for step 1
+
+The explicit seed root it needs now exists: `$COMPOST_SEEDS_DIR` (then the
+global `seeds.dir` key, then `<cwd>/Seeds`). See
+[troubleshooting](../troubleshooting.md#compost-cant-find-my-seeds-mcp-server-desktop-app-another-directory).
+
+The entry for the `mcpServers` block of the desktop app's
+`claude_desktop_config.json` (on macOS,
+`~/Library/Application Support/Claude/claude_desktop_config.json`). Merge it
+into an existing `mcpServers` object rather than replacing the file:
+
+```json
+{
+  "mcpServers": {
+    "compost": {
+      "command": "/ABSOLUTE/PATH/TO/node",
+      "args": ["/ABSOLUTE/PATH/TO/compost/plugin/dist/mcp/server.js"],
+      "env": {
+        "COMPOST_SEEDS_DIR": "/ABSOLUTE/PATH/TO/your-project/Seeds",
+        "COMPOST_CLI": "/ABSOLUTE/PATH/TO/compost/cli/bin/compost.js",
+        "COMPOST_USER": "you@example.com"
+      }
+    }
+  }
+}
+```
+
+- `command` is an absolute `node` (output of `which node`), because an app
+  launched from the Dock does not get your shell's `PATH`. The plugin's own
+  entry (`.claude-plugin/plugin.json`) is the same server with
+  `${CLAUDE_PLUGIN_ROOT}`, which only Claude Code expands.
+- `COMPOST_CLI` points at `cli/bin/compost.js` for the same `PATH` reason. A
+  `.js` path runs under the server's own `node`. `cli/dist/index.js` does not
+  work: it only exports the entry point.
+- `COMPOST_USER` is optional. It is the researcher identity for
+  `compost_endorse` / `compost_reject`. Without it, compost falls back to
+  `user.email` in the compost config, then git.
+- The server name must stay `compost`, since the probe declares
+  `host:compost`.
+- Checked with a local stdio run, not in the app: the server started from cwd
+  `/` with only these variables and a bare `PATH`, and `compost_status`
+  reported the `COMPOST_SEEDS_DIR` root.
+- The seed root does **not** widen `compost_ingest`. Its allowed roots are still
+  the server's working directory plus `$COMPOST_INGEST_ROOTS`. Under an app
+  launch that working directory is not the project and may be `/`. Not
+  observed; check before relying on the ingest guard there.
+
+Checklist:
+
+1. Add the `compost` entry above to `claude_desktop_config.json` with real
+   paths. Back up the file first.
+2. Quit the Claude desktop app completely and reopen it, then confirm
+   `compost` shows as connected in its connector or developer settings.
+3. Open the review artifact probe, press its button, and accept the consent
+   prompt. Record the consent wording, the `root` the server reports, and
+   whether the app asks to confirm each call.

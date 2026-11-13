@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 
 import { CompostError } from '../errors.js'
 import { isCanonicalSession } from './canonicalSessions.js'
@@ -7,6 +7,7 @@ import { codeMarkdownPaths } from './codeRefs.js'
 import { type DuplicateIngest, findDuplicateIngests } from './ingestProvenance.js'
 import { countByState, type StateCounts } from './list.js'
 import { JobQueue, stateDbPath } from './queue.js'
+import { requireSeedsRoot } from './seedResolve.js'
 
 export interface SessionCounts {
   total: number
@@ -64,19 +65,14 @@ export interface StatusOptions {
   cwd?: string
   seed?: string
   now?: () => Date
+  /** Env for the Seeds-root resolution ($COMPOST_SEEDS_DIR, $COMPOST_HOME). */
+  env?: NodeJS.ProcessEnv
 }
 
 export function gatherStatus(opts: StatusOptions = {}): StatusSnapshot {
   const cwd = opts.cwd ?? process.cwd()
   const now = (opts.now ?? (() => new Date()))()
-  const root = resolve(cwd, 'Seeds')
-
-  if (!existsSync(root)) {
-    throw new CompostError(
-      'NOT_IN_SEED',
-      `No Seeds/ directory at ${root}. Run \`compost init <name>\` first.`,
-    )
-  }
+  const { root } = requireSeedsRoot({ cwd, env: opts.env })
 
   const seedNames = readdirSync(root).filter((entry) => {
     if (entry.startsWith('.')) return false

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
 import { fetchWithTimeout, resolveFetch } from '../llm/http.js'
 import type { FetchLike } from '../llm/types.js'
@@ -8,7 +8,7 @@ import { scrubbedEnv } from './childEnv.js'
 import { type IdentityOptions, resolveIdentity, SET_IDENTITY_COMMAND } from './identity.js'
 import { diagnoseNativeRuntime, isAppleSilicon, resolveNativeRuntime } from './nativeRuntime.js'
 import { auditSecretsPerms, HF_ALIASES, type KeychainBackend, resolveSecret } from './secrets.js'
-import { resolveSeedPath } from './seedResolve.js'
+import { resolveSeedPath, resolveSeedsRoot } from './seedResolve.js'
 import { checkVersionStatus, UPGRADE_COMMAND } from './version.js'
 
 const execFileAsync = promisify(execFile)
@@ -351,22 +351,49 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
     }
   }
 
-  // 7. Seeds/ directory present.
-  const seedsDir = resolve(cwd, 'Seeds')
-  checks.push(
-    existsSync(seedsDir)
-      ? { id: 'seeds', label: 'Seeds/ directory', status: 'ok', detail: seedsDir, fix: null }
-      : {
-          id: 'seeds',
-          label: 'Seeds/ directory',
-          status: 'warn',
-          detail: `No Seeds/ under ${cwd}`,
-          fix: 'compost init <name>  (or run from a directory that has a Seeds/ tree)',
-        },
-  )
+  // 7. Seeds/ directory present ($COMPOST_SEEDS_DIR → global seeds.dir →
+  // <cwd>/Seeds, the same resolver every command uses).
+  const userEnv = deps.home !== undefined ? { ...env, COMPOST_HOME: deps.home } : env
+  let seedsDir: string | null = null
+  try {
+    const sr = resolveSeedsRoot({ cwd, env: userEnv })
+    seedsDir = sr.root
+    const from = sr.source === 'cwd' ? '' : ` (from ${sr.source_detail})`
+    checks.push(
+      existsSync(sr.root)
+        ? {
+            id: 'seeds',
+            label: 'Seeds/ directory',
+            status: 'ok',
+            detail: `${sr.root}${from}`,
+            fix: null,
+          }
+        : {
+            id: 'seeds',
+            label: 'Seeds/ directory',
+            status: 'warn',
+            detail:
+              sr.source === 'cwd' ? `No Seeds/ under ${cwd}` : `No directory at ${sr.root}${from}`,
+            fix:
+              sr.source === 'cwd'
+                ? 'compost init <name>  (or run from a directory that has a Seeds/ tree, or set COMPOST_SEEDS_DIR)'
+                : `Create ${sr.root}, or point ${sr.source_detail} at an existing Seeds directory`,
+          },
+    )
+  } catch (err) {
+    // A relative or malformed COMPOST_SEEDS_DIR / seeds.dir: every seed command
+    // will refuse, so this is a fail, with the resolver's own fix text.
+    checks.push({
+      id: 'seeds',
+      label: 'Seeds/ directory',
+      status: 'fail',
+      detail: err instanceof Error ? err.message : String(err),
+      fix: 'Set COMPOST_SEEDS_DIR / seeds.dir to an absolute path, or unset it to use ./Seeds',
+    })
+  }
 
   // 8. config.toml parses for at least one seed (best-effort; skipped if no Seeds).
-  if (existsSync(seedsDir)) {
+  if (seedsDir !== null && existsSync(seedsDir)) {
     const anyConfig = firstSeedConfig(seedsDir)
     checks.push(
       anyConfig
@@ -386,7 +413,7 @@ export async function runSetup(deps: SetupDeps = {}): Promise<SetupReport> {
   // work; only researcher writes (create, endorse, reject, memo, …) refuse.
   let seedPath: string | undefined
   try {
-    seedPath = resolveSeedPath(cwd)
+    seedPath = resolveSeedPath(cwd, undefined, userEnv)
   } catch {
     seedPath = undefined // no seed / several seeds: check env, global, git only
   }

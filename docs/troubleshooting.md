@@ -66,8 +66,36 @@ The model *page* loading is not proof — the gated *file* is what's checked.
 The plugin can't find the compost CLI (it doesn't bundle it).
 
 - Make `compost` callable on PATH, **or**
-- Set `COMPOST_CLI=/abs/path/to/compost/cli/dist/index.js`.
+- Set `COMPOST_CLI=/abs/path/to/compost/cli/bin/compost.js`. (Not
+  `cli/dist/index.js`: that module only exports the entry point, so the tools
+  get empty output.)
 - See [install.md](install.md) step 2.
+
+## compost can't find my seeds (MCP server, desktop app, another directory)
+
+By default compost looks for seeds in `./Seeds` under the directory it runs
+from. A process you don't start from your project — notably an MCP server the
+Claude desktop app launches, which has no working-directory setting — needs the
+Seeds directory named explicitly. Precedence, first match wins:
+
+| Source | Set it with |
+|---|---|
+| `$COMPOST_SEEDS_DIR` | `export COMPOST_SEEDS_DIR=/abs/path/to/project/Seeds`, or the `env` block of an MCP server entry |
+| global `seeds.dir` | `compost config set seeds.dir /abs/path/to/project/Seeds --global` (writes `~/.compost/config.toml`) |
+| `<cwd>/Seeds` | the default; nothing to set |
+
+- The value is the **Seeds directory itself**, not the project folder above it,
+  and it must be absolute (`~` is not expanded). A relative value is refused
+  with `CONFIG_ERROR`.
+- If the directory doesn't exist, the error names which source supplied it.
+  `compost setup --check` shows the resolved root and its source on the
+  `seeds` line.
+- A global `seeds.dir` applies everywhere, including when you `cd` into another
+  project that has its own `Seeds/`. Prefer the env var for one-off or
+  per-launcher use.
+- **This does not widen what the MCP `compost_ingest` tool may read.** Its
+  allowed roots are still the server's working directory plus
+  `$COMPOST_INGEST_ROOTS`; the Seeds root is not added to them.
 
 ## `compost blame <ref>` says "Multiple seeds … Pass --seed"
 
