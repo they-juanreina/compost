@@ -82,11 +82,30 @@ export interface ResolvedCode {
  * candidates when a bare ref is ambiguous across frames.
  */
 export function resolveCodeRef(seedPath: string, ref: string): ResolvedCode {
+  const found = lookupCodeRef(seedPath, ref)
+  if (found.status === 'resolved') return found.code
+  throw found.error
+}
+
+/**
+ * `resolveCodeRef` with its three outcomes kept apart, for a caller that treats
+ * "no such code" and "more than one such code" differently — e.g. `theme
+ * remove`, which lets a ref to a since-rejected code through but must not guess
+ * between two frames. `error` is exactly what `resolveCodeRef` would throw.
+ */
+export type CodeRefLookup =
+  | { status: 'resolved'; code: ResolvedCode }
+  | { status: 'unknown'; error: CompostError }
+  | { status: 'ambiguous'; error: CompostError }
+
+export function lookupCodeRef(seedPath: string, ref: string): CodeRefLookup {
   const rows = listCodeRows(seedPath)
 
   // 1. Exact stored-id match wins outright (covers both qualified and legacy).
   const exact = rows.find((r) => r.id === ref)
-  if (exact !== undefined) return { id: exact.id, codebookId: exact.codebookId }
+  if (exact !== undefined) {
+    return { status: 'resolved', code: { id: exact.id, codebookId: exact.codebookId } }
+  }
 
   const want = parseCodeId(ref)
   const candidates = rows.filter((r) => {
@@ -105,20 +124,26 @@ export function resolveCodeRef(seedPath: string, ref: string): ResolvedCode {
 
   if (candidates.length === 1) {
     const c = candidates[0] as CodeRow
-    return { id: c.id, codebookId: c.codebookId }
+    return { status: 'resolved', code: { id: c.id, codebookId: c.codebookId } }
   }
   if (candidates.length === 0) {
     const known = rows.map((r) => r.id)
-    throw new CompostError(
-      'INVALID_INPUT',
-      `No code "${ref}" in this seed.${known.length > 0 ? ` Known codes: ${known.join(', ')}.` : ''}`,
-    )
+    return {
+      status: 'unknown',
+      error: new CompostError(
+        'INVALID_INPUT',
+        `No code "${ref}" in this seed.${known.length > 0 ? ` Known codes: ${known.join(', ')}.` : ''}`,
+      ),
+    }
   }
   // Ambiguous bare ref across frames — make the caller qualify it.
-  throw new CompostError(
-    'INVALID_INPUT',
-    `Code "${ref}" is ambiguous across codebooks: ${candidates.map((c) => c.id).join(', ')}. Qualify it as C-<codebook>/<code>.`,
-  )
+  return {
+    status: 'ambiguous',
+    error: new CompostError(
+      'INVALID_INPUT',
+      `Code "${ref}" is ambiguous across codebooks: ${candidates.map((c) => c.id).join(', ')}. Qualify it as C-<codebook>/<code>.`,
+    ),
+  }
 }
 
 /**

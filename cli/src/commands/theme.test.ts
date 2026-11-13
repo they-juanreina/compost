@@ -311,5 +311,16 @@ describe('compost theme add|remove (#335)', () => {
     const quiet = renderThemeEvidenceEdit({ status: 'unchanged', command: 'theme remove', ...noop })
     assert.match(quiet, /nothing to change \(no event recorded\)/)
     assert.match(quiet, /not on theme: +category:CAT-agency/)
+    assert.doesNotMatch(quiet, /NOT restamped/)
+
+    // A skipped restamp is shown, not buried in a boolean.
+    const warned = renderThemeEvidenceEdit({
+      status: 'ok',
+      command: 'theme add',
+      ...changed,
+      file_rewritten: false,
+      warning: 'The ledger was updated, but the markdown at x.md was NOT restamped.',
+    })
+    assert.match(warned, /⚠ The ledger was updated, but the markdown at x\.md was NOT restamped\./)
   })
 })

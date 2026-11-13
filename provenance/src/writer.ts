@@ -125,6 +125,20 @@ export class EventWriter {
     return events
   }
 
+  /**
+   * Run `fn` inside one IMMEDIATE write transaction on this writer's connection.
+   * `BEGIN IMMEDIATE` takes the ledger's write lock before `fn` reads anything,
+   * so a check-then-append ("append only if this artifact's latest event is
+   * still X") cannot interleave with another writer: whatever `fn` reads through
+   * `db` is what its appends land on. Appends made through this writer inside
+   * `fn` join the transaction; if `fn` throws, they roll back and the error
+   * propagates. The lock is a second connection's reason to wait, so `fn` must
+   * be short and must not open another writer on the same ledger.
+   */
+  transactImmediate<T>(fn: (db: Database.Database) => T): T {
+    return this.db.transaction(() => fn(this.db)).immediate()
+  }
+
   /** Construct a SnapshotStore that shares this writer's SQLite connection. */
   snapshots(): SnapshotStore {
     return new SnapshotStore(this.db)

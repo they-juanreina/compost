@@ -32,7 +32,16 @@
   - The theme's markdown frontmatter (`evidence`, and the legacy `codes`
     dual-write) is restamped atomically with the event, so `compost saturate`
     — which reads the frontmatter — and `compost list theme --evidence` — which
-    reads the ledger — agree after an edit.
+    reads the ledger — agree after an edit. If a markdown file exists but its
+    frontmatter cannot be restamped, the result carries a `warning`.
+  - Safe under concurrent writers: the event lands only if the theme is
+    unchanged since the command read it. If an endorse, a reject or another
+    edit landed first, the command exits with the new `CONFLICT` code and
+    writes nothing — re-run it. (`updateArtifact` gains an optional
+    `expectedParent` for this; other callers are unchanged.)
+  - A bare code ref that has become ambiguous (the same code name now exists in
+    two codebooks) is refused on `remove` with the "qualify it" error, and a
+    stored bare ref still matches its qualified id.
   - No web action yet: the board that wraps this verb is #127.
 
 - Explicit Seeds root: `$COMPOST_SEEDS_DIR`, then the global `seeds.dir` key

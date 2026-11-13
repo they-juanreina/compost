@@ -25,9 +25,11 @@ import {
   createTheme,
   endorseArtifact,
   rejectArtifact,
+  updateArtifact,
 } from './artifacts.js'
 import { blame } from './blame.js'
 import { linkCodeToCategory } from './categories.js'
+import { duplicateCodebook } from './codebooks.js'
 import { type Author, emitCreate, eventsDbPath, openSeedEvents } from './events.js'
 import { listByKind, type ThemeEvidenceDetail } from './list.js'
 import { getArtifact } from './reads.js'
@@ -1042,11 +1044,13 @@ describe('editThemeEvidence (#335)', () => {
       assert.deepEqual(refs(r.removed), ['code:C-primary/override'])
     })
 
-    // Known edge, recorded rather than special-cased: `create theme` with no
-    // evidence stores codebook_id null, which the ledger cannot tell apart from
-    // "cross-lens". Giving such a theme its first lens would be the verb
-    // choosing a frame — out of scope here (the verb never changes a lens).
-    it('a theme created with no evidence is held to the cross-lens rule (codebook_id null)', () => {
+    // Known edge, recorded rather than special-cased (it waits on the
+    // maintainer): `create theme` with no evidence stores codebook_id null,
+    // which the ledger cannot tell apart from "cross-lens". Giving such a theme
+    // its first lens would be the verb choosing a frame, so the rule applied is
+    // unchanged — but the refusal must say what happened, not tell a
+    // single-codebook researcher to go find a second lens.
+    it('a theme created with no evidence is refused a single-codebook add, honestly', () => {
       createCodebook(seed, { name: 'lens-b', stance: 'deductive', author: RESEARCHER })
       createCode(seed, {
         name: 'ritual',
@@ -1066,8 +1070,17 @@ describe('editThemeEvidence (#335)', () => {
         ),
       )
       assert.equal(err.code, 'INVALID_INPUT')
-      assert.match(err.message, /≥2 codebooks/)
-      assert.match(err.message, /compost create theme --codebook/)
+      // What happened: no lens was ever recorded, and the verb will not pick one.
+      assert.match(err.message, /has no lens: it was created without code or category evidence/)
+      assert.match(err.message, /never picks a lens/)
+      assert.match(err.message, /all in CB-primary/)
+      // The two workable paths: re-create it scoped, or go cross-lens in one call.
+      assert.match(err.message, /compost create theme .*--codebook CB-primary/)
+      assert.match(err.message, /compost reject/)
+      assert.match(err.message, /add evidence from ≥2 codebooks in one call/)
+      // It must not read as "this is a cross-lens theme, add a second codebook".
+      assert.doesNotMatch(err.message, /A cross-lens theme must cite/)
+      assert.doesNotMatch(err.message, /keep \(or add, in the same call\)/)
 
       const r = editThemeEvidence(
         seed,
@@ -1082,6 +1095,371 @@ describe('editThemeEvidence (#335)', () => {
       )
       assert.equal(r.changed, true)
       assert.equal(r.codebook_id, null)
+
+      // Once it has evidence it is an ordinary cross-lens theme, and says so.
+      const later = catchErr(() =>
+        editThemeEvidence(
+          seed,
+          bare.id,
+          { remove: [{ kind: 'code', ref: 'C-ritual' }] },
+          RESEARCHER,
+        ),
+      )
+      assert.match(later.message, /A cross-lens theme must cite evidence from ≥2 codebooks/)
+    })
+  })
+
+  describe('review fixes: concurrency (optimistic, on the snapshot that was read)', () => {
+    const themesDir = () => join(seed, 'synthesis', 'themes')
+    const strayFiles = (): string[] => readdirSync(themesDir()).filter((f) => !f.endsWith('.md'))
+
+    it('an endorse landing between the gate and the write refuses the AI edit', () => {
+      const draft = createTheme(seed, {
+        name: 'ai-idea',
+        summary: 's',
+        evidence: [{ kind: 'code', ref: 'C-distrust' }],
+        author: AI,
+      })
+      const text = readFileSync(draft.path, 'utf8')
+      // The AI's edit passes the gate (the theme is a draft)… and then the
+      // researcher endorses before its event is written.
+      const err = catchErr(() =>
+        editThemeEvidence(seed, draft.id, { add: [{ kind: 'code', ref: 'C-override' }] }, AI, {
+          beforeWrite: () => endorseArtifact(seed, draft.id, 'juan@example.com'),
+        }),
+      )
+      assert.equal(err.code, 'CONFLICT')
+      assert.match(err.message, /changed while this edit was being prepared/)
+      assert.match(err.message, /Nothing was written/)
+      assert.match(err.message, new RegExp(`Re-run \`compost theme add\\|remove ${draft.id}`))
+
+      // No AI update rode in behind the endorsement: no event, no write.
+      assert.deepEqual(
+        themeEvents(seed, draft.artifact_id).map((e) => `${e.action}/${e.actor_type}`),
+        ['create/ai', 'endorse/researcher'],
+      )
+      assert.equal(readFileSync(draft.path, 'utf8'), text)
+      assert.deepEqual(strayFiles(), [], 'the staged temp file was removed')
+      assert.deepEqual(ledgerEvidence(draft.id), ['code:C-distrust'])
+
+      // Re-running, as the message says, now meets the gate.
+      const again = catchErr(() =>
+        editThemeEvidence(seed, draft.id, { add: [{ kind: 'code', ref: 'C-override' }] }, AI),
+      )
+      assert.equal(again.code, 'INVALID_INPUT')
+      assert.match(again.message, /is endorsed/)
+    })
+
+    it('a reject landing in between refuses the edit too', () => {
+      const err = catchErr(() =>
+        editThemeEvidence(
+          seed,
+          themeId,
+          { add: [{ kind: 'code', ref: 'C-override' }] },
+          RESEARCHER,
+          { beforeWrite: () => rejectArtifact(seed, themeId, 'reviewer@example.com') },
+        ),
+      )
+      assert.equal(err.code, 'CONFLICT')
+      assert.deepEqual(
+        themeEvents(seed, themeSha).map((e) => e.action),
+        ['create', 'reject'],
+      )
+    })
+
+    it('two edits from the same snapshot: the second is a CONFLICT, not a lost update', () => {
+      const err = catchErr(() =>
+        editThemeEvidence(
+          seed,
+          themeId,
+          { add: [{ kind: 'code', ref: 'C-override' }] },
+          RESEARCHER,
+          {
+            // Another researcher edit, read from the same state, lands first.
+            beforeWrite: () => {
+              editThemeEvidence(
+                seed,
+                themeId,
+                { add: [{ kind: 'code', ref: 'C-workaround' }] },
+                RESEARCHER,
+              )
+            },
+          },
+        ),
+      )
+      assert.equal(err.code, 'CONFLICT')
+      // Exactly the winner's event; ledger and markdown agree on its set.
+      assert.equal(themeEvents(seed, themeSha).length, 2)
+      assert.deepEqual(ledgerEvidence(), ['code:C-distrust', 'code:C-primary/workaround'])
+      assert.deepEqual(frontmatterOf(themePath).evidence, [
+        'code:C-distrust:CB-primary',
+        'code:C-primary/workaround:CB-primary',
+      ])
+      assert.deepEqual(strayFiles(), [])
+
+      // Re-running applies on top of the winner: nothing is lost.
+      const again = editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-override' }] },
+        RESEARCHER,
+      )
+      assert.deepEqual(refs(again.evidence), [
+        'code:C-distrust',
+        'code:C-primary/workaround',
+        'code:C-primary/override',
+      ])
+      const events = themeEvents(seed, themeSha)
+      const last = JSON.parse(events.at(-1)?.payload ?? '{}') as { before: unknown[] }
+      assert.equal(last.before.length, 2, 'its `before` is the winner’s set, not the stale one')
+    })
+
+    it('a later edit that commits before our rename is not overwritten on disk', () => {
+      // Ours commits; before our markdown is renamed, a second edit (which read
+      // our committed state) commits AND renames. Our rename must not put the
+      // older set back.
+      const r = editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-override' }] },
+        RESEARCHER,
+        {
+          afterEvent: () => {
+            editThemeEvidence(
+              seed,
+              themeId,
+              { add: [{ kind: 'code', ref: 'C-workaround' }] },
+              RESEARCHER,
+            )
+          },
+        },
+      )
+      assert.equal(r.changed, true)
+      const all = ['code:C-distrust', 'code:C-primary/override', 'code:C-primary/workaround']
+      assert.deepEqual(ledgerEvidence(), all)
+      assert.deepEqual(
+        refs(loadThemeEvidence({ evidence: frontmatterOf(themePath).evidence ?? [] })),
+        all,
+        'the markdown is the ledger’s current set',
+      )
+      assert.deepEqual(strayFiles(), [])
+    })
+
+    it('updateArtifact: expectedParent makes the write conditional; omitted, it is not', () => {
+      const snap = getArtifact(seed, 'theme', themeId)
+      assert.ok(snap !== null)
+      const stale = snap.last_event
+      const first = updateArtifact(
+        seed,
+        themeId,
+        { field: 'summary', before: 's', after: 'one' },
+        RESEARCHER,
+        { expectedParent: stale },
+      )
+      assert.equal(first.parent_event_id, stale)
+
+      const before = eventCount(seed)
+      const err = catchErr(() =>
+        updateArtifact(seed, themeId, { field: 'summary', after: 'two' }, RESEARCHER, {
+          expectedParent: stale,
+        }),
+      )
+      assert.equal(err.code, 'CONFLICT')
+      assert.match(err.message, /changed since it was read/)
+      assert.match(err.message, /re-run/)
+      assert.equal(eventCount(seed), before, 'nothing was written')
+      assert.equal(getArtifact(seed, 'theme', themeId)?.current_state.summary, 'one')
+
+      // Without expectedParent the call is unconditional, as it always was.
+      const third = updateArtifact(seed, themeId, { field: 'summary', after: 'three' }, RESEARCHER)
+      assert.equal(third.parent_event_id, first.update_event_id)
+    })
+  })
+
+  describe('review fixes: a bare ref that became ambiguous', () => {
+    // The theme stores the bare `C-distrust` (as `create theme` wrote it, with
+    // its frame CB-primary). Duplicating the codebook makes that bare ref
+    // ambiguous: C-primary/distrust and C-copy/distrust.
+    beforeEach(() => {
+      duplicateCodebook(seed, 'primary', 'copy', 'juan@example.com')
+      assert.equal(
+        getArtifact(seed, 'code', 'C-copy/distrust')?.current_state.id,
+        'C-copy/distrust',
+        'the duplicate holds the same slug',
+      )
+    })
+
+    it('adding the qualified id of a stored bare ref is already_present, not a duplicate', () => {
+      const before = eventCount(seed)
+      const r = editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-primary/distrust' }] },
+        RESEARCHER,
+      )
+      assert.equal(r.changed, false)
+      assert.deepEqual(refs(r.already_present), ['code:C-distrust'])
+      assert.deepEqual(ledgerEvidence(), ['code:C-distrust'])
+      assert.equal(eventCount(seed), before)
+    })
+
+    it('removing by the ambiguous bare ref is refused with the resolver’s error', () => {
+      editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-primary/override' }] },
+        RESEARCHER,
+      )
+      const before = eventCount(seed)
+      const err = catchErr(() =>
+        editThemeEvidence(
+          seed,
+          themeId,
+          { remove: [{ kind: 'code', ref: 'C-distrust' }] },
+          RESEARCHER,
+        ),
+      )
+      assert.equal(err.code, 'INVALID_INPUT')
+      assert.match(err.message, /Code "C-distrust" is ambiguous across codebooks/)
+      assert.match(err.message, /C-primary\/distrust/)
+      assert.match(err.message, /C-copy\/distrust/)
+      assert.match(err.message, /Qualify it as C-<codebook>\/<code>/)
+      assert.equal(eventCount(seed), before)
+
+      // Qualified, it removes the stored bare entry (its frame picks it out)…
+      const r = editThemeEvidence(
+        seed,
+        themeId,
+        { remove: [{ kind: 'code', ref: 'C-primary/distrust' }] },
+        RESEARCHER,
+      )
+      assert.deepEqual(refs(r.removed), ['code:C-distrust'])
+      // …and the other frame's same-named code was never on the theme.
+      const other = editThemeEvidence(
+        seed,
+        themeId,
+        { remove: [{ kind: 'code', ref: 'C-copy/distrust' }] },
+        RESEARCHER,
+      )
+      assert.equal(other.changed, false)
+      assert.deepEqual(refs(other.not_present), ['code:C-copy/distrust'])
+    })
+
+    it('an unknown ref on remove is still tolerated (not_present)', () => {
+      const r = editThemeEvidence(
+        seed,
+        themeId,
+        { remove: [{ kind: 'code', ref: 'C-never-existed' }] },
+        RESEARCHER,
+      )
+      assert.equal(r.changed, false)
+      assert.deepEqual(refs(r.not_present), ['code:C-never-existed'])
+    })
+  })
+
+  describe('review fixes: reporting and the empty set', () => {
+    it('warns when the markdown exists but could not be restamped (CRLF frontmatter)', () => {
+      const crlf = readFileSync(themePath, 'utf8').replace(/\n/g, '\r\n')
+      writeFileSync(themePath, crlf)
+      const r = editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-override' }] },
+        RESEARCHER,
+      )
+      assert.equal(r.changed, true, 'the ledger is still updated')
+      assert.equal(r.file_rewritten, false)
+      assert.ok(r.warning !== undefined)
+      assert.match(r.warning, /was NOT restamped/)
+      assert.match(r.warning, /control\.md/)
+      assert.match(
+        r.warning,
+        /evidence: \[code:C-distrust:CB-primary, code:C-primary\/override:CB-primary\]/,
+      )
+      assert.equal(readFileSync(themePath, 'utf8'), crlf, 'the file was left alone')
+      assert.deepEqual(readdirSync(join(seed, 'synthesis', 'themes')), ['control.md'])
+    })
+
+    it('does not warn when there is simply no markdown file, or on a normal restamp', () => {
+      const ok = editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-override' }] },
+        RESEARCHER,
+      )
+      assert.equal(ok.warning, undefined)
+      rmSync(themePath)
+      const gone = editThemeEvidence(
+        seed,
+        themeId,
+        { add: [{ kind: 'code', ref: 'C-workaround' }] },
+        RESEARCHER,
+      )
+      assert.equal(gone.file_rewritten, false)
+      assert.equal(gone.warning, undefined)
+    })
+
+    it('reports the inferred codebook for a legacy codes[] theme, changed or not', () => {
+      const initialState = {
+        id: 'T-legacy',
+        kind: 'theme',
+        name: 'legacy',
+        summary: 's',
+        codes: ['C-distrust'],
+      }
+      const events = openSeedEvents(seed)
+      try {
+        emitCreate(events, { artifactKind: 'theme', initialState, author: RESEARCHER })
+      } finally {
+        events.close()
+      }
+      const noop = editThemeEvidence(
+        seed,
+        'T-legacy',
+        { add: [{ kind: 'code', ref: 'C-distrust' }] },
+        RESEARCHER,
+      )
+      assert.equal(noop.changed, false)
+      assert.equal(noop.codebook_id, 'CB-primary')
+      const changed = editThemeEvidence(
+        seed,
+        'T-legacy',
+        { add: [{ kind: 'code', ref: 'C-override' }] },
+        RESEARCHER,
+      )
+      assert.equal(changed.changed, true)
+      assert.equal(changed.codebook_id, 'CB-primary')
+    })
+
+    it('a memo-only theme cannot be emptied either; one of two memos can go', () => {
+      const m1 = createMemo(seed, { content: 'one', author: RESEARCHER })
+      const m2 = createMemo(seed, { content: 'two', author: RESEARCHER })
+      const t = createTheme(seed, {
+        name: 'memos-only',
+        summary: 's',
+        evidence: [
+          { kind: 'memo', ref: m1.id },
+          { kind: 'memo', ref: m2.id },
+        ],
+        author: RESEARCHER,
+      })
+      const one = editThemeEvidence(
+        seed,
+        t.id,
+        { remove: [{ kind: 'memo', ref: m1.id }] },
+        RESEARCHER,
+      )
+      assert.deepEqual(refs(one.evidence), [`memo:${m2.id}`])
+
+      const before = eventCount(seed)
+      const err = catchErr(() =>
+        editThemeEvidence(seed, t.id, { remove: [{ kind: 'memo', ref: m2.id }] }, RESEARCHER),
+      )
+      assert.equal(err.code, 'INVALID_INPUT')
+      assert.match(err.message, /no evidence at all/)
+      assert.match(err.message, new RegExp(`compost reject ${t.id}`))
+      assert.match(err.message, new RegExp(`compost theme add ${t.id}`))
+      assert.equal(eventCount(seed), before)
     })
   })
 })

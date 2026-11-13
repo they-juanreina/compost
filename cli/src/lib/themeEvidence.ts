@@ -4,8 +4,14 @@ import { basename, dirname, join } from 'node:path'
 import { CompostError, isCompostError } from '../errors.js'
 import { formatYamlValue, updateArtifact } from './artifacts.js'
 import { resolveCategory } from './categories.js'
-import { resolveCodeRef, tryResolveCodeRef } from './codeRefs.js'
-import type { Author } from './events.js'
+import {
+  lookupCodeRef,
+  parseCodeId,
+  qualifiedCodeId,
+  resolveCodeRef,
+  tryResolveCodeRef,
+} from './codeRefs.js'
+import { type Author, openSeedEvents } from './events.js'
 import { type ArtifactState, artifactState } from './list.js'
 import { getArtifact } from './reads.js'
 import {
@@ -35,16 +41,23 @@ import {
  *   would keep `human_approved` true, so the researcher's endorsement would
  *   silently cover a set they never saw. (The general form of this gap — any
  *   AI `update` on an endorsed artifact — is #337; this guard is per-verb.)
+ * - **No stale decisions.** Everything above is decided from one snapshot, and
+ *   the event is appended only if that snapshot is still the theme's latest
+ *   state (`updateArtifact`'s `expectedParent`). An endorse, a reject or another
+ *   edit that lands in between makes the write a `CONFLICT`, not a lost update
+ *   or an AI change riding in behind an endorsement.
  * - **Frames.** The edited set goes through `resolveThemeEvidence` with the
  *   theme's own frame: a single-lens theme stays in its codebook, a cross-lens
  *   theme keeps ≥2 codebooks, and the verb never flips a theme's lens.
- * - **No empty set.** A removal may not strip the last code/category; retiring
- *   a theme is `compost reject`.
+ * - **No empty set.** A removal may not strip the last code/category, nor the
+ *   last evidence of any kind; retiring a theme is `compost reject`.
  * - **Idempotent.** Adding what is present / removing what is absent changes
  *   nothing: no event, no file write.
  * - **Markdown follows the ledger.** `saturate` reads theme frontmatter, so the
- *   `evidence` line (and the legacy `codes` dual-write) is restamped atomically
- *   with the event: temp file → event → rename, temp removed if the event fails.
+ *   `evidence` line (and the legacy `codes` dual-write) is restamped with the
+ *   event: temp file → event → rename, the temp removed if the event fails, and
+ *   the rename ordered by the ledger's write lock so two edits cannot leave the
+ *   older set on disk.
  */
 
 export interface ThemeEvidenceEdit {
@@ -77,7 +90,8 @@ export interface ThemeEvidenceEditResult {
   not_present: ThemeEvidenceEntry[]
   /** The theme's evidence set after the call. */
   evidence: ThemeEvidenceEntry[]
-  /** The theme's frame — a CB- id, or null for cross-lens. Never changed here. */
+  /** The theme's frame — a CB- id, or null for cross-lens. Never changed here.
+   * For a pre-#266 theme that never recorded one, the frame its evidence infers. */
   codebook_id: string | null
   /** Present only when `changed`. */
   update_event_id?: string
@@ -85,6 +99,21 @@ export interface ThemeEvidenceEditResult {
   /** Whether the theme's markdown frontmatter was restamped. False on a no-op,
    * and for a theme with no markdown file (the event still carries the truth). */
   file_rewritten: boolean
+  /** Set when the event landed but an existing markdown file could NOT be
+   * restamped (unreadable frontmatter): file readers still see the old set. */
+  warning?: string
+}
+
+/**
+ * Test seam. Each hook runs where another writer's event could interleave with
+ * this edit, so a test can play that writer deterministically. Not a feature:
+ * no surface passes it.
+ */
+export interface ThemeEvidenceEditHooks {
+  /** After the snapshot is read and every check has passed, before the event. */
+  beforeWrite?: () => void
+  /** After the event has committed, before the markdown is renamed into place. */
+  afterEvent?: () => void
 }
 
 function toEntry(e: ThemeEvidence): ThemeEvidenceEntry {
@@ -98,12 +127,29 @@ function toEntry(e: ThemeEvidence): ThemeEvidenceEntry {
 /**
  * Identity of an evidence entry for set comparison: its kind plus the canonical
  * id its ref resolves to, so a bare `C-distrust`, a name, and the qualified
- * `C-primary/distrust` are the same entry. A ref that no longer resolves (its
- * code/category was rejected) keys on the raw ref, so it can still be removed
- * by the ref it is stored under.
+ * `C-primary/distrust` are the same entry.
+ *
+ * Two ways a code ref can fail to resolve, handled differently:
+ * - **Unknown** (its code was rejected): key on the raw ref, so the entry can
+ *   still be removed by the ref it is stored under.
+ * - **Ambiguous** (a bare ref that ≥2 codebooks now hold — e.g. after `codebook
+ *   duplicate`): an entry `stored` on the theme carries the frame it was added
+ *   in, and that picks the candidate. A `requested` ref carries no frame, so
+ *   guessing is refused with the resolver's "qualify it" error.
  */
-function evidenceKey(seedPath: string, e: ThemeEvidence): string {
-  if (e.kind === 'code') return `code:${tryResolveCodeRef(seedPath, e.ref)?.id ?? e.ref}`
+function evidenceKey(seedPath: string, e: ThemeEvidence, role: 'stored' | 'requested'): string {
+  if (e.kind === 'code') {
+    const found = lookupCodeRef(seedPath, e.ref)
+    if (found.status === 'resolved') return `code:${found.code.id}`
+    if (found.status === 'ambiguous') {
+      if (e.codebookId !== undefined) {
+        const qualified = qualifiedCodeId(e.codebookId, parseCodeId(e.ref).codeSlug)
+        return `code:${tryResolveCodeRef(seedPath, qualified)?.id ?? qualified}`
+      }
+      if (role === 'requested') throw found.error
+    }
+    return `code:${e.ref}`
+  }
   if (e.kind === 'category') {
     try {
       return `category:${resolveCategory(seedPath, e.ref).id}`
@@ -122,6 +168,7 @@ export function editThemeEvidence(
   themeRef: string,
   edit: ThemeEvidenceEdit,
   author: Author,
+  hooks: ThemeEvidenceEditHooks = {},
 ): ThemeEvidenceEditResult {
   const snap = getArtifact(seedPath, 'theme', themeRef)
   if (snap === null) {
@@ -143,7 +190,9 @@ export function editThemeEvidence(
   // The endorsement gate (decision 2.2). `update` leaves human_approved as it
   // is, so an AI edit to an endorsed theme would ride on an endorsement given
   // to a different evidence set. Refused before anything else is looked at —
-  // even a would-be no-op — so the answer never depends on the arguments.
+  // even a would-be no-op — so the answer never depends on the arguments. The
+  // write below is conditional on this same snapshot, so the answer cannot go
+  // stale between here and the event either.
   if (author.actorType === 'ai' && trust === 'endorsed') {
     throw new CompostError(
       'INVALID_INPUT',
@@ -161,7 +210,7 @@ export function editThemeEvidence(
   }
 
   const current = themeEvidenceFromState(state)
-  const currentKeys = current.map((e) => evidenceKey(seedPath, e))
+  const currentKeys = current.map((e) => evidenceKey(seedPath, e, 'stored'))
 
   // ---- add: code | category only, resolved to the canonical id + frame.
   const added: ThemeEvidence[] = []
@@ -204,11 +253,13 @@ export function editThemeEvidence(
     added.push(entry)
   }
 
-  // ---- remove: any kind; tolerant of refs that no longer resolve.
+  // ---- remove: any kind. Tolerant of a ref that no longer resolves (unknown);
+  // an ambiguous one is refused inside evidenceKey rather than reported absent.
   const removeKeys = new Set<string>()
   const notPresent: ThemeEvidence[] = []
+  const notPresentKeys = new Set<string>()
   for (const req of removes) {
-    const key = evidenceKey(seedPath, req)
+    const key = evidenceKey(seedPath, req, 'requested')
     if (addedKeys.has(key) || alreadyKeys.has(key)) {
       throw new CompostError(
         'INVALID_INPUT',
@@ -216,7 +267,10 @@ export function editThemeEvidence(
       )
     }
     if (currentKeys.includes(key)) removeKeys.add(key)
-    else if (!notPresent.some((e) => evidenceKey(seedPath, e) === key)) notPresent.push(req)
+    else if (!notPresentKeys.has(key)) {
+      notPresentKeys.add(key)
+      notPresent.push(req)
+    }
   }
   const removed = current.filter((_, i) => removeKeys.has(currentKeys[i] as string))
   const kept = current.filter((_, i) => !removeKeys.has(currentKeys[i] as string))
@@ -235,13 +289,13 @@ export function editThemeEvidence(
     state: trust,
     already_present: alreadyPresent.map(toEntry),
     not_present: notPresent.map(toEntry),
-    codebook_id: frame ?? null,
   }
 
   // Idempotent no-op: nothing to change ⇒ no event, no write.
   if (added.length === 0 && removed.length === 0) {
     return {
       ...base,
+      codebook_id: frame !== undefined ? frame : inferredFrame(seedPath, current),
       changed: false,
       added: [],
       removed: [],
@@ -254,69 +308,120 @@ export function editThemeEvidence(
   const merged = [...kept, ...added]
   const lensBefore = current.filter((e) => e.kind !== 'memo').length
   const lensAfter = merged.filter((e) => e.kind !== 'memo').length
-  if (lensBefore > 0 && lensAfter === 0) {
+  if ((lensBefore > 0 && lensAfter === 0) || merged.length === 0) {
     throw new CompostError(
       'INVALID_INPUT',
-      `Removing ${removed.map(label).join(', ')} would leave theme "${id}" with no code or category evidence — a theme has to stand on at least one. Keep one, swap in its replacement first (\`compost theme add ${id} --evidence <kind:ref>\`), or retire the theme with \`compost reject ${id}\`.`,
+      `Removing ${removed.map(label).join(', ')} would leave theme "${id}" with ${lensBefore > 0 ? 'no code or category evidence' : 'no evidence at all'} — a theme has to stand on at least one. Keep one, swap in its replacement first (\`compost theme add ${id} --evidence <kind:ref>\`), or retire the theme with \`compost reject ${id}\`.`,
     )
   }
   // Frame rules live in resolveThemeEvidence, once. It is asked for the theme's
   // own frame (inferred when a pre-#266 theme has none), so the verb can never
-  // flip a theme's lens.
-  const resolved = resolveThemeEvidence(seedPath, merged, frame, 'edit')
+  // flip a theme's lens. A theme created with no code/category evidence has a
+  // null frame without ever having been declared cross-lens; the rule applied
+  // to it is the same, only the refusal says what actually happened.
+  const resolved = resolveThemeEvidence(
+    seedPath,
+    merged,
+    frame,
+    frame === null && lensBefore === 0 ? 'edit-unframed' : 'edit',
+  )
   const after = resolved.evidence.map(toEntry)
   const before = Array.isArray(state.evidence) ? state.evidence : current.map(toEntry)
 
-  // ---- write: temp file → event → rename (decision 2.3).
-  const restamp = stageFrontmatterRestamp(seedPath, id, resolved.evidence)
+  // ---- write: temp file → guarded event → rename (decision 2.3).
+  const staged = stageRestamp(seedPath, id, resolved.evidence)
+  const discard = (): void => {
+    if (staged.status === 'staged') staged.discard()
+  }
   let res: ReturnType<typeof updateArtifact>
   try {
-    res = updateArtifact(seedPath, snap.artifact_id, { field: 'evidence', before, after }, author)
+    hooks.beforeWrite?.()
+    res = updateArtifact(
+      seedPath,
+      snap.artifact_id,
+      { field: 'evidence', before, after },
+      author,
+      // Land only on the snapshot every check above was made against.
+      { expectedParent: snap.last_event },
+    )
   } catch (err) {
-    restamp?.discard() // the event did not land — leave the markdown untouched
+    discard() // the event did not land — leave the markdown untouched
+    if (isCompostError(err) && err.code === 'CONFLICT') {
+      throw new CompostError(
+        'CONFLICT',
+        `Theme "${id}" changed while this edit was being prepared — another edit, an endorse or a reject landed first. Nothing was written. Re-run \`compost theme add|remove ${id} --evidence <kind:ref>\` to apply it to the theme as it is now.`,
+        { cause: err },
+      )
+    }
     throw err
   }
-  restamp?.commit(res.update_event_id)
+  hooks.afterEvent?.()
+  const warning =
+    staged.status === 'staged'
+      ? landRestamp(seedPath, snap.artifact_id, id, staged, res.update_event_id)
+      : staged.status === 'skipped'
+        ? skippedWarning(id, staged, resolved.evidence)
+        : undefined
 
   return {
     ...base,
+    codebook_id: frame !== undefined ? frame : resolved.codebookId,
     changed: true,
     added: added.map(toEntry),
     removed: removed.map(toEntry),
     evidence: after,
     update_event_id: res.update_event_id,
     parent_event_id: res.parent_event_id,
-    file_rewritten: restamp !== null,
+    file_rewritten: staged.status === 'staged' && warning === undefined,
+    ...(warning !== undefined ? { warning } : {}),
+  }
+}
+
+/** The frame a pre-#266 theme's evidence infers, for reporting only. Null when
+ * it has none or spans several (nothing is refused on a read). */
+function inferredFrame(seedPath: string, evidence: ThemeEvidence[]): string | null {
+  try {
+    return resolveThemeEvidence(seedPath, evidence, undefined, 'edit').codebookId
+  } catch (err) {
+    if (!isCompostError(err)) throw err
+    return null
   }
 }
 
 // ------------------------------------------------------- frontmatter restamp
 
-interface StagedRestamp {
-  commit(eventId: string): void
-  discard(): void
+type Staged =
+  /** The rewritten markdown is waiting in a temp file beside the original. */
+  | { status: 'staged'; path: string; rename(eventId: string): void; discard(): void }
+  /** The theme has no markdown file: the event alone carries the change. */
+  | { status: 'no_file' }
+  /** A markdown file exists but its frontmatter could not be restamped. */
+  | { status: 'skipped'; path: string }
+
+const evidenceLine = (evidence: ThemeEvidence[]): string =>
+  `evidence: ${formatYamlValue(evidence.map(encodeEvidence))}`
+
+function skippedWarning(
+  themeId: string,
+  staged: { path: string },
+  evidence: ThemeEvidence[],
+): string {
+  return `The ledger was updated, but the markdown at ${staged.path} was NOT restamped: it has no \`---\` frontmatter block (LF line endings) whose \`id:\` is ${themeId}. File readers such as \`saturate\` still see its old evidence. The ledger is canonical — set the file's frontmatter line to \`${evidenceLine(evidence)}\`.`
 }
 
 /**
  * Stage the theme markdown with its `evidence:` line (and the legacy `codes:`
  * dual-write) rewritten to `evidence`, as a temp file beside the original.
- * Nothing the readers see changes until `commit` renames it into place. Returns
- * null when there is nothing to restamp — no markdown file, no frontmatter, or
- * a file that belongs to a different theme; the update event still carries the
- * truth (same posture as `codebook migrate`'s frontmatter stamp).
+ * Nothing the readers see changes until `rename` moves it into place.
  */
-function stageFrontmatterRestamp(
-  seedPath: string,
-  themeId: string,
-  evidence: ThemeEvidence[],
-): StagedRestamp | null {
+function stageRestamp(seedPath: string, themeId: string, evidence: ThemeEvidence[]): Staged {
   const slug = themeId.replace(/^T-/, '')
   // The id comes from the ledger; only ever build a path from a plain slug.
-  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) return null
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) return { status: 'no_file' }
   const path = join(seedPath, 'synthesis', 'themes', `${slug}.md`)
-  if (!existsSync(path)) return null
+  if (!existsSync(path)) return { status: 'no_file' }
   const next = restampEvidence(readFileSync(path, 'utf8'), themeId, evidence)
-  if (next === null) return null
+  if (next === null) return { status: 'skipped', path }
 
   // Dot-prefixed and not `.md`, so no reader of synthesis/themes/ picks it up.
   const tmp = join(dirname(path), `.${basename(path)}.${process.pid}-${Date.now()}.tmp`)
@@ -338,19 +443,69 @@ function stageFrontmatterRestamp(
     )
   }
   return {
+    status: 'staged',
+    path,
     discard,
-    commit: (eventId) => {
+    rename: (eventId) => {
       try {
         renameSync(tmp, path)
       } catch (cause) {
         discard()
         throw new CompostError(
           'IO_ERROR',
-          `The evidence change to ${themeId} IS recorded in the ledger (event ${eventId}), but its markdown at ${path} could not be replaced, so file readers such as \`saturate\` still see the old set. The ledger is canonical: fix the file's permissions, then set its frontmatter line to \`evidence: ${formatYamlValue(evidence.map(encodeEvidence))}\`.`,
+          `The evidence change to ${themeId} IS recorded in the ledger (event ${eventId}), but its markdown at ${path} could not be replaced, so file readers such as \`saturate\` still see the old set. The ledger is canonical: fix the file's permissions, then set its frontmatter line to \`${evidenceLine(evidence)}\`.`,
           { cause },
         )
       }
     },
+  }
+}
+
+/**
+ * Move the staged markdown into place — only now that its event has committed,
+ * and under the ledger's write lock, so renames happen in event order. Without
+ * the lock, an edit that commits after ours could rename first and ours would
+ * then put the older set back on disk.
+ *
+ * Holding the lock, nothing else can commit: if our event is still the theme's
+ * latest, the staged file is the current state and is renamed. If a later event
+ * already landed, the staged file is stale, so the markdown is rewritten from
+ * the theme's state as the ledger has it now (markdown derives from the ledger,
+ * never the reverse). Returns a warning if that rewrite had to be skipped.
+ */
+function landRestamp(
+  seedPath: string,
+  artifactId: string,
+  themeId: string,
+  staged: Staged & { status: 'staged' },
+  eventId: string,
+): string | undefined {
+  const events = openSeedEvents(seedPath)
+  try {
+    return events.transactImmediate(() => {
+      // A second, read-only connection: it sees everything committed, and the
+      // lock this transaction holds keeps that from changing under us.
+      const now = getArtifact(seedPath, 'theme', artifactId)
+      if (now === null || now.last_event === eventId) {
+        staged.rename(eventId)
+        return undefined
+      }
+      staged.discard()
+      const evidence = themeEvidenceFromState(now.current_state)
+      const fresh = stageRestamp(seedPath, themeId, evidence)
+      if (fresh.status === 'staged') fresh.rename(now.last_event)
+      return fresh.status === 'skipped' ? skippedWarning(themeId, fresh, evidence) : undefined
+    })
+  } catch (cause) {
+    staged.discard()
+    if (isCompostError(cause)) throw cause
+    throw new CompostError(
+      'IO_ERROR',
+      `The evidence change to ${themeId} IS recorded in the ledger (event ${eventId}), but its markdown at ${staged.path} could not be updated because the ledger was busy. File readers such as \`saturate\` still see the old set; the ledger is canonical.`,
+      { cause },
+    )
+  } finally {
+    events.close()
   }
 }
 
@@ -376,7 +531,7 @@ export function restampEvidence(
     .replace(/^["']|["']$/g, '')
   if (fileId !== themeId) return null
 
-  const fresh = [`evidence: ${formatYamlValue(evidence.map(encodeEvidence))}`]
+  const fresh = [evidenceLine(evidence)]
   if (evidence.every((e) => e.kind === 'code')) {
     fresh.push(`codes: ${formatYamlValue(evidence.map((e) => e.ref))}`)
   }

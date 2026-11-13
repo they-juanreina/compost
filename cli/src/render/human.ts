@@ -167,5 +167,6 @@ export function renderThemeEvidenceEdit(
   if (r.already_present.length > 0) lines.push(`  already present: ${refs(r.already_present)}`)
   if (r.not_present.length > 0) lines.push(`  not on theme:    ${refs(r.not_present)}`)
   lines.push(`  evidence now:    ${r.evidence.length > 0 ? refs(r.evidence) : '(none)'}`)
+  if (r.warning !== undefined) lines.push(`  ${g.warn} ${r.warning}`)
   return lines.join('\n')
 }

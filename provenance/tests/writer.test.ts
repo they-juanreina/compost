@@ -161,6 +161,38 @@ describe('EventWriter.appendBatch', () => {
   })
 })
 
+describe('EventWriter.transactImmediate', () => {
+  const count = (w: EventWriter): number =>
+    // @ts-expect-error: private db
+    (w.db.prepare('SELECT COUNT(*) AS c FROM events').get() as { c: number }).c
+
+  it('commits a check-then-append and returns what fn returns', () => {
+    const w = makeWriter()
+    const id = w.transactImmediate((db) => {
+      const before = db.prepare('SELECT COUNT(*) AS c FROM events').get() as { c: number }
+      assert.equal(before.c, 0)
+      return w.appendEvent(researcherCreate()).id
+    })
+    assert.match(id, /^[0-9A-HJKMNP-TV-Z]{26}$/)
+    assert.equal(count(w), 1)
+    w.close()
+  })
+
+  it('rolls back appends made inside fn when fn throws, and rethrows', () => {
+    const w = makeWriter()
+    assert.throws(
+      () =>
+        w.transactImmediate(() => {
+          w.appendEvent(researcherCreate())
+          throw new Error('the check failed')
+        }),
+      /the check failed/,
+    )
+    assert.equal(count(w), 0, 'the append did not survive the failed check')
+    w.close()
+  })
+})
+
 describe('EventWriter migrations', () => {
   it('applies every shipped migration on first open and records it in schema_migrations', () => {
     const w = new EventWriter({ dbPath: ':memory:' })

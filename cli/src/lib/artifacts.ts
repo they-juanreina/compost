@@ -1031,12 +1031,22 @@ export function rejectArtifact(
  * event. The event log records `{ field, before, after }` so blame shows what
  * changed. `before` is best-effort context for the audit trail; the reducer
  * applies only `after`.
+ *
+ * `expectedParent` makes the write conditional (optimistic concurrency): pass
+ * the `last_event` of the snapshot the patch was computed from, and the update
+ * lands only if that is still the artifact's latest event. The check and the
+ * append run in one IMMEDIATE transaction, so no other writer can slip an event
+ * (an endorse, a reject, another update) between them. If the artifact moved,
+ * nothing is written and a `CONFLICT` says to re-run — a caller that decided
+ * something from the snapshot (who may edit, what `before` was) never has that
+ * decision applied to a state it did not see. Omitted: unconditional, as before.
  */
 export function updateArtifact(
   seedPath: string,
   artifactRef: string,
   patch: { field: string; before?: unknown; after: unknown },
   author: Author,
+  opts: { expectedParent?: string } = {},
 ): { artifact_id: string; update_event_id: string; parent_event_id: string } {
   const db = openReadonlyEvents(seedPath, 'No events.sqlite in seed; nothing to update.')
   let resolved:
@@ -1060,19 +1070,40 @@ export function updateArtifact(
 
   const events = openSeedEvents(seedPath)
   try {
-    const update = emitUpdate(events, {
-      artifactKind: createRow.artifact_kind,
-      artifactId: createRow.artifact_id,
-      parentEventId,
-      author,
-      field: patch.field,
-      before: patch.before,
-      after: patch.after,
+    const emit = (parent: string) =>
+      emitUpdate(events, {
+        artifactKind: createRow.artifact_kind,
+        artifactId: createRow.artifact_id,
+        parentEventId: parent,
+        author,
+        field: patch.field,
+        before: patch.before,
+        after: patch.after,
+      })
+    const { expectedParent } = opts
+    if (expectedParent === undefined) {
+      const update = emit(parentEventId)
+      return {
+        artifact_id: createRow.artifact_id,
+        update_event_id: update.id,
+        parent_event_id: parentEventId,
+      }
+    }
+    // Guarded: re-read the latest event under the write lock, then append.
+    const update = events.transactImmediate((locked) => {
+      const latest = latestEventId(locked, createRow.artifact_id) ?? createRow.id
+      if (latest !== expectedParent) {
+        throw new CompostError(
+          'CONFLICT',
+          `"${artifactRef}" changed since it was read: another event (${latest}) landed after ${expectedParent}. Nothing was written — re-run the command so it applies to the artifact as it is now.`,
+        )
+      }
+      return emit(expectedParent)
     })
     return {
       artifact_id: createRow.artifact_id,
       update_event_id: update.id,
-      parent_event_id: parentEventId,
+      parent_event_id: expectedParent,
     }
   } finally {
     events.close()
