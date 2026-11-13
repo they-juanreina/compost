@@ -61,9 +61,18 @@
 - `parseEvidence` (the `kind:ref` parser behind `create theme --evidence`) moved
   from the CLI command into `cli/src/lib/themes.ts`, so `create theme` and
   `theme add|remove` share one parser. No behavior change.
+- **Theme creation speaks `evidence` on MCP and web.** `compost_create_theme`
+  (MCP) and the web theme action now take `evidence` (`kind:ref`, code or
+  category), `codebook`, and `cross_lens` — the same names and syntax as
+  `compost create theme` and `compost_theme_add`. `codes` stays as a deprecated
+  alias for one release (code ids only); when both are passed, `evidence` wins,
+  exactly as in the CLI. Pays down the "web/MCP still speak `codes`" vocabulary
+  debt.
 
 ### Fixed
 
+- MCP: the "compost CLI not found" hint told users to set `COMPOST_CLI` to
+  `dist/index.js` (which only exports `run()`); it now says `cli/bin/compost.js`.
 - Docs: `COMPOST_CLI` must point at `cli/bin/compost.js`. The previously
   documented `cli/dist/index.js` only exports the entry point and exits
   silently.

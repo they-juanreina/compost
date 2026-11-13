@@ -157,3 +157,65 @@ describe('optimistic concurrency', () => {
     assert.equal(endorse('demo', 'code', 'C-distrust', 'juan@example.com', 1).human_approved, true)
   })
 })
+
+describe('createArtifact theme — evidence vocabulary', () => {
+  function seedCodes(): void {
+    createArtifact('demo', 'code', RESEARCHER, { name: 'Distrust', definition: 'd' })
+    createArtifact('demo', 'code', RESEARCHER, { name: 'Override', definition: 'd' })
+  }
+  const evidenceOf = (id: string): unknown =>
+    getArtifactByRef('demo', 'theme', id).current_state.evidence
+
+  it('accepts `evidence` kind:ref strings', () => {
+    seedCodes()
+    createArtifact('demo', 'theme', AI, {
+      name: 'Hesitation',
+      summary: 's',
+      evidence: ['code:C-distrust', 'C-override'],
+    })
+    const ev = evidenceOf('T-hesitation') as unknown[]
+    assert.equal(ev.length, 2)
+  })
+
+  it('keeps `codes` working as a deprecated alias', () => {
+    seedCodes()
+    createArtifact('demo', 'theme', AI, {
+      name: 'Alias',
+      summary: 's',
+      codes: ['C-distrust', 'C-override'],
+    })
+    assert.equal((evidenceOf('T-alias') as unknown[]).length, 2)
+  })
+
+  it('`evidence` wins when both are given (the core precedence)', () => {
+    seedCodes()
+    createArtifact('demo', 'theme', AI, {
+      name: 'Both',
+      summary: 's',
+      evidence: ['code:C-distrust'],
+      codes: ['C-distrust', 'C-override'],
+    })
+    assert.equal((evidenceOf('T-both') as unknown[]).length, 1)
+  })
+
+  it('rejects cross_lens together with codebook, and malformed evidence', () => {
+    seedCodes()
+    assert.throws(
+      () =>
+        createArtifact('demo', 'theme', AI, {
+          name: 'X',
+          summary: 's',
+          evidence: ['C-distrust'],
+          cross_lens: true,
+          codebook: 'CB-x',
+        }),
+      (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
+    )
+    assert.equal(
+      apiCode(() =>
+        createArtifact('demo', 'theme', AI, { name: 'Y', summary: 's', cross_lens: 'yes' }),
+      ),
+      'SCHEMA_ERROR',
+    )
+  })
+})

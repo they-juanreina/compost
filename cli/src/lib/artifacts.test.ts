@@ -141,6 +141,21 @@ describe('createCode / createTheme', () => {
     assert.match(md, /codes: \[C-distrust, C-override\]/)
   })
 
+  it('refuses crossLens together with a codebook scope', () => {
+    const { path } = initSeed('demo', { cwd: work })
+    assert.throws(
+      () =>
+        createTheme(path, {
+          name: 'X',
+          summary: 's',
+          crossLens: true,
+          codebookId: 'CB-x',
+          author: RESEARCHER,
+        }),
+      (e: unknown) => e instanceof CompostError && e.code === 'INVALID_INPUT',
+    )
+  })
+
   it('rejects a name with no slug-able characters', () => {
     const { path } = initSeed('demo', { cwd: work })
     assert.throws(

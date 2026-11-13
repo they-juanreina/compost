@@ -321,7 +321,7 @@ export const TOOLS = [
     },
     {
         name: 'compost_create_theme',
-        description: 'Create a theme grouping codes under a summary. Lands as an AI [draft] until endorsed.',
+        description: 'Create a theme over a code / category evidence set, under a summary. Lands as an AI [draft] until endorsed. Pass `evidence` (kind:ref list); `codes` is a deprecated alias (code ids only) kept for one release — if both are given, `evidence` wins. A single-lens theme is inferred from its evidence frames (or scoped with `codebook`); set `cross_lens` for a theme citing ≥2 codebooks (mutually exclusive with `codebook`).',
         readOnly: false,
         aiAuthored: true,
         inputSchema: {
@@ -330,7 +330,13 @@ export const TOOLS = [
             properties: {
                 name: str('Theme name (slugified for the id)'),
                 summary: str('The theme statement'),
-                codes: str('Comma-separated code ids, e.g. C-distrust,C-override'),
+                evidence: str('Comma-separated kind:ref evidence — code or category, e.g. code:C-distrust,category:CAT-trust (a bare ref is a code)'),
+                codes: str('DEPRECATED — use `evidence`. Comma-separated code ids, e.g. C-distrust,C-override'),
+                codebook: str('Scope the theme to one codebook frame (CB- id or name)'),
+                cross_lens: {
+                    type: 'boolean',
+                    description: 'Mark a cross-lens theme spanning ≥2 codebooks (mutually exclusive with `codebook`)',
+                },
                 seed: str('Seed'),
                 model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
             },
@@ -342,7 +348,10 @@ export const TOOLS = [
             String(a.name),
             '--summary',
             String(a.summary),
+            ...(a.evidence ? ['--evidence', String(a.evidence)] : []),
             ...(a.codes ? ['--codes', String(a.codes)] : []),
+            ...(a.codebook ? ['--codebook', String(a.codebook)] : []),
+            ...(a.cross_lens === true ? ['--cross-lens'] : []),
             ...(a.seed ? ['--seed', String(a.seed)] : []),
         ],
     },
@@ -651,7 +660,7 @@ export function resolveCompostInvocation(env = process.env) {
     return { command: 'compost', prefixArgs: [] };
 }
 const CLI_MISSING_HINT = 'compost CLI not found. Install it (`npm i -g @they-juanreina/compost-cli`, or clone the repo and `pnpm build`), ' +
-    'or set COMPOST_CLI to the path of dist/index.js. See docs/install.md.';
+    'or set COMPOST_CLI to the path of cli/bin/compost.js. See docs/install.md.';
 const defaultRunner = async (argv) => {
     const { command, prefixArgs } = resolveCompostInvocation();
     try {

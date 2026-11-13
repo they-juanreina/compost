@@ -512,11 +512,21 @@ export interface CreateThemeInput {
    * `null` marks a cross-lens theme (must cite ≥2 distinct codebooks); omitted
    * is inferred from the evidence frames. */
   codebookId?: string | null
+  /** Cross-lens theme (codebook_id=null). Mutually exclusive with a `codebookId`
+   * scope — refused here, once, for every surface. */
+  crossLens?: boolean
   author: Author
   inputs?: AiInputBundle
 }
 
 export function createTheme(seedPath: string, input: CreateThemeInput): CreatedArtifact {
+  if (input.crossLens === true && input.codebookId !== undefined) {
+    throw new CompostError(
+      'INVALID_INPUT',
+      'A theme cannot be both cross-lens and scoped to one codebook. Drop the codebook to make it cross-lens, or drop cross-lens to scope it to that codebook.',
+    )
+  }
+  const frame = input.crossLens === true ? null : input.codebookId
   const dir = join(seedPath, 'synthesis', 'themes')
   mkdirSync(dir, { recursive: true })
   const name = slug(input.name)
@@ -526,7 +536,7 @@ export function createTheme(seedPath: string, input: CreateThemeInput): CreatedA
   // theme's codebook_id and enforce the cross-lens invariant (ADR 0002 §1).
   const rawEvidence: ThemeEvidence[] =
     input.evidence ?? (input.codes ?? []).map((ref) => ({ kind: 'code' as const, ref }))
-  const { evidence, codebookId } = resolveThemeEvidence(seedPath, rawEvidence, input.codebookId)
+  const { evidence, codebookId } = resolveThemeEvidence(seedPath, rawEvidence, frame)
 
   // SHA-addressed identity carries the structured evidence + frame. Field name
   // `codebook_id` matches the on-disk frontmatter; null = cross-lens.

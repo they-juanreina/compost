@@ -243,25 +243,18 @@ export function registerCreate(program: Command): void {
       ),
   ).action((flags: ThemeFlags, cmd: Command) => {
     try {
-      if (flags.crossLens === true && flags.codebook !== undefined) {
-        throw new CompostError(
-          'INVALID_INPUT',
-          '--cross-lens and --codebook are mutually exclusive.',
-        )
-      }
       const seedPath = resolveSeedPath(process.cwd(), flags.seed)
       const inputs = loadInputs(flags)
       const evidence =
         flags.evidence !== undefined
           ? parseEvidence(flags.evidence)
           : parseList(flags.codes).map((ref) => ({ kind: 'code' as const, ref }))
-      // undefined = infer frame; null = cross-lens; CB-id = scoped.
-      const codebookId: string | null | undefined = flags.crossLens === true ? null : flags.codebook
       const created = createTheme(seedPath, {
         name: flags.name,
         summary: flags.summary,
         evidence,
-        ...(codebookId !== undefined ? { codebookId } : {}),
+        ...(flags.codebook !== undefined ? { codebookId: flags.codebook } : {}),
+        ...(flags.crossLens === true ? { crossLens: true } : {}),
         author: resolveAuthor(flags, seedPath),
         ...(inputs !== undefined ? { inputs } : {}),
       })
