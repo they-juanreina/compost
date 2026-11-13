@@ -41,6 +41,13 @@
   from the CLI command into `cli/src/lib/themes.ts`, so `create theme` and
   `theme add|remove` share one parser. No behavior change.
 
+### Fixed
+
+- MCP server: `tools/list` now emits `annotations` (`readOnlyHint`; no
+  `destructiveHint`, so the spec default applies) so clients can tell read-only tools
+  from mutations; the server reports `PLUGIN_VERSION` instead of `0.0.0`; the
+  `serve` stub points at #133 (was closed #32). Refs #334.
+
 ## v0.2.2 — 2026-11-11
 
 Ships the **analytic memos** milestone, bring-your-own caption import, and
