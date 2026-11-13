@@ -354,9 +354,71 @@ describe('MCP tool definitions', () => {
     const argv = tool('compost_list_memos').toArgv({ about: 'C-distrust', seed: 'study' })
     assert.deepEqual(argv, ['memo', 'list', '--about', 'C-distrust', '--seed', 'study'])
   })
+
+  it('compost_theme_add / compost_theme_remove map to `compost theme add|remove` as the AI actor (#335)', () => {
+    for (const op of ['add', 'remove'] as const) {
+      const t = tool(`compost_theme_${op}`)
+      assert.ok(MUTATION_TOOLS.includes(t.name), `${t.name} should be a mutation`)
+      assert.equal(t.aiAuthored, true)
+      const schema = t.inputSchema as { required: string[]; properties: Record<string, unknown> }
+      assert.deepEqual(schema.required, ['theme', 'evidence'])
+
+      const args = { theme: 'T-control', evidence: 'code:C-override,category:CAT-agency' }
+      assert.deepEqual(t.toArgv(args), [
+        'theme',
+        op,
+        'T-control',
+        '--evidence',
+        'code:C-override,category:CAT-agency',
+      ])
+      assert.deepEqual(t.toArgv({ ...args, seed: 'demo' }).slice(-2), ['--seed', 'demo'])
+
+      // The update event's actor is the AI: actor id + schema-required model
+      // and prompt hash are injected, exactly as for the create tools.
+      const argv = buildArgv(t, { ...args, model: 'claude-opus-4-8' })
+      assert.ok(argv.includes('--ai'))
+      assert.match(argv[argv.indexOf('--actor-id') + 1] as string, AI_ACTOR_RE)
+      assert.equal(argv[argv.indexOf('--model') + 1], 'claude-opus-4-8')
+      assert.match(argv[argv.indexOf('--prompt-hash') + 1] as string, /^[a-f0-9]{64}$/)
+
+      // No way to act as the researcher over MCP: the tool takes no identity
+      // arg, so the core's "AI may edit only a draft" gate cannot be sidestepped.
+      for (const k of ['researcher', 'actor_id', 'actor', 'ai'])
+        assert.ok(!(k in schema.properties))
+      assert.ok(!t.toArgv({ ...args, researcher: 'someone' }).includes('someone'))
+      // …and the description tells the agent what a refusal means.
+      assert.match(t.description, /only while the theme is still an AI \[draft\]/)
+      assert.match(t.description, /do not retry/)
+    }
+  })
 })
 
 describe('runTool', () => {
+  it('hands the core’s refusal of an AI edit to an endorsed theme back to the agent (#335)', async () => {
+    // The gate lives in cli/src/lib; the MCP layer adds nothing and hides nothing.
+    const refusal = JSON.stringify({
+      error: {
+        code: 'INVALID_INPUT',
+        message:
+          'Theme "T-control" is endorsed, and an AI actor may change a theme\'s evidence only while the theme is still a [draft].',
+      },
+    })
+    let seen: string[] = []
+    const runner: CliRunner = async (argv) => {
+      seen = argv
+      return { stdout: `${refusal}\n`, code: 1 }
+    }
+    const res = await runTool(
+      'compost_theme_remove',
+      { theme: 'T-control', evidence: 'C-distrust' },
+      runner,
+    )
+    assert.deepEqual(seen.slice(0, 5), ['theme', 'remove', 'T-control', '--evidence', 'C-distrust'])
+    assert.ok(seen.includes('--ai'))
+    assert.equal(res.ok, false)
+    assert.equal(res.content, refusal)
+  })
+
   it('invokes the runner with the mapped argv and returns its output', async () => {
     let seen: string[] = []
     const runner: CliRunner = async (argv) => {

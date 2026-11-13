@@ -7,7 +7,12 @@ import { CompostError } from '../errors.js'
 import { DEFAULT_CODEBOOK_ID, resolveCodebookId } from './artifacts.js'
 import { codeMarkdownPaths, tryResolveCodeRef } from './codeRefs.js'
 import { listArtifacts, type SnapshotView } from './reads.js'
-import { evidenceToCodeIds, type ThemeEvidence, type ThemeEvidenceKind } from './themes.js'
+import {
+  evidenceToCodeIds,
+  type ThemeEvidence,
+  type ThemeEvidenceKind,
+  themeEvidenceFromState,
+} from './themes.js'
 
 /**
  * `compost list <kind>` (ADR 0007 P2): a read-only, state-aware query over the
@@ -197,21 +202,10 @@ function stringArray(v: unknown): string[] {
   return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
 }
 
+/** The ledger's view of a theme's evidence (legacy `codes[]` lazy-mapped) —
+ * the same read `theme add|remove` edits from, so list shows what was written. */
 function themeEvidenceOf(snap: SnapshotView): ThemeEvidence[] {
-  const s = snap.current_state
-  if (Array.isArray(s.evidence)) {
-    const out: ThemeEvidence[] = []
-    for (const e of s.evidence as Array<Record<string, unknown>>) {
-      const kind = str(e?.kind) as ThemeEvidenceKind | undefined
-      const ref = str(e?.ref)
-      if (kind === undefined || ref === undefined) continue
-      const cb = str(e.codebook_id)
-      out.push({ kind, ref, ...(cb !== undefined ? { codebookId: cb } : {}) })
-    }
-    return out
-  }
-  // Legacy code-only theme (ADR 0002 lazy map).
-  return stringArray(s.codes).map((ref) => ({ kind: 'code' as const, ref }))
+  return themeEvidenceFromState(snap.current_state)
 }
 
 function inCodebook(kind: ListableKind, snap: SnapshotView, codebookId: string): boolean {

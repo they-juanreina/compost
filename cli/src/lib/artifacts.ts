@@ -108,7 +108,10 @@ function frontmatter(fields: Record<string, unknown>): string {
   return `---\n${lines.join('\n')}\n---\n`
 }
 
-function formatYamlValue(v: unknown): string {
+/** Serialize one frontmatter value in the repo's hand-rolled line format
+ * (`[a, b]` inline arrays, `{ k: v }` inline objects). Exported so a frontmatter
+ * restamp (`theme add|remove`) writes a value exactly as create does. */
+export function formatYamlValue(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map((x) => String(x)).join(', ')}]`
   if (typeof v === 'object' && v !== null) {
     const inner = Object.entries(v)

@@ -5,7 +5,7 @@ import { type CreatedArtifact, createCode, createHighlight, createTheme } from '
 import type { AiInputBundle, Author } from '../lib/events.js'
 import { resolveResearcherId } from '../lib/identity.js'
 import { resolveSeedPath } from '../lib/seedResolve.js'
-import type { ThemeEvidence, ThemeEvidenceKind } from '../lib/themes.js'
+import { parseEvidence } from '../lib/themes.js'
 import { emit, emitError, getOutputOpts } from '../output.js'
 
 export interface CommonFlags {
@@ -129,20 +129,33 @@ interface ThemeFlags extends CommonFlags {
   crossLens?: boolean
 }
 
-export function addAuthorFlags(c: Command): Command {
-  return c
+/**
+ * The shared author flags. `create` (default) is an artifact's birth: `--ai`
+ * makes it a [draft], and it may carry an input bundle. `update` is a change to
+ * an existing artifact (`theme add|remove`): the same actor flags, but no
+ * `--inputs-file` — an update event carries no input bundle — and `--ai` is
+ * described for what it does there.
+ */
+export function addAuthorFlags(c: Command, mode: 'create' | 'update' = 'create'): Command {
+  const withActor = c
     .option('--seed <name>', 'Seed (default: the only seed under ./Seeds)')
-    .option('--ai', 'Mark the artifact as AI-authored (lands as [draft] until endorsed)')
+    .option(
+      '--ai',
+      mode === 'create'
+        ? 'Mark the artifact as AI-authored (lands as [draft] until endorsed)'
+        : 'Record the change as made by an AI actor (allowed only while the artifact is still a [draft])',
+    )
     .option('--actor-id <id>', 'Actor id (required with --ai; e.g. claude-code:0.1.0:abc12345)')
     .option('--model <model>', 'Model that produced the suggestion (required with --ai)')
     .option(
       '--prompt-hash <sha>',
       'sha256(prompt+model+temp+ctx), 64-char hex (required with --ai)',
     )
-    .option(
-      '--inputs-file <path>',
-      'JSON input bundle (model, params, system_prompt, prompt, context) to persist for rerun/PROV-O (optional, --ai only)',
-    )
+  if (mode === 'update') return withActor
+  return withActor.option(
+    '--inputs-file <path>',
+    'JSON input bundle (model, params, system_prompt, prompt, context) to persist for rerun/PROV-O (optional, --ai only)',
+  )
 }
 
 export function registerCreate(program: Command): void {
@@ -257,29 +270,6 @@ export function registerCreate(program: Command): void {
       if (isCompostError(err)) emitError(err, getOutputOpts(cmd))
       throw err
     }
-  })
-}
-
-const EVIDENCE_KINDS: readonly ThemeEvidenceKind[] = ['code', 'category', 'memo']
-
-/** Parse `--evidence code:C-foo,category:CAT-bar` into structured refs. A bare
- * token (no `kind:` prefix) defaults to a code, so `--evidence C-foo` works. */
-function parseEvidence(s: string): ThemeEvidence[] {
-  return parseList(s).map((token) => {
-    const idx = token.indexOf(':')
-    if (idx === -1) return { kind: 'code', ref: token }
-    const kind = token.slice(0, idx)
-    const ref = token.slice(idx + 1)
-    if (!EVIDENCE_KINDS.includes(kind as ThemeEvidenceKind)) {
-      throw new CompostError(
-        'INVALID_INPUT',
-        `Evidence kind must be ${EVIDENCE_KINDS.join(' | ')}; got "${kind}" in "${token}".`,
-      )
-    }
-    if (ref.length === 0) {
-      throw new CompostError('INVALID_INPUT', `Evidence ref is empty in "${token}".`)
-    }
-    return { kind: kind as ThemeEvidenceKind, ref }
   })
 }
 
