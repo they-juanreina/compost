@@ -11,9 +11,7 @@ export function toolListing(tools: readonly ToolDef[]) {
     name: t.name,
     description: `${t.description}${t.readOnly ? ' [read-only]' : ' [mutation]'}`,
     inputSchema: t.inputSchema,
-    annotations: t.readOnly
-      ? { readOnlyHint: true }
-      : { readOnlyHint: false, destructiveHint: false },
+    annotations: t.readOnly ? { readOnlyHint: true } : { readOnlyHint: false },
   }))
 }
 

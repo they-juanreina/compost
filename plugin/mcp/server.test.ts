@@ -29,7 +29,11 @@ describe('toolListing annotations', () => {
         t.name.startsWith('compost_create_'),
     )
     assert.ok(muts.length >= 6)
-    for (const t of muts) assert.equal(byName(t.name).annotations.readOnlyHint, false, t.name)
+    for (const t of muts) {
+      const a = byName(t.name).annotations as Record<string, unknown>
+      assert.equal(a.readOnlyHint, false, t.name)
+      assert.ok(!('destructiveHint' in a), t.name)
+    }
   })
 })
 

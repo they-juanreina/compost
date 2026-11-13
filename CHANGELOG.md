@@ -4,8 +4,8 @@
 
 ### Fixed
 
-- MCP server: `tools/list` now emits `annotations` (`readOnlyHint`, and
-  `destructiveHint: false` on mutations) so clients can tell read-only tools
+- MCP server: `tools/list` now emits `annotations` (`readOnlyHint`; no
+  `destructiveHint`, so the spec default applies) so clients can tell read-only tools
   from mutations; the server reports `PLUGIN_VERSION` instead of `0.0.0`; the
   `serve` stub points at #133 (was closed #32). Refs #334.
 
