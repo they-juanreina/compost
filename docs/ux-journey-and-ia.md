@@ -161,7 +161,7 @@ flowchart LR
 
 ## 5. Full task inventory with human / agentic assignment
 
-Every task Compost supports, the solver it belongs to, and the CLI verb the UI wraps. **Solver legend:** 🧑 Human (researcher judgment, accountable) · ⚙️ Agent (deterministic software) · 🤖 AI-suggestion (model, lands as `[draft]`) · 🔀 Hybrid (machine proposes, human disposes).
+Every task Compost supports, the solver it belongs to, and the CLI verb the UI wraps. **Solver legend:** 🧑 Human (researcher judgment, accountable) · ⚙️ Agent (deterministic software) · 🤖 AI-suggestion (model, lands as `[draft]`) · 🔀 Hybrid (machine proposes, human disposes). **Draft-emitting agents:** `compost tag`, `code`, `rescan` and `category suggest` are ⚙️ rows that also say `[draft]` — they run deterministic software (centroid/cosine clustering, noun-phrase extraction) and write `actor_type: agent` events (via `emitAgentCreate`), not model output. Their results are born `[draft]` and stay untrusted until endorsed, but they are not 🤖 (🤖 is reserved for raw LLM output, e.g. `chat`, `memo new --ai`).
 
 The column that matters most for design is **Solver**: it tells the UI who is acting, and therefore how the action should *look* — a system process, a confident human authoring act, or a provisional suggestion awaiting judgment.
 
@@ -178,6 +178,10 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 | Migrate a legacy seed | 🔀 | `compost migrate` | Guided migration (dry-run first) | M3 |
 | Validate seed against schemas | ⚙️ | `compost validate` | Health panel badge | M2 |
 | Rebuild derived state / index | ⚙️ | `compost reindex` | Health panel action | M2 |
+| Back up the canonical provenance ledger (+ PROV-O bundle) | ⚙️ | `compost backup` | None — CLI/agent only | — |
+| Store / resolve user secrets (tokens, API keys) | 🧑 | `compost secrets` (`set`, `get`, `list`, `rm`) | None — CLI/agent only | — |
+| Run eval suites (skill / suggestion / harness) | ⚙️ | `compost evals` (`run`, `harness`) | None — CLI/agent only | — |
+| Start the local web UI | ⚙️ | `compost serve` (stub, #133) | Launches the local player (ADR 0007, #133) | M1 |
 
 ### 5.2 Ingest & transcription
 
@@ -193,6 +197,7 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 | Capture a video frame at timestamp | 🔀 | `compost snap` | Frame grab in player | M3 |
 | Monitor / requeue stuck jobs | ⚙️/🧑 | `compost jobs`, `jobs requeue` | Job queue panel | M2 |
 | Build local embedding index | ⚙️ | embed step of `watch` | (background, shown in health) | M1 |
+| Run the filesystem watcher + worker loops | ⚙️ | `compost watch` | None — CLI/agent only (background process) | — |
 
 ### 5.3 Retrieval & reading
 
@@ -209,22 +214,25 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 |---|---|---|---|---|
 | Create a highlight (anchor a span) | 🧑 | `compost create highlight` | **Drag-to-highlight** (M1 hero) — select-to-highlight in the local player (ADR 0007, #124) | M1 |
 | Create a code (definition + evidence) | 🧑 | `compost create code` | Code authoring | M1 |
-| Suggest glossary terms | 🤖 | `compost tag` | Glossary suggestions `[draft]` | M2 |
-| Cluster highlights into draft codes | 🤖 | `compost code` | AI code suggestions `[draft]` | M2 |
-| Cross-session similarity scan → draft codes | 🤖 | `compost rescan` | "Find related" suggestions | M3 |
+| Suggest glossary terms | ⚙️ `[draft]` | `compost tag` | Glossary suggestions `[draft]` | M2 |
+| Cluster highlights into draft codes | ⚙️ `[draft]` | `compost code` | AI code suggestions `[draft]` | M2 |
+| Cross-session similarity scan → draft codes | ⚙️ `[draft]` | `compost rescan` | "Find related" suggestions | M3 |
 | Create a category (group codes) | 🧑 | `compost category new` + `link` | Category board | M2 |
-| Suggest categories (centroid clustering) | 🤖 | `compost category suggest` | Category suggestions `[draft]` | M3 |
+| List categories / unlink a code from a category | 🧑 | `compost category list`, `category unlink` | Category board (unlink archives the link; append-only) | M2 |
+| Suggest categories (centroid clustering) | ⚙️ `[draft]` | `compost category suggest` | Category suggestions `[draft]` | M3 |
 | Create a theme (heterogeneous evidence) | 🧑 | `compost create theme` | **Theme board** (M1 hero) — in the local player, auto-layout, not saved (ADR 0007 decision 4, #127) | M1 |
 | Add / remove evidence on an existing theme | 🧑 (🤖 only while the theme is a `[draft]`) | `compost theme add\|remove <theme> --evidence …` | Theme board — drag a code or category into or out of a theme. The verb shipped first (ADR 0007 decision 4, #335); the board (#127) wraps it and adds no rules of its own | M1 |
 | Author a cross-lens theme (≥2 codebooks) | 🧑 | `create theme --cross-lens` | Theme board (cross-lens mode) | M2 |
 | Write an analytic memo | 🧑 | `compost memo new` (`--ai` → 🤖 `[draft]`) | None — authored via CLI or agent; read + endorsed in the review artifact (ADR 0007, #310 resolved) | — |
 | Anchor / cite a memo (a memo is itself a coding target) | 🧑 | `compost memo cite` | None — CLI or agent (ADR 0007, #310 resolved) | — |
+| List / view / revise / retitle memos | 🧑 (`retitle` → ⚙️ suggested title) | `compost memo list`, `memo view`, `memo edit`, `memo retitle` | None — CLI or agent; read in the review artifact (ADR 0007, #310 resolved) | — |
 
 ### 5.5 Codebooks (lenses) & rigor
 
 | Task | Solver | CLI verb | Web surface | Phase |
 |---|---|---|---|---|
 | Declare an interpretive lens (stance) | 🧑 | `compost codebook new` | Codebook manager | M2 |
+| Move pre-codebook codes into the primary lens / qualify legacy code ids | 🔀 | `compost codebook migrate`, `codebook migrate-ids` (dry-run unless `--apply`) | None — CLI or agent (dry-run first) | — |
 | List / switch active lens | 🧑 | `compost codebook list` | Lens switcher — codebook view is read-only in the review artifact (ADR 0007, #126) | M2 |
 | Duplicate a lens (independent frame) | 🔀 | `compost codebook duplicate` | Lens actions | M3 |
 | Merge one lens into another | 🔀 | `compost codebook merge` | Guided merge (dry-run first) | M3 |
@@ -244,7 +252,7 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 | Export transcripts (CSV/MD/EAF) | ⚙️ | `compost export` | Export dialog | M1 |
 | Export event log as W3C PROV | ⚙️ | `compost export --format prov` | "Export audit trail" | M2 |
 
-**The shape this reveals:** authoring and judgment (highlight, code, category, theme, endorse, label, lens declaration) are overwhelmingly **🧑 human** — they carry accountability. Mechanics (ingest, transcribe, index, agreement math, saturation math, blame, export) are **⚙️ agent** — deterministic and reproducible. Everything **🤖 AI** is *generative and provisional* — it proposes glossary terms, code clusters, categories, and chat answers, and **none of it crosses into an export without a 🧑 endorsement**. The UI's job is to make these three textures unmistakable.
+**The shape this reveals:** authoring and judgment (highlight, code, category, theme, endorse, label, lens declaration) are overwhelmingly **🧑 human** — they carry accountability. Mechanics (ingest, transcribe, index, agreement math, saturation math, blame, export) are **⚙️ agent** — deterministic and reproducible. Everything **🤖 AI** is *generative model output* (chat answers, `--ai` memos) and everything a deterministic agent proposes (**⚙️ `[draft]`**: glossary terms, code clusters, categories) is *provisional*, and **none of it crosses into an export without a 🧑 endorsement**. The UI's job is to make these three textures unmistakable.
 
 ---
 
@@ -508,7 +516,7 @@ The roadmap names three hero surfaces: **transcript player, drag-to-highlight, t
 - **Drafts queue + endorse** — even with minimal AI in M1, the gate must exist so the model is legible from day one.
 - **Dashboard + Export (transcripts)** — orient and get value out.
 
-Everything machine-generative (AI code/category/glossary suggestions; chat has no panel — ADR 0007) can wait for M2 *as long as* the endorsement gate ships in M1 — because the gate is the idea, not the suggestions.
+Everything machine-proposed (code/category/glossary suggestions from the deterministic agents; chat has no panel — ADR 0007) can wait for M2 *as long as* the endorsement gate ships in M1 — because the gate is the idea, not the suggestions.
 
 ---
 
@@ -571,6 +579,16 @@ These genuinely change the design and are yours to decide:
 3. **`query` / `synthesize` stubs — resolved.** Both stubs were removed in v0.2.2 (#333; killed in [review 2026-11](review-2026-11.md) §4), so there is nothing to reserve a home for.
 4. **Mobile/tablet.** Any need for a read-only review surface (e.g., a stakeholder reviewing themes), or is this desktop-only for the foreseeable future? (ADR 0007: the review artifact is *not* team sharing — sharing stays an `export` question.)
 5. **Where does write-up live?** Landing point L6 hands grounded answers to a downstream report. Is that always an export to another tool, or is there appetite for a lightweight in-Compost findings surface? (`synthesize` was killed as interpretation, review 2026-11 §4; that review *proposes* — unvalidated — that stakeholder readouts stay with skills + artifacts, with no compost report engine.)
+
+
+### Open, for Juan
+
+Collected from the docs above; none is answered here.
+
+1. **Cue authoring and colour bands.** Do cue authoring and multi-colour highlight bands (roadmap S1/S2) belong in the local player at all, given ADR 0007's two surfaces?
+2. **Screens neither ADR 0007 surface covers.** Lenses and agreement, search, categories, ingest, speaker labeling, settings, and export have a §5 row but no home in the review artifact or the local player. Which get a surface, and which stay CLI/agent only?
+3. **The write-up surface.** An export to another tool, or a lightweight in-compost findings surface (question 5 above)?
+4. **`theme add` on an evidence-less theme.** Should `compost theme add` infer a first lens for a theme created with no evidence? Today it refuses (`cli/src/lib/themeEvidence.ts`).
 
 ---
 
