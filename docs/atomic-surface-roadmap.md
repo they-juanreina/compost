@@ -77,12 +77,12 @@ Blue = Milestone 1 (next) · Green = Milestone 2 · Amber = Milestone 3 / Later.
 | **S3 Retrieve** | Find passages fast, jump to them | ✅ ready (`search`) | n/a | M2 |
 | **S4 Code** | First real coding; bands become defined codes | ✅ ready (`create code`) | evidence refs | M2 |
 | **S5 Suggest + Endorse** | The differentiator: AI drafts, human endorses | ✅ ready (`code`/`tag`/`endorse`/`reject`/`list`/`blame`) | n/a | M2 |
-| **S6 Categories + Themes + Memos** | Second-cycle synthesis + analytic memos | ✅ ready (`category`, `create theme`, `memo`) · ⚠️ theme board needs an evidence-set verb (#335) | `{code\|category\|memo}` | M3 |
+| **S6 Categories + Themes + Memos** | Second-cycle synthesis + analytic memos | ✅ ready (`category`, `create theme`, `memo`) · ✅ `theme add\|remove` (shipped, #335 / #342) — the board itself is unbuilt | `{code\|category\|memo}` | M3 |
 | **S7 Lenses + Rigor** | Multiplicity, κ/α, saturation | ✅ ready (`codebook`, `agreement`, `saturate`) | per-frame | M3 |
 | **S8 Provenance + PROV** | Audit trail, reproducibility | ✅ ready (`blame`, `export --format prov`) | event log | M2/M3 |
 | **Later Correct** | Trustworthy ground truth | ⚠️ **engine work** (no `edit` verb; re-embed; anchor migration) | mutates tokens | Later |
 
-The happy headline: **every surface except correction (and the theme board's evidence-set verb, #335) wraps capability the engine already has.** The web UI is overwhelmingly a client-building exercise — ideal for a weekly side-project cadence.
+The happy headline: **every surface except correction wraps capability the engine already has** (the theme board's evidence-set verb, `compost theme add|remove`, shipped in #342). The web UI is overwhelmingly a client-building exercise — ideal for a weekly side-project cadence.
 
 ---
 
@@ -183,35 +183,21 @@ Can land in M2 alongside S5 (the blame inspector is what makes endorsement legib
 
 ## 5. Milestone 3 — second cycle, multiplicity, and (finally) correction
 
-- **S6 · Categories + Themes + Memos** — second-cycle grouping (`category`) and the theme board (`create theme`, including cross-lens themes as boundary objects). ADR 0007 decision 4 puts the theme board in the local player with auto-layout (no saved positions), after a CLI verb that changes a theme's evidence set (#335, #127). A theme's evidence set is heterogeneous — `{code | category | memo}` — so **analytic memos** ([ADR 0004](adr/0004-analytic-memos.md); `compost memo`) are both first-class evidence here and themselves a coding target. Memos have no web authoring surface: they are read and endorsed in the review artifact and authored via CLI or agent (ADR 0007; #310 resolved).
+- **S6 · Categories + Themes + Memos** — second-cycle grouping (`category`) and the theme board (`create theme`, including cross-lens themes as boundary objects). ADR 0007 decision 4 puts the theme board in the local player with auto-layout (no saved positions), after the CLI verb that changes a theme's evidence set (`compost theme add|remove`, shipped #335 / #342; the board is #127). A theme's evidence set is heterogeneous — `{code | category | memo}` — so **analytic memos** ([ADR 0004](adr/0004-analytic-memos.md); `compost memo`) are both first-class evidence here and themselves a coding target. Memos have no web authoring surface: they are read and endorsed in the review artifact and authored via CLI or agent (ADR 0007; #310 resolved).
 - **S7 · Lenses + Rigor** — declare interpretive lenses (`codebook new`), measure agreement (κ/α) and saturation *per frame*. Persistent "which lens am I in?" indicator.
 - **Later · Correct transcript** — the one surface that needs engine work and breaks the append-only invariant. Schedule it deliberately, with: a `compost edit`-style verb (a tracked before/after event, not a silent overwrite), **anchor migration** for span-based highlights, and a **re-embed/reindex** hook so search and grounding don't drift off corrected text. By the time you build it you'll have lived in the data model for months — which is exactly the point of deferring it.
 
 ---
 
-## 6. Roadmap timeline (indicative, weekly cadence)
+## 6. Order of work
 
-A side-project pace; weeks are relative, not committed dates. Each surface is several weekly increments.
+The indicative Gantt that stood here (dated 2026-06-15, order S0 to S8) is retired: it predates [ADR 0007](adr/0007-visual-surface-rescope.md) and no longer reflects the order of work. ADR 0007's actual order is:
 
-```mermaid
-gantt
-    title Compost web UI — atomic surfaces (indicative)
-    dateFormat  YYYY-MM-DD
-    axisFormat  %b
-    section Milestone 1
-    S0 Reader + playback      :s0, 2026-06-15, 21d
-    S1 Enrich (cues)          :s1, after s0, 14d
-    S2 Mark (bands + export)  :s2, after s1, 21d
-    section Milestone 2
-    S3 Retrieve (search)      :s3, after s2, 14d
-    S4 Code                   :s4, after s3, 21d
-    S5 Suggest + Endorse      :s5, after s4, 21d
-    S8 Provenance + PROV      :s8, after s5, 14d
-    section Milestone 3
-    S6 Categories + Themes    :s6, after s8, 28d
-    S7 Lenses + Rigor         :s7, after s6, 28d
-    Correct transcript (engine) :crit, sx, after s7, 28d
-```
+1. **The P3 spike first** — whether an artifact can reach compost's MCP server. Step 1 of "Still to test" and its spike kit are in [ADR 0007](adr/0007-visual-surface-rescope.md#still-to-test-before-surface-1-is-called-viable).
+2. **The review artifact** (#334) — drafts queue, endorse/reject, lineage.
+3. **The local player** — transcript player, select-to-highlight, theme board (#124, #127).
+
+Tracking lives in the GitHub milestone **v0.3 — Visual researcher coding surface**, not in this document. The S0-S8 ladder above remains a map of which capability each surface wraps, not a schedule.
 
 ---
 
