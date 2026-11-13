@@ -10,15 +10,19 @@ same domain core in `cli/src/lib` (see the repo-root `CLAUDE.md`):
   `pattern-coding`, `analytic-memos`, `codebook-lenses`, `intercoder-agreement`,
   `saturation-analysis`, `journey-mapping`, `querying-research-knowledge`. The
   skills do the interpreting; compost stores, computes, and records provenance.
-- **MCP server** (`mcp/`, 25 `compost_*` tools): status, list, blame, agreement,
+- **MCP server** (`mcp/`, 27 `compost_*` tools): status, list, blame, agreement,
   ingest, transcribe, export, models_doctor, search, get_session,
-  create_highlight, create_code, create_theme, create_memo, list_memos, endorse,
-  reject, rerun, code_suggest, code_apply, codebook_new, codebook_list,
-  codebook_migrate, codebook_duplicate, codebook_merge.
+  create_highlight, create_code, create_theme, theme_add, theme_remove,
+  create_memo, list_memos, endorse, reject, rerun, code_suggest, code_apply,
+  codebook_new, codebook_list, codebook_migrate, codebook_duplicate,
+  codebook_merge.
 
 AI-authored artifacts created through these tools are born `[draft]` and stay
 untrusted until a researcher runs `compost endorse` (or archives them with
-`compost reject`).
+`compost reject`). `theme_add` / `theme_remove` edit an existing theme's evidence
+as the AI actor, so the core only lets them touch a theme that is still a
+`[draft]`; on an endorsed theme they are refused and the change is the
+researcher's to make (`compost theme add|remove`).
 
 The manifest is `.claude-plugin/plugin.json`. Marketplace distribution is not set
 up yet: the committed `dist/` still needs this workspace's `node_modules` and a

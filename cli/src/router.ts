@@ -35,6 +35,7 @@ import { registerSetup } from './commands/setup.js'
 import { registerSnap } from './commands/snap.js'
 import { registerStatus } from './commands/status.js'
 import { registerTag } from './commands/tag.js'
+import { registerTheme } from './commands/theme.js'
 import { registerTranscribe } from './commands/transcribe.js'
 import { registerValidate } from './commands/validate.js'
 import { registerWatch } from './commands/watch.js'
@@ -99,6 +100,7 @@ Output is human-readable at a TTY and JSON when piped or called by an agent (for
   registerSecrets(program)
   registerSession(program)
   registerCreate(program)
+  registerTheme(program)
   registerEndorse(program)
   registerReject(program)
   registerSetup(program)

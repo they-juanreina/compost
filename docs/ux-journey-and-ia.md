@@ -214,7 +214,8 @@ The column that matters most for design is **Solver**: it tells the UI who is ac
 | Cross-session similarity scan → draft codes | 🤖 | `compost rescan` | "Find related" suggestions | M3 |
 | Create a category (group codes) | 🧑 | `compost category new` + `link` | Category board | M2 |
 | Suggest categories (centroid clustering) | 🤖 | `compost category suggest` | Category suggestions `[draft]` | M3 |
-| Create a theme (heterogeneous evidence) | 🧑 | `compost create theme` | **Theme board** (M1 hero) — in the local player, auto-layout, not saved; needs an evidence-set verb first (ADR 0007 decision 4, #127, #335) | M1 |
+| Create a theme (heterogeneous evidence) | 🧑 | `compost create theme` | **Theme board** (M1 hero) — in the local player, auto-layout, not saved (ADR 0007 decision 4, #127) | M1 |
+| Add / remove evidence on an existing theme | 🧑 (🤖 only while the theme is a `[draft]`) | `compost theme add\|remove <theme> --evidence …` | Theme board — drag a code or category into or out of a theme. The verb shipped first (ADR 0007 decision 4, #335); the board (#127) wraps it and adds no rules of its own | M1 |
 | Author a cross-lens theme (≥2 codebooks) | 🧑 | `create theme --cross-lens` | Theme board (cross-lens mode) | M2 |
 | Write an analytic memo | 🧑 | `compost memo new` (`--ai` → 🤖 `[draft]`) | None — authored via CLI or agent; read + endorsed in the review artifact (ADR 0007, #310 resolved) | — |
 | Anchor / cite a memo (a memo is itself a coding target) | 🧑 | `compost memo cite` | None — CLI or agent (ADR 0007, #310 resolved) | — |

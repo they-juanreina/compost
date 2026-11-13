@@ -163,3 +163,11 @@ export {
   type SessionSummary,
   type SessionView,
 } from './lib/session.js'
+// ---- theme evidence: add / remove on an existing theme (#335, ADR 0007 §4)
+export {
+  editThemeEvidence,
+  type ThemeEvidenceEdit,
+  type ThemeEvidenceEditResult,
+  type ThemeEvidenceEntry,
+} from './lib/themeEvidence.js'
+export { parseEvidence, type ThemeEvidence, type ThemeEvidenceKind } from './lib/themes.js'

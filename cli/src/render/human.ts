@@ -1,6 +1,7 @@
 import type { DoctorReport } from '../lib/doctor.js'
 import type { EvidenceQuote, ListResult, ThemeEvidenceDetail } from '../lib/list.js'
 import type { StatusSnapshot } from '../lib/status.js'
+import type { ThemeEvidenceEditResult, ThemeEvidenceEntry } from '../lib/themeEvidence.js'
 import { glyphs } from './glyphs.js'
 
 /** Human-readable summaries for the tutorial-facing verbs (#173). Commands pass
@@ -146,5 +147,26 @@ export function renderList(r: ListResult): string {
       `  ${g.warn} ${r.file_only.length} ${r.kind} file(s) with no ledger record (no provenance, so no state): ${r.file_only.map((f) => f.id).join(', ')}`,
     )
   }
+  return lines.join('\n')
+}
+
+/** `compost theme add|remove`: what changed, what was already so, and the
+ * theme's evidence set now. */
+export function renderThemeEvidenceEdit(
+  r: ThemeEvidenceEditResult & { status: string; command: string },
+): string {
+  const g = glyphs()
+  const refs = (es: ThemeEvidenceEntry[]): string => es.map((e) => `${e.kind}:${e.ref}`).join(', ')
+  const lines: string[] = [
+    r.changed
+      ? `${g.ok} ${r.command} ${r.id} — recorded (event ${r.update_event_id ?? '?'}); the theme stays ${r.state}`
+      : `${r.command} ${r.id} — nothing to change (no event recorded)`,
+  ]
+  if (r.added.length > 0) lines.push(`  added:           ${refs(r.added)}`)
+  if (r.removed.length > 0) lines.push(`  removed:         ${refs(r.removed)}`)
+  if (r.already_present.length > 0) lines.push(`  already present: ${refs(r.already_present)}`)
+  if (r.not_present.length > 0) lines.push(`  not on theme:    ${refs(r.not_present)}`)
+  lines.push(`  evidence now:    ${r.evidence.length > 0 ? refs(r.evidence) : '(none)'}`)
+  if (r.warning !== undefined) lines.push(`  ${g.warn} ${r.warning}`)
   return lines.join('\n')
 }

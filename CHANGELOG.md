@@ -4,6 +4,46 @@
 
 ### Added
 
+- **`compost theme add|remove <theme> --evidence <kind:ref,…>`** (+ the
+  `compost_theme_add` / `compost_theme_remove` MCP tools) — change the evidence
+  set of an existing theme (#335; the "verb first" prerequisite for the theme
+  board, ADR 0007 decision 4). Until now a theme's evidence was fixed at
+  `create theme`. Built on the maintainer override recorded in ADR 0007
+  (pre-flight rule 4 is grounded-but-not-demonstrated: one study, one coder).
+  - One append-only `update` event per change (`field: evidence`, with
+    before/after), tagged with its actor and visible in `compost blame`. A
+    researcher editing an AI `[draft]` does not endorse it.
+  - **An AI actor may edit a theme only while it is a draft.** On an endorsed
+    theme the edit is refused in the core, with a message telling the agent to
+    ask the researcher — otherwise an endorsement would silently cover a set
+    the researcher never saw. The MCP tools author as the AI, so this is the
+    rule they run under. (The general gap — any AI `update` on an endorsed
+    artifact — is tracked in #337.)
+  - A theme keeps its lens: a single-lens theme only takes evidence from its
+    own codebook, a cross-lens theme keeps ≥2, and the verb never flips one
+    into the other. Removing the last code/category is refused (retire a theme
+    with `compost reject`). `add` takes `code` and `category` only — a memo is
+    refused (ADR 0008 §5; anchor it with `compost memo cite` instead), though a
+    memo entry already on a theme can be removed. Unknown or ambiguous refs are
+    refused with the known codes / candidates.
+  - Idempotent: adding what is present or removing what is absent emits no
+    event and writes nothing (`status: unchanged`). Bare, qualified and by-name
+    code refs are one entry.
+  - The theme's markdown frontmatter (`evidence`, and the legacy `codes`
+    dual-write) is restamped atomically with the event, so `compost saturate`
+    — which reads the frontmatter — and `compost list theme --evidence` — which
+    reads the ledger — agree after an edit. If a markdown file exists but its
+    frontmatter cannot be restamped, the result carries a `warning`.
+  - Safe under concurrent writers: the event lands only if the theme is
+    unchanged since the command read it. If an endorse, a reject or another
+    edit landed first, the command exits with the new `CONFLICT` code and
+    writes nothing — re-run it. (`updateArtifact` gains an optional
+    `expectedParent` for this; other callers are unchanged.)
+  - A bare code ref that has become ambiguous (the same code name now exists in
+    two codebooks) is refused on `remove` with the "qualify it" error, and a
+    stored bare ref still matches its qualified id.
+  - No web action yet: the board that wraps this verb is #127.
+
 - Explicit Seeds root: `$COMPOST_SEEDS_DIR`, then the global `seeds.dir` key
   (`compost config set seeds.dir /abs/path/Seeds --global`), then `<cwd>/Seeds`.
   This lets a process that doesn't start in your project find your seeds, for
@@ -15,6 +55,12 @@
   `compost_ingest` allowed roots are **not** widened. ADR 0007 gains the
   desktop-app `mcpServers` snippet and a three-step checklist for the P3 spike.
   Refs #334.
+
+### Changed
+
+- `parseEvidence` (the `kind:ref` parser behind `create theme --evidence`) moved
+  from the CLI command into `cli/src/lib/themes.ts`, so `create theme` and
+  `theme add|remove` share one parser. No behavior change.
 
 ### Fixed
 

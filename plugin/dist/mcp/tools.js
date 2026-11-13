@@ -63,6 +63,45 @@ function aiModel(args) {
     return typeof args.model === 'string' && args.model.trim() !== '' ? args.model : 'claude-code';
 }
 /**
+ * `compost_theme_add` / `compost_theme_remove` — the MCP names of `compost theme
+ * add|remove` (#335). aiAuthored, like the create tools: the update event
+ * records Claude Code as the `ai` actor. Whether that actor may edit at all is
+ * NOT decided here — the core (`cli/src/lib/themeEvidence.ts`) refuses an AI
+ * edit to an endorsed theme, and the description tells the agent what to do
+ * with that refusal.
+ */
+function themeEvidenceTool(op) {
+    const gate = 'Allowed only while the theme is still an AI [draft]: on an endorsed theme (endorsed by a researcher, or researcher-authored) the call is refused — do not retry; tell the researcher what you would change and why, and let them run `compost theme add|remove` themselves.';
+    return {
+        name: `compost_theme_${op}`,
+        description: op === 'add'
+            ? `Add code / category evidence to an EXISTING theme. Recorded as one update event with you as the AI actor; it does not endorse the theme. ${gate} A theme keeps its lens: a single-lens theme only takes evidence from its own codebook. Adding what is already there changes nothing (status: unchanged). Read the current set first with compost_list (kind=theme, evidence=true).`
+            : `Remove evidence from an EXISTING theme. Recorded as one update event with you as the AI actor; it does not endorse the theme. ${gate} Refuses to remove a theme's last code / category (retiring a theme is the researcher's compost_reject) and to drop a cross-lens theme below two codebooks. Removing what is not there changes nothing (status: unchanged).`,
+        readOnly: false,
+        aiAuthored: true,
+        inputSchema: {
+            type: 'object',
+            required: ['theme', 'evidence'],
+            properties: {
+                theme: str('Theme id (T-slug, from compost_create_theme / compost_list) or SHA256 prefix'),
+                evidence: str(op === 'add'
+                    ? 'Comma-separated kind:ref to add — code or category, e.g. code:C-distrust,category:CAT-trust (a bare ref is a code)'
+                    : 'Comma-separated kind:ref to remove, e.g. code:C-distrust,category:CAT-trust (a bare ref is a code)'),
+                seed: str('Seed'),
+                model: str('Your model id for provenance (e.g. claude-opus-4-8); defaults to claude-code'),
+            },
+        },
+        toArgv: (a) => [
+            'theme',
+            op,
+            String(a.theme),
+            '--evidence',
+            String(a.evidence),
+            ...(a.seed ? ['--seed', String(a.seed)] : []),
+        ],
+    };
+}
+/**
  * MCP tools mirror the CLI subcommand contracts and execute the same `compost`
  * binary — no logic is duplicated. Read-only vs mutation is declared per tool.
  */
@@ -307,6 +346,8 @@ export const TOOLS = [
             ...(a.seed ? ['--seed', String(a.seed)] : []),
         ],
     },
+    themeEvidenceTool('add'),
+    themeEvidenceTool('remove'),
     {
         name: 'compost_create_memo',
         description: "Write an analytic memo — your dated interpretive note about the corpus, a code, or a theme (the reasoning behind a move, a reflexive observation, a pattern hunch). Anchor it to what it's about. Always provide a concise, evocative, retrieval-friendly `title` you generate from the content (the human may have only given you a raw thought). Lands as an AI [draft] until a researcher endorses (compost endorse) — propose, never self-approve.",

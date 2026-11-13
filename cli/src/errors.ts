@@ -4,6 +4,9 @@ export type CompostErrorCode =
   | 'INVALID_INPUT'
   | 'IDENTITY_UNSET'
   | 'FILE_NOT_FOUND'
+  /** The artifact changed between a command's read and its write (another
+   * writer's event landed first). Nothing was written; re-running re-reads. */
+  | 'CONFLICT'
   | 'IO_ERROR'
   | 'CONFIG_ERROR'
   | 'PROVIDER_ERROR'

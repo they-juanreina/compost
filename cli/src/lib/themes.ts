@@ -56,6 +56,68 @@ export function decodeEvidence(token: string): ThemeEvidence | null {
   }
 }
 
+/**
+ * Parse a comma-separated `kind:ref` evidence list (`code:C-foo,category:CAT-bar`)
+ * into structured refs. A bare token (no `kind:` prefix) defaults to a code, so
+ * `C-foo` works. The one parser behind every surface that takes theme evidence
+ * as text: `compost create theme --evidence`, `compost theme add|remove
+ * --evidence`, and — through the CLI — the MCP tools.
+ */
+export function parseEvidence(s: string): ThemeEvidence[] {
+  return s
+    .split(',')
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0)
+    .map((token) => {
+      const idx = token.indexOf(':')
+      if (idx === -1) return { kind: 'code', ref: token }
+      const kind = token.slice(0, idx)
+      const ref = token.slice(idx + 1)
+      if (!EVIDENCE_KINDS.includes(kind as ThemeEvidenceKind)) {
+        throw new CompostError(
+          'INVALID_INPUT',
+          `Evidence kind must be ${EVIDENCE_KINDS.join(' | ')}; got "${kind}" in "${token}".`,
+        )
+      }
+      if (ref.length === 0) {
+        throw new CompostError('INVALID_INPUT', `Evidence ref is empty in "${token}".`)
+      }
+      return { kind: kind as ThemeEvidenceKind, ref }
+    })
+}
+
+/**
+ * A theme's evidence set as the ledger holds it: the structured
+ * `evidence[{kind, ref, codebook_id}]` of a snapshot's `current_state`, or — for
+ * a theme that predates #266 — its legacy `codes[]`, lazy-mapped to code
+ * evidence (ADR 0002 §1). The ledger-side twin of `loadThemeEvidence` (which
+ * reads the markdown frontmatter tokens); `list` and `theme add|remove` both
+ * read through it, so the lazy map lives in one place per source.
+ */
+export function themeEvidenceFromState(state: Record<string, unknown>): ThemeEvidence[] {
+  if (Array.isArray(state.evidence)) {
+    const out: ThemeEvidence[] = []
+    for (const e of state.evidence as Array<Record<string, unknown> | null>) {
+      const kind = e?.kind
+      const ref = e?.ref
+      if (typeof kind !== 'string' || typeof ref !== 'string') continue
+      const cb = e?.codebook_id
+      out.push({
+        kind: kind as ThemeEvidenceKind,
+        ref,
+        ...(typeof cb === 'string' ? { codebookId: cb } : {}),
+      })
+    }
+    return out
+  }
+  if (Array.isArray(state.codes)) {
+    return state.codes
+      .filter((x): x is string => typeof x === 'string')
+      .map((ref) => ({ kind: 'code' as const, ref }))
+  }
+  return []
+}
+
 /** Parsed theme frontmatter, the subset themes care about. Both `saturate` and
  * the create path read through this so the lazy-map lives in exactly one place. */
 export interface ThemeFrontmatter {
@@ -156,11 +218,21 @@ export interface ResolvedThemeEvidence {
  * - `requested === undefined` → infer: one frame ⇒ that frame; ≥2 ⇒ cross-lens.
  * - `requested === null` → cross-lens; require ≥2 distinct frames in evidence.
  * - `requested === <CB-id>` → single-lens; all evidence must be in that frame.
+ *
+ * `theme add|remove` runs an existing theme's edited set through the same
+ * checks, passing the theme's own frame as `requested` — so the invariant lives
+ * here once. `context` only selects the *fix hint* a refusal carries: the
+ * create flags (`--cross-lens`, `--codebook`) are not available to an edit,
+ * which never changes a theme's lens. `edit-unframed` is an edit to a theme
+ * that was created with no code/category evidence: its frame is null without
+ * anyone having declared it cross-lens, so the ≥2-codebooks refusal says that
+ * instead of telling a single-codebook user to find a second lens.
  */
 export function resolveThemeEvidence(
   seedPath: string,
   evidence: ThemeEvidence[],
   requested: string | null | undefined,
+  context: 'create' | 'edit' | 'edit-unframed' = 'create',
 ): ResolvedThemeEvidence {
   // Lens-bearing evidence (code/category) defines the theme's frame; `memo`
   // entries are analytic annotations that ride along frame-neutral (ADR 0004
@@ -190,9 +262,14 @@ export function resolveThemeEvidence(
 
   if (requested === null) {
     if (frames.size < 2) {
+      const all = [...frames].join(', ')
       throw new CompostError(
         'INVALID_INPUT',
-        `A cross-lens theme must cite evidence from ≥2 codebooks; this evidence is all in ${[...frames].join(', ')}. Scope it to that codebook instead, or add evidence from another lens.`,
+        context === 'edit-unframed'
+          ? `This theme has no lens: it was created without code or category evidence, so its codebook_id is null — the same marker a cross-lens theme carries — and \`theme add\` never picks a lens for a theme. The evidence given is all in ${all}. For a single-lens theme, create it scoped to that codebook (\`compost create theme --name <name> --summary <text> --codebook ${[...frames][0] ?? '<CB-id>'} --evidence <kind:ref,…>\`) and retire this one with \`compost reject\`. To make this one a cross-lens theme, add evidence from ≥2 codebooks in one call.`
+          : context === 'edit'
+            ? `A cross-lens theme must cite evidence from ≥2 codebooks; after this edit it would all be in ${all}. \`theme add|remove\` never changes a theme's lens — keep (or add, in the same call) evidence from a second codebook, or create a new theme scoped to that one: \`compost create theme --codebook <CB-id>\`.`
+            : `A cross-lens theme must cite evidence from ≥2 codebooks; this evidence is all in ${all}. Scope it to that codebook instead, or add evidence from another lens.`,
       )
     }
     return { evidence: stamped, codebookId: null }
@@ -204,7 +281,9 @@ export function resolveThemeEvidence(
     if (outsiders.length > 0) {
       throw new CompostError(
         'INVALID_INPUT',
-        `Theme is scoped to ${scoped} but cites evidence from ${outsiders.join(', ')}. A single-lens theme stays within its frame — pass --cross-lens for a theme that spans codebooks.`,
+        context !== 'create'
+          ? `Theme is scoped to ${scoped} but this edit would cite evidence from ${outsiders.join(', ')}. A single-lens theme stays within its frame, and \`theme add|remove\` never changes a theme's lens — add evidence from ${scoped} only, or create a new theme that spans frames: \`compost create theme --cross-lens\`.`
+          : `Theme is scoped to ${scoped} but cites evidence from ${outsiders.join(', ')}. A single-lens theme stays within its frame — pass --cross-lens for a theme that spans codebooks.`,
       )
     }
     return { evidence: stamped, codebookId: scoped }
@@ -216,7 +295,9 @@ export function resolveThemeEvidence(
   if (frames.size > 1) {
     throw new CompostError(
       'INVALID_INPUT',
-      `Theme evidence spans ${frames.size} codebooks (${[...frames].join(', ')}). Pass --cross-lens for a theme that spans frames, or --codebook <CB-id> to scope it to one.`,
+      context !== 'create'
+        ? `This edit would make the theme's evidence span ${frames.size} codebooks (${[...frames].join(', ')}). \`theme add|remove\` never changes a theme's lens — keep the evidence within one codebook, or create a new theme that spans frames: \`compost create theme --cross-lens\`.`
+        : `Theme evidence spans ${frames.size} codebooks (${[...frames].join(', ')}). Pass --cross-lens for a theme that spans frames, or --codebook <CB-id> to scope it to one.`,
     )
   }
   return { evidence: stamped, codebookId: [...frames][0] ?? null }
